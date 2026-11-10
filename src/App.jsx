@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
  
 const CIVITAI_TOKEN = "777a5632707c15ecf54e13eb3b1b862b"
@@ -24,10 +24,15 @@ export default function App() {
   const [savedPrompts, setSavedPrompts] = useState([])
   const [lightboxIndex, setLightboxIndex] = useState(-1)
   const [isZoomed, setIsZoomed] = useState(false)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [showAddLora, setShowAddLora] = useState(false)
   const [showAddCheckpoint, setShowAddCheckpoint] = useState(false)
   const [newLoraUrl, setNewLoraUrl] = useState('')
   const [newCheckpointUrl, setNewCheckpointUrl] = useState('')
+
+  const imageRef = useRef(null)
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
@@ -212,6 +217,54 @@ export default function App() {
     setLightboxIndex(-1)
   }
 
+  function handleZoomToggle() {
+    setIsZoomed(prev => {
+      if (prev) setPan({ x: 0, y: 0 })
+      return !prev
+    })
+  }
+
+  function handleMouseDown(e) {
+    if (!isZoomed) return
+    e.preventDefault()
+    setIsDragging(true)
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
+  }
+
+  function handleMouseMove(e) {
+    if (!isDragging || !isZoomed) return
+    e.preventDefault()
+    setPan({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    })
+  }
+
+  function handleMouseUp() {
+    setIsDragging(false)
+  }
+
+  function handleTouchStart(e) {
+    if (!isZoomed || e.touches.length !== 1) return
+    const touch = e.touches[0]
+    setIsDragging(true)
+    setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
+  }
+
+  function handleTouchMove(e) {
+    if (!isDragging || !isZoomed || e.touches.length !== 1) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    setPan({
+      x: touch.clientX - dragStart.x,
+      y: touch.clientY - dragStart.y
+    })
+  }
+
+  function handleTouchEnd() {
+    setIsDragging(false)
+  }
+
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
@@ -323,18 +376,31 @@ export default function App() {
       <h3>Gallery</h3>
       <div className="gallery">
         {gallery.map((item, i) => (
-          <img key={item.id} src={item.url} onClick={() => { setLightboxIndex(i); setIsZoomed(false) }} />
+          <img key={item.id} src={item.url} onClick={() => { setLightboxIndex(i); setIsZoomed(false); setPan({ x: 0, y: 0 }) }} />
         ))}
       </div>
 
       {lightboxIndex >= 0 && (
-        <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
+        <div 
+          className="lightbox" 
+          onClick={() => setLightboxIndex(-1)}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
             <button className="lb-btn left" onClick={() => deleteImage(lightboxIndex)}>🗑</button>
             <img
+              ref={imageRef}
               className={isZoomed ? 'zoomed' : ''}
+              style={isZoomed ? { transform: `translate(${pan.x}px, ${pan.y}px) scale(1.8)` } : {}}
               src={gallery[lightboxIndex].url}
-              onClick={() => setIsZoomed(!isZoomed)}
+              onClick={handleZoomToggle}
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleTouchStart}
+              draggable={false}
             />
             <button className="lb-btn right" onClick={() => setLightboxIndex(-1)}>✕</button>
           </div>
