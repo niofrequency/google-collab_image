@@ -59,6 +59,8 @@ button.danger:hover { background: #7a2a2a; }
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow: hidden;
+  user-select: none;
 }
 .lb-image-wrap {
   position: relative;
@@ -70,12 +72,16 @@ button.danger:hover { background: #7a2a2a; }
   border-radius: 8px;
   cursor: zoom-in;
   display: block;
+  transition: transform 0.15s ease;
+  transform-origin: center center;
 }
 .lb-image-wrap img.zoomed {
-  transform: scale(1.8);
-  cursor: zoom-out;
+  cursor: grab;
   max-width: none;
   max-height: none;
+}
+.lb-image-wrap img.zoomed:active {
+  cursor: grabbing;
 }
 .lb-btn {
   position: absolute;
