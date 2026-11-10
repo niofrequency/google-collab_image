@@ -6,7 +6,7 @@
   --muted: #888;
   --accent: #8b2e2e;
   --accent-hover: #a33a3a;
-}
+} 
 * { box-sizing: border-box; }
 body {
   font-family: system-ui, -apple-system, sans-serif;
