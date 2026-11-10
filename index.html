@@ -120,6 +120,14 @@
   }
   .prompt-item:hover { background: #1a1a1a; }
   h3 { margin: 28px 0 12px; font-weight: 500; font-size: 16px; }
+  .add-lora-box {
+    display: none;
+    background: var(--surface);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
 </style>
 </head>
 <body>
@@ -164,13 +172,15 @@
 
   <label>LoRAs</label>
   <div id="loras"></div>
-  <button type="button" class="secondary" onclick="addLora()">+ Add LoRA</button>
 
-  <label>Add LoRA from URL</label>
-  <div class="row">
-    <div style="flex:3"><input id="loraUrl" placeholder="https://civitai.com/api/download/models/..."></div>
-    <div style="flex:1"><button class="secondary" onclick="downloadLora()">Download</button></div>
+  <div id="addLoraBox" class="add-lora-box">
+    <input id="newLoraUrl" placeholder="Paste LoRA URL (CivitAI, Hugging Face, etc.)" style="margin-bottom:8px">
+    <div class="row">
+      <button class="secondary" onclick="confirmAddLora()">Download & Add</button>
+      <button class="secondary" onclick="cancelAddLora()">Cancel</button>
+    </div>
   </div>
+  <button type="button" class="secondary" onclick="showAddLora()">+ Add LoRA</button>
 
   <label>Positive Prompt</label>
   <textarea id="positive"></textarea>
@@ -249,14 +259,19 @@ function renderLoras() {
   });
 }
 
-function addLora() {
-  currentLoras.push({ name: "new_lora.safetensors", strength: 0.8 });
-  renderLoras();
+function showAddLora() {
+  document.getElementById("addLoraBox").style.display = "block";
+  document.getElementById("newLoraUrl").focus();
 }
 
-async function downloadLora() {
-  const url = document.getElementById("loraUrl").value.trim();
-  if (!url) return setStatus("Paste a LoRA URL first", "error");
+function cancelAddLora() {
+  document.getElementById("addLoraBox").style.display = "none";
+  document.getElementById("newLoraUrl").value = "";
+}
+
+async function confirmAddLora() {
+  const url = document.getElementById("newLoraUrl").value.trim();
+  if (!url) return setStatus("Paste a LoRA URL", "error");
 
   const backend = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
   if (!backend) return setStatus("Set Backend URL first", "error");
@@ -278,7 +293,7 @@ async function downloadLora() {
       currentLoras.push({ name: data.filename, strength: 0.8 });
       renderLoras();
       setStatus("LoRA added: " + data.filename, "ok");
-      document.getElementById("loraUrl").value = "";
+      cancelAddLora();
     } else {
       setStatus(data.error || "Download failed", "error");
     }
