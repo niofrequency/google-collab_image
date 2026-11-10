@@ -180,7 +180,7 @@
   }
   .prompt-item:hover { background: #1a1a1a; }
   h3 { margin: 28px 0 12px; font-weight: 500; font-size: 16px; }
-  .add-lora-box {
+  .add-box {
     display: none;
     background: var(--surface);
     padding: 12px;
@@ -188,7 +188,7 @@
     border: 1px solid var(--border);
     margin-bottom: 8px;
   }
-  .empty-loras { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .empty-msg { color: var(--muted); font-size: 13px; padding: 8px 0; }
 </style>
 </head>
 <body>
@@ -196,14 +196,13 @@
   <h1>ARX Image Generator</h1>
 
   <label>Backend URL</label>
-  <input id="backendUrl" placeholder="https://xxxx.trycloudflare.com">
+  <input id="backendUrl" placeholder="https://xxxx.trycloudflare.com" onchange="loadUserModels()">
 
   <div class="row">
     <div>
-      <label>Model</label>
+      <label>Checkpoint</label>
       <select id="checkpoint">
-        <option value="biglust">BigLust (SDXL)</option>
-        <option value="wan">Wan 2.1</option>
+        <option value="">Default (BigLust)</option>
       </select>
     </div>
     <div>
@@ -234,14 +233,24 @@
   <label>LoRAs</label>
   <div id="loras"></div>
 
-  <div id="addLoraBox" class="add-lora-box">
-    <input id="newLoraUrl" placeholder="Paste LoRA URL (CivitAI, Hugging Face, etc.)" style="margin-bottom:8px">
+  <div id="addLoraBox" class="add-box">
+    <input id="newLoraUrl" placeholder="Paste LoRA URL" style="margin-bottom:8px">
     <div class="row">
-      <button class="secondary" onclick="confirmAddLora()">Download & Add</button>
-      <button class="secondary" onclick="cancelAddLora()">Cancel</button>
+      <button class="secondary" onclick="confirmAddModel('lora')">Download & Add</button>
+      <button class="secondary" onclick="cancelAdd('lora')">Cancel</button>
     </div>
   </div>
-  <button type="button" class="secondary" onclick="showAddLora()">+ Add LoRA</button>
+  <button type="button" class="secondary" onclick="showAdd('lora')">+ Add LoRA</button>
+
+  <label style="margin-top:20px">Add Checkpoint</label>
+  <div id="addCheckpointBox" class="add-box">
+    <input id="newCheckpointUrl" placeholder="Paste Checkpoint URL" style="margin-bottom:8px">
+    <div class="row">
+      <button class="secondary" onclick="confirmAddModel('checkpoint')">Download & Add</button>
+      <button class="secondary" onclick="cancelAdd('checkpoint')">Cancel</button>
+    </div>
+  </div>
+  <button type="button" class="secondary" onclick="showAdd('checkpoint')">+ Add Checkpoint</button>
 
   <label>Positive Prompt</label>
   <textarea id="positive"></textarea>
@@ -275,7 +284,7 @@
 <script>
 const CIVITAI_TOKEN = "777a5632707c15ecf54e13eb3b1b862b";
 
-let currentLoras = JSON.parse(localStorage.getItem("userLoras") || "[]");
+let currentLoras = [];
 let currentImageIndex = -1;
 let galleryItems = [];
 let savedPrompts = JSON.parse(localStorage.getItem("prompts") || "[]");
@@ -333,10 +342,6 @@ async function deleteImage(id) {
   });
 }
 
-function saveUserLoras() {
-  localStorage.setItem("userLoras", JSON.stringify(currentLoras));
-}
-
 function setStatus(msg, type = "") {
   const el = document.getElementById("status");
   el.textContent = msg;
@@ -348,63 +353,91 @@ function showProgress(show) {
   if (!show) document.getElementById("progressBar").style.width = "0%";
 }
 
+function getBackend() {
+  return document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
+}
+
+async function loadUserModels() {
+  const backend = getBackend();
+  if (!backend) return;
+
+  try {
+    const res = await fetch(backend + "/user_models");
+    const data = await res.json();
+
+    // Populate checkpoints
+    const select = document.getElementById("checkpoint");
+    select.innerHTML = '<option value="">Default (BigLust)</option>';
+    (data.checkpoints || []).forEach(name => {
+      select.innerHTML += `<option value="${name}">${name}</option>`;
+    });
+
+    // Populate LoRAs
+    currentLoras = data.loras || [];
+    renderLoras();
+  } catch (e) {
+    console.log("Could not load user models");
+  }
+}
+
 function renderLoras() {
   const container = document.getElementById("loras");
   if (currentLoras.length === 0) {
-    container.innerHTML = `<div class="empty-loras">No LoRAs added yet. Click "+ Add LoRA" to add one.</div>`;
+    container.innerHTML = `<div class="empty-msg">No LoRAs added yet.</div>`;
     return;
   }
   container.innerHTML = "";
   currentLoras.forEach((l, i) => {
     container.innerHTML += `
       <div class="lora-item">
-        <input placeholder="LoRA filename" value="${l.name}" onchange="currentLoras[${i}].name=this.value; saveUserLoras()">
-        <input type="number" step="0.1" value="${l.strength}" style="width:80px" onchange="currentLoras[${i}].strength=parseFloat(this.value); saveUserLoras()">
-        <button class="danger" onclick="currentLoras.splice(${i},1); saveUserLoras(); renderLoras()">Remove</button>
+        <input value="${l.name}" onchange="currentLoras[${i}].name=this.value">
+        <input type="number" step="0.1" value="${l.strength}" style="width:80px" onchange="currentLoras[${i}].strength=parseFloat(this.value)">
+        <button class="danger" onclick="currentLoras.splice(${i},1); renderLoras()">Remove</button>
       </div>`;
   });
 }
 
-function showAddLora() {
-  document.getElementById("addLoraBox").style.display = "block";
-  document.getElementById("newLoraUrl").focus();
+function showAdd(type) {
+  const box = type === "lora" ? "addLoraBox" : "addCheckpointBox";
+  document.getElementById(box).style.display = "block";
+  document.getElementById(type === "lora" ? "newLoraUrl" : "newCheckpointUrl").focus();
 }
 
-function cancelAddLora() {
-  document.getElementById("addLoraBox").style.display = "none";
-  document.getElementById("newLoraUrl").value = "";
+function cancelAdd(type) {
+  const box = type === "lora" ? "addLoraBox" : "addCheckpointBox";
+  document.getElementById(box).style.display = "none";
+  document.getElementById(type === "lora" ? "newLoraUrl" : "newCheckpointUrl").value = "";
 }
 
-async function confirmAddLora() {
-  let url = document.getElementById("newLoraUrl").value.trim();
-  if (!url) return setStatus("Paste a LoRA URL", "error");
+async function confirmAddModel(type) {
+  const inputId = type === "lora" ? "newLoraUrl" : "newCheckpointUrl";
+  let url = document.getElementById(inputId).value.trim();
+  if (!url) return setStatus("Paste a URL", "error");
 
   if (url.includes("civitai.com") && !url.includes("token=")) {
     url += (url.includes("?") ? "&" : "?") + "token=" + CIVITAI_TOKEN;
   }
 
-  const backend = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
+  const backend = getBackend();
   if (!backend) return setStatus("Set Backend URL first", "error");
 
-  setStatus("Downloading LoRA...");
+  setStatus("Downloading...");
   showProgress(true);
   document.getElementById("progressBar").style.width = "30%";
 
   try {
-    const res = await fetch(backend + "/download_lora", {
+    const res = await fetch(backend + "/download_model", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url })
+      body: JSON.stringify({ url, type })
     });
     const data = await res.json();
     document.getElementById("progressBar").style.width = "100%";
 
     if (data.filename) {
-      currentLoras.push({ name: data.filename, strength: 0.8 });
-      saveUserLoras();
-      renderLoras();
-      setStatus("LoRA added: " + data.filename, "ok");
-      cancelAddLora();
+      setStatus("Added: " + data.filename, "ok");
+      cancelAdd(type);
+      await loadUserModels();
     } else {
       setStatus(data.error || "Download failed", "error");
     }
@@ -475,7 +508,7 @@ async function deleteCurrent() {
 }
 
 async function generate() {
-  const backend = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
+  const backend = getBackend();
   if (!backend) return setStatus("Set Backend URL first", "error");
 
   setStatus("Generating...");
@@ -486,7 +519,10 @@ async function generate() {
     document.getElementById("progressBar").style.width = progress + "%";
   }, 600);
 
+  const checkpoint = document.getElementById("checkpoint").value;
+
   const payload = {
+    checkpoint: checkpoint || null,
     sampler: document.getElementById("sampler").value,
     scheduler: document.getElementById("scheduler").value,
     steps: +document.getElementById("steps").value,
