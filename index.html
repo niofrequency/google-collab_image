@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Colab Image Generator</title>
+<title>ARX Image Generator</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
 <style>
   :root {
@@ -251,8 +251,64 @@ const modelLoras = {
 
 let currentLoras = [...modelLoras.biglust];
 let currentImageIndex = -1;
-let gallery = JSON.parse(localStorage.getItem("gallery") || "[]");
+let galleryItems = []; // {id, blobUrl}
 let savedPrompts = JSON.parse(localStorage.getItem("prompts") || "[]");
+
+// IndexedDB setup
+let db;
+const DB_NAME = "ImageGallery";
+const STORE_NAME = "images";
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
+      }
+    };
+  });
+}
+
+async function saveImage(blob) {
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+  return new Promise((resolve, reject) => {
+    const req = store.add({ blob, created: Date.now() });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function loadGallery() {
+  const tx = db.transaction(STORE_NAME, "readonly");
+  const store = tx.objectStore(STORE_NAME);
+  return new Promise((resolve) => {
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const items = req.result.sort((a, b) => b.created - a.created);
+      galleryItems = items.map(item => ({
+        id: item.id,
+        blobUrl: URL.createObjectURL(item.blob)
+      }));
+      resolve();
+    };
+  });
+}
+
+async function deleteImage(id) {
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  const store = tx.objectStore(STORE_NAME);
+  return new Promise((resolve) => {
+    store.delete(id).onsuccess = resolve;
+  });
+}
 
 function setStatus(msg, type = "") {
   const el = document.getElementById("status");
@@ -333,8 +389,8 @@ async function confirmAddLora() {
 }
 
 function renderGallery() {
-  document.getElementById("gallery").innerHTML = gallery.map((img, i) => 
-    `<img src="${img}" onclick="openLightbox(${i})">`
+  document.getElementById("gallery").innerHTML = galleryItems.map((item, i) => 
+    `<img src="${item.blobUrl}" onclick="openLightbox(${i})">`
   ).join("");
 }
 
@@ -361,14 +417,16 @@ function loadPrompt(i) {
 
 function openLightbox(i) {
   currentImageIndex = i;
-  document.getElementById("lbImage").src = gallery[i];
+  document.getElementById("lbImage").src = galleryItems[i].blobUrl;
   document.getElementById("lightbox").style.display = "flex";
 }
 function closeLightbox() { document.getElementById("lightbox").style.display = "none"; }
-function deleteCurrent() {
+async function deleteCurrent() {
   if (currentImageIndex >= 0) {
-    gallery.splice(currentImageIndex, 1);
-    localStorage.setItem("gallery", JSON.stringify(gallery));
+    const id = galleryItems[currentImageIndex].id;
+    await deleteImage(id);
+    URL.revokeObjectURL(galleryItems[currentImageIndex].blobUrl);
+    galleryItems.splice(currentImageIndex, 1);
     renderGallery();
     closeLightbox();
   }
@@ -409,8 +467,15 @@ async function generate() {
     document.getElementById("progressBar").style.width = "100%";
 
     if (data.image) {
-      gallery.unshift(data.image);
-      localStorage.setItem("gallery", JSON.stringify(gallery));
+      // Convert base64 to blob and store in IndexedDB
+      const base64 = data.image.split(",")[1];
+      const binary = atob(base64);
+      const array = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+      const blob = new Blob([array], { type: "image/png" });
+
+      await saveImage(blob);
+      await loadGallery();
       renderGallery();
       setStatus("Done", "ok");
     } else {
@@ -424,9 +489,14 @@ async function generate() {
 }
 
 // Init
-updateLorasForModel();
-renderGallery();
-renderSavedPrompts();
+async function init() {
+  await openDB();
+  await loadGallery();
+  updateLorasForModel();
+  renderGallery();
+  renderSavedPrompts();
+}
+init();
 </script>
 </body>
 </html>
