@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ARX Image Generator</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0a0a'/><path d='M8 22V10h3.2l3.8 7.5L18.8 10H22v12h-2.4v-7.8L16 22h-1.2l-3.6-7.8V22H8z' fill='white'/></svg>">
 <style>
   :root {
     --bg: #0a0a0a;
@@ -35,10 +35,7 @@
     border-radius: 8px;
     font-size: 14px;
   }
-  textarea {
-    min-height: 100px;
-    resize: vertical;
-  }
+  textarea { min-height: 100px; resize: vertical; }
   input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
   .row { display: flex; gap: 16px; }
   .row > div { flex: 1; }
@@ -88,10 +85,47 @@
     align-items: center;
     justify-content: center;
     z-index: 1000;
+    cursor: zoom-out;
   }
-  #lightbox img { max-width: 90%; max-height: 85vh; border-radius: 8px; }
-  .lb-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 8px; }
-  .lb-controls button { width: auto; padding: 8px 16px; }
+  .lb-image-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #lbImage {
+    max-width: 85vw;
+    max-height: 85vh;
+    border-radius: 8px;
+    cursor: zoom-in;
+    transition: transform 0.2s ease;
+  }
+  #lbImage.zoomed {
+    transform: scale(1.8);
+    cursor: zoom-out;
+    max-width: none;
+    max-height: none;
+  }
+  .lb-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(20,20,20,0.85);
+    border: 1px solid #333;
+    color: white;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+  }
+  .lb-btn:hover { background: rgba(40,40,40,0.95); }
+  .lb-btn.left { left: -60px; }
+  .lb-btn.right { right: -60px; }
   .status {
     margin: 12px 0;
     min-height: 20px;
@@ -154,16 +188,12 @@
     border: 1px solid var(--border);
     margin-bottom: 8px;
   }
-  .empty-loras {
-    color: var(--muted);
-    font-size: 13px;
-    padding: 8px 0;
-  }
+  .empty-loras { color: var(--muted); font-size: 13px; padding: 8px 0; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>Image Generator</h1>
+  <h1>ARX Image Generator</h1>
 
   <label>Backend URL</label>
   <input id="backendUrl" placeholder="https://xxxx.trycloudflare.com">
@@ -234,12 +264,12 @@
   <div id="gallery" class="gallery"></div>
 </div>
 
-<div id="lightbox">
-  <div class="lb-controls">
-    <button class="danger" onclick="deleteCurrent()">Delete</button>
-    <button onclick="closeLightbox()">Close</button>
+<div id="lightbox" onclick="closeLightbox(event)">
+  <div class="lb-image-wrap">
+    <button class="lb-btn left" onclick="event.stopPropagation(); deleteCurrent()">🗑</button>
+    <img id="lbImage" onclick="event.stopPropagation(); toggleZoom()">
+    <button class="lb-btn right" onclick="event.stopPropagation(); closeLightbox()">✕</button>
   </div>
-  <img id="lbImage">
 </div>
 
 <script>
@@ -249,8 +279,8 @@ let currentLoras = JSON.parse(localStorage.getItem("userLoras") || "[]");
 let currentImageIndex = -1;
 let galleryItems = [];
 let savedPrompts = JSON.parse(localStorage.getItem("prompts") || "[]");
+let isZoomed = false;
 
-// IndexedDB
 let db;
 const DB_NAME = "ImageGallery";
 const STORE_NAME = "images";
@@ -413,10 +443,26 @@ function loadPrompt(i) {
 
 function openLightbox(i) {
   currentImageIndex = i;
-  document.getElementById("lbImage").src = galleryItems[i].blobUrl;
+  isZoomed = false;
+  const img = document.getElementById("lbImage");
+  img.src = galleryItems[i].blobUrl;
+  img.classList.remove("zoomed");
   document.getElementById("lightbox").style.display = "flex";
 }
-function closeLightbox() { document.getElementById("lightbox").style.display = "none"; }
+
+function closeLightbox(e) {
+  if (e && e.target !== document.getElementById("lightbox") && !e.target.classList.contains("lb-btn")) return;
+  document.getElementById("lightbox").style.display = "none";
+  document.getElementById("lbImage").classList.remove("zoomed");
+  isZoomed = false;
+}
+
+function toggleZoom() {
+  const img = document.getElementById("lbImage");
+  isZoomed = !isZoomed;
+  img.classList.toggle("zoomed", isZoomed);
+}
+
 async function deleteCurrent() {
   if (currentImageIndex >= 0) {
     const id = galleryItems[currentImageIndex].id;
@@ -424,7 +470,7 @@ async function deleteCurrent() {
     URL.revokeObjectURL(galleryItems[currentImageIndex].blobUrl);
     galleryItems.splice(currentImageIndex, 1);
     renderGallery();
-    closeLightbox();
+    document.getElementById("lightbox").style.display = "none";
   }
 }
 
