@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colab Image Generator</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #111; color: #eee; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  h1 { margin-top: 0; }
+  label { display: block; margin: 12px 0 4px; font-weight: 600; }
+  input, select, textarea, button { width: 100%; padding: 8px; margin-bottom: 8px; box-sizing: border-box; background: #222; color: #eee; border: 1px solid #444; border-radius: 6px; }
+  textarea { min-height: 80px; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .lora-item { background: #1a1a1a; padding: 10px; margin-bottom: 8px; border-radius: 8px; }
+  button { cursor: pointer; background: #3a7afe; border: none; font-weight: 600; }
+  button.secondary { background: #333; }
+  button.danger { background: #c0392b; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 20px; }
+  .gallery img { width: 100%; height: 180px; object-fit: cover; border-radius: 8px; cursor: pointer; }
+  #lightbox { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  #lightbox img { max-width: 90%; max-height: 85vh; border-radius: 8px; }
+  .lb-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; }
+  .lb-controls button { width: auto; padding: 8px 14px; }
+  .status { margin: 10px 0; color: #8ab4f8; }
+  .prompts-list { max-height: 200px; overflow-y: auto; background: #1a1a1a; padding: 8px; border-radius: 6px; }
+  .prompt-item { padding: 6px; border-bottom: 1px solid #333; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Colab Image Generator</h1>
+
+  <label>Backend URL (Colab tunnel)</label>
+  <input id="backendUrl" placeholder="https://xxxx.trycloudflare.com" value="">
+
+  <div class="row">
+    <div>
+      <label>Checkpoint</label>
+      <select id="checkpoint">
+        <option value="wan2.1-t2v-14b-Q3_K_M.gguf">Wan 2.1 14B GGUF</option>
+        <option value="bigLust1.6.safetensors">Big Lust v1.6</option>
+        <option value="flux1-dev-Q5_K.gguf">FLUX.1 Dev Q5</option>
+      </select>
+    </div>
+    <div>
+      <label>Sampler</label>
+      <select id="sampler">
+        <option value="euler">euler</option>
+        <option value="euler_ancestral">euler_ancestral</option>
+        <option value="dpmpp_2m">dpmpp_2m</option>
+        <option value="uni_pc">uni_pc</option>
+      </select>
+    </div>
+    <div>
+      <label>Scheduler</label>
+      <select id="scheduler">
+        <option value="simple">simple</option>
+        <option value="normal">normal</option>
+        <option value="karras">karras</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div><label>Steps</label><input id="steps" type="number" value="20"></div>
+    <div><label>CFG</label><input id="cfg" type="number" step="0.1" value="3.0"></div>
+    <div><label>Shift</label><input id="shift" type="number" step="0.1" value="5.0"></div>
+    <div><label>Width</label><input id="width" type="number" value="720"></div>
+    <div><label>Height</label><input id="height" type="number" value="1280"></div>
+  </div>
+
+  <label>LoRAs (add multiple)</label>
+  <div id="loras"></div>
+  <button type="button" class="secondary" onclick="addLora()">+ Add LoRA</button>
+
+  <label>Positive Prompt</label>
+  <textarea id="positive"></textarea>
+
+  <label>Negative Prompt</label>
+  <textarea id="negative"></textarea>
+
+  <div class="row">
+    <button onclick="generate()">Generate</button>
+    <button class="secondary" onclick="savePrompt()">Save Prompt</button>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <h3>Saved Prompts</h3>
+  <div id="savedPrompts" class="prompts-list"></div>
+
+  <h3>Gallery</h3>
+  <div id="gallery" class="gallery"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <div class="lb-controls">
+    <button class="danger" onclick="deleteCurrent()">Delete</button>
+    <button onclick="closeLightbox()">X</button>
+  </div>
+  <img id="lbImage">
+</div>
+
+<script>
+const defaultLoras = [
+  { name: "FusionX/Wan2.1_T2V_14B_FusionX_LoRA.safetensors", strength: 1.0 },
+  { name: "pussy.safetensors", strength: 1.0 },
+  { name: "skin.safetensors", strength: 0.8 }
+];
+
+let currentImageIndex = -1;
+let gallery = JSON.parse(localStorage.getItem("gallery") || "[]");
+let savedPrompts = JSON.parse(localStorage.getItem("prompts") || "[]");
+
+function renderLoras() {
+  const container = document.getElementById("loras");
+  container.innerHTML = "";
+  defaultLoras.forEach((l, i) => {
+    container.innerHTML += `
+      <div class="lora-item">
+        <input placeholder="LoRA filename" value="${l.name}" onchange="defaultLoras[${i}].name=this.value">
+        <input type="number" step="0.1" value="${l.strength}" onchange="defaultLoras[${i}].strength=parseFloat(this.value)">
+        <button class="danger" onclick="defaultLoras.splice(${i},1);renderLoras()">Remove</button>
+      </div>`;
+  });
+}
+function addLora() {
+  defaultLoras.push({ name: "new_lora.safetensors", strength: 0.8 });
+  renderLoras();
+}
+
+function renderGallery() {
+  const g = document.getElementById("gallery");
+  g.innerHTML = gallery.map((img, i) => 
+    `<img src="${img}" onclick="openLightbox(${i})">`
+  ).join("");
+}
+
+function renderSavedPrompts() {
+  const el = document.getElementById("savedPrompts");
+  el.innerHTML = savedPrompts.map((p, i) => 
+    `<div class="prompt-item" onclick="loadPrompt(${i})">${p.positive.slice(0,80)}...</div>`
+  ).join("");
+}
+
+function savePrompt() {
+  savedPrompts.unshift({
+    positive: document.getElementById("positive").value,
+    negative: document.getElementById("negative").value
+  });
+  localStorage.setItem("prompts", JSON.stringify(savedPrompts));
+  renderSavedPrompts();
+}
+
+function loadPrompt(i) {
+  const p = savedPrompts[i];
+  document.getElementById("positive").value = p.positive;
+  document.getElementById("negative").value = p.negative;
+}
+
+function openLightbox(i) {
+  currentImageIndex = i;
+  document.getElementById("lbImage").src = gallery[i];
+  document.getElementById("lightbox").style.display = "flex";
+}
+function closeLightbox() {
+  document.getElementById("lightbox").style.display = "none";
+}
+function deleteCurrent() {
+  if (currentImageIndex >= 0) {
+    gallery.splice(currentImageIndex, 1);
+    localStorage.setItem("gallery", JSON.stringify(gallery));
+    renderGallery();
+    closeLightbox();
+  }
+}
+
+async function generate() {
+  const status = document.getElementById("status");
+  status.textContent = "Generating... (make sure Colab is running)";
+
+  const payload = {
+    checkpoint: document.getElementById("checkpoint").value,
+    sampler: document.getElementById("sampler").value,
+    scheduler: document.getElementById("scheduler").value,
+    steps: +document.getElementById("steps").value,
+    cfg: +document.getElementById("cfg").value,
+    shift: +document.getElementById("shift").value,
+    width: +document.getElementById("width").value,
+    height: +document.getElementById("height").value,
+    loras: defaultLoras,
+    positive: document.getElementById("positive").value,
+    negative: document.getElementById("negative").value
+  };
+
+  try {
+    const url = document.getElementById("backendUrl").value.trim();
+    if (!url) throw new Error("Set Backend URL first");
+
+    // This is a placeholder — replace with your actual Colab endpoint
+    const res = await fetch(url + "/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.image) {
+      gallery.unshift(data.image);
+      localStorage.setItem("gallery", JSON.stringify(gallery));
+      renderGallery();
+      status.textContent = "Done!";
+    } else {
+      status.textContent = "No image returned";
+    }
+  } catch (e) {
+    status.textContent = "Error: " + e.message + " (backend not ready or CORS)";
+  }
+}
+
+// Init
+renderLoras();
+renderGallery();
+renderSavedPrompts();
+</script>
+</body>
+</html>
