@@ -35,10 +35,7 @@
     font-size: 14px;
   }
   textarea { min-height: 90px; resize: vertical; }
-  input:focus, select:focus, textarea:focus {
-    outline: none;
-    border-color: var(--accent);
-  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
   .row { display: flex; gap: 16px; }
   .row > div { flex: 1; }
   .lora-item {
@@ -89,15 +86,25 @@
     z-index: 1000;
   }
   #lightbox img { max-width: 90%; max-height: 85vh; border-radius: 8px; }
-  .lb-controls {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    display: flex;
-    gap: 8px;
-  }
+  .lb-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 8px; }
   .lb-controls button { width: auto; padding: 8px 16px; }
-  .status { margin: 12px 0; color: var(--muted); font-size: 14px; }
+  .status { margin: 12px 0; min-height: 20px; font-size: 14px; }
+  .status.error { color: #c0392b; }
+  .status.ok { color: #2ecc71; }
+  .progress {
+    height: 6px;
+    background: #222;
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 8px 0;
+    display: none;
+  }
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    transition: width 0.3s;
+  }
   .prompts-list {
     max-height: 180px;
     overflow-y: auto;
@@ -136,7 +143,6 @@
         <option value="dpmpp_2m">dpmpp_2m</option>
         <option value="euler">euler</option>
         <option value="euler_ancestral">euler_ancestral</option>
-        <option value="uni_pc">uni_pc</option>
       </select>
     </div>
     <div>
@@ -160,6 +166,12 @@
   <div id="loras"></div>
   <button type="button" class="secondary" onclick="addLora()">+ Add LoRA</button>
 
+  <label>Add LoRA from URL</label>
+  <div class="row">
+    <div style="flex:3"><input id="loraUrl" placeholder="https://civitai.com/api/download/models/..."></div>
+    <div style="flex:1"><button class="secondary" onclick="downloadLora()">Download</button></div>
+  </div>
+
   <label>Positive Prompt</label>
   <textarea id="positive"></textarea>
 
@@ -171,6 +183,7 @@
     <button class="secondary" onclick="savePrompt()">Save Prompt</button>
   </div>
 
+  <div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
   <div id="status" class="status"></div>
 
   <h3>Saved Prompts</h3>
@@ -206,6 +219,17 @@ let currentImageIndex = -1;
 let gallery = JSON.parse(localStorage.getItem("gallery") || "[]");
 let savedPrompts = JSON.parse(localStorage.getItem("prompts") || "[]");
 
+function setStatus(msg, type = "") {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = "status " + type;
+}
+
+function showProgress(show) {
+  document.getElementById("progress").style.display = show ? "block" : "none";
+  if (!show) document.getElementById("progressBar").style.width = "0%";
+}
+
 function updateLorasForModel() {
   const model = document.getElementById("checkpoint").value;
   currentLoras = modelLoras[model] ? [...modelLoras[model]] : [];
@@ -230,16 +254,48 @@ function addLora() {
   renderLoras();
 }
 
+async function downloadLora() {
+  const url = document.getElementById("loraUrl").value.trim();
+  if (!url) return setStatus("Paste a LoRA URL first", "error");
+
+  const backend = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
+  if (!backend) return setStatus("Set Backend URL first", "error");
+
+  setStatus("Downloading LoRA...");
+  showProgress(true);
+  document.getElementById("progressBar").style.width = "30%";
+
+  try {
+    const res = await fetch(backend + "/download_lora", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    document.getElementById("progressBar").style.width = "100%";
+
+    if (data.filename) {
+      currentLoras.push({ name: data.filename, strength: 0.8 });
+      renderLoras();
+      setStatus("LoRA added: " + data.filename, "ok");
+      document.getElementById("loraUrl").value = "";
+    } else {
+      setStatus(data.error || "Download failed", "error");
+    }
+  } catch (e) {
+    setStatus("Error: " + e.message, "error");
+  }
+  setTimeout(() => showProgress(false), 800);
+}
+
 function renderGallery() {
-  const g = document.getElementById("gallery");
-  g.innerHTML = gallery.map((img, i) => 
+  document.getElementById("gallery").innerHTML = gallery.map((img, i) => 
     `<img src="${img}" onclick="openLightbox(${i})">`
   ).join("");
 }
 
 function renderSavedPrompts() {
-  const el = document.getElementById("savedPrompts");
-  el.innerHTML = savedPrompts.map((p, i) => 
+  document.getElementById("savedPrompts").innerHTML = savedPrompts.map((p, i) => 
     `<div class="prompt-item" onclick="loadPrompt(${i})">${p.positive.slice(0,90)}...</div>`
   ).join("");
 }
@@ -251,12 +307,12 @@ function savePrompt() {
   });
   localStorage.setItem("prompts", JSON.stringify(savedPrompts));
   renderSavedPrompts();
+  setStatus("Prompt saved", "ok");
 }
 
 function loadPrompt(i) {
-  const p = savedPrompts[i];
-  document.getElementById("positive").value = p.positive;
-  document.getElementById("negative").value = p.negative;
+  document.getElementById("positive").value = savedPrompts[i].positive;
+  document.getElementById("negative").value = savedPrompts[i].negative;
 }
 
 function openLightbox(i) {
@@ -264,9 +320,7 @@ function openLightbox(i) {
   document.getElementById("lbImage").src = gallery[i];
   document.getElementById("lightbox").style.display = "flex";
 }
-function closeLightbox() {
-  document.getElementById("lightbox").style.display = "none";
-}
+function closeLightbox() { document.getElementById("lightbox").style.display = "none"; }
 function deleteCurrent() {
   if (currentImageIndex >= 0) {
     gallery.splice(currentImageIndex, 1);
@@ -277,11 +331,18 @@ function deleteCurrent() {
 }
 
 async function generate() {
-  const status = document.getElementById("status");
-  status.textContent = "Generating...";
+  const backend = document.getElementById("backendUrl").value.trim().replace(/\/$/, "");
+  if (!backend) return setStatus("Set Backend URL first", "error");
+
+  setStatus("Generating...");
+  showProgress(true);
+  let progress = 10;
+  const timer = setInterval(() => {
+    progress = Math.min(progress + Math.random() * 8, 90);
+    document.getElementById("progressBar").style.width = progress + "%";
+  }, 800);
 
   const payload = {
-    checkpoint: document.getElementById("checkpoint").value,
     sampler: document.getElementById("sampler").value,
     scheduler: document.getElementById("scheduler").value,
     steps: +document.getElementById("steps").value,
@@ -294,27 +355,28 @@ async function generate() {
   };
 
   try {
-    let url = document.getElementById("backendUrl").value.trim();
-    if (!url) throw new Error("Set Backend URL first");
-    url = url.replace(/\/$/, "");
-
-    const res = await fetch(url + "/generate", {
+    const res = await fetch(backend + "/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
+    clearInterval(timer);
+    document.getElementById("progressBar").style.width = "100%";
+
     if (data.image) {
       gallery.unshift(data.image);
       localStorage.setItem("gallery", JSON.stringify(gallery));
       renderGallery();
-      status.textContent = "Done";
+      setStatus("Done", "ok");
     } else {
-      status.textContent = data.error || "No image returned";
+      setStatus(data.error || "No image returned", "error");
     }
   } catch (e) {
-    status.textContent = "Error: " + e.message;
+    clearInterval(timer);
+    setStatus("Error: " + e.message, "error");
   }
+  setTimeout(() => showProgress(false), 600);
 }
 
 // Init
