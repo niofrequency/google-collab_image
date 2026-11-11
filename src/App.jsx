@@ -213,11 +213,36 @@ export default function App() {
       store.delete(item.id).onsuccess = resolve
     })
     URL.revokeObjectURL(item.url)
-    setGallery(gallery.filter((_, i) => i !== index))
-    setLightboxIndex(-1)
+    const newGallery = gallery.filter((_, i) => i !== index)
+    setGallery(newGallery)
+    if (newGallery.length === 0) {
+      setLightboxIndex(-1)
+    } else if (index >= newGallery.length) {
+      setLightboxIndex(newGallery.length - 1)
+    }
+    setIsZoomed(false)
+    setPan({ x: 0, y: 0 })
   }
 
-  function handleZoomToggle() {
+  function goPrev() {
+    if (lightboxIndex > 0) {
+      setLightboxIndex(lightboxIndex - 1)
+      setIsZoomed(false)
+      setPan({ x: 0, y: 0 })
+    }
+  }
+
+  function goNext() {
+    if (lightboxIndex < gallery.length - 1) {
+      setLightboxIndex(lightboxIndex + 1)
+      setIsZoomed(false)
+      setPan({ x: 0, y: 0 })
+    }
+  }
+
+  function handleDoubleClick(e) {
+    e.preventDefault()
+    e.stopPropagation()
     setIsZoomed(prev => {
       if (prev) setPan({ x: 0, y: 0 })
       return !prev
@@ -227,6 +252,7 @@ export default function App() {
   function handleMouseDown(e) {
     if (!isZoomed) return
     e.preventDefault()
+    e.stopPropagation()
     setIsDragging(true)
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y })
   }
@@ -246,6 +272,7 @@ export default function App() {
 
   function handleTouchStart(e) {
     if (!isZoomed || e.touches.length !== 1) return
+    e.stopPropagation()
     const touch = e.touches[0]
     setIsDragging(true)
     setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
@@ -380,7 +407,7 @@ export default function App() {
         ))}
       </div>
 
-      {lightboxIndex >= 0 && (
+      {lightboxIndex >= 0 && gallery[lightboxIndex] && (
         <div 
           className="lightbox" 
           onClick={() => setLightboxIndex(-1)}
@@ -392,16 +419,22 @@ export default function App() {
         >
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
             <button className="lb-btn left" onClick={() => deleteImage(lightboxIndex)}>🗑</button>
+            {lightboxIndex > 0 && (
+              <button className="lb-btn nav-left" onClick={goPrev}>◀</button>
+            )}
             <img
               ref={imageRef}
               className={isZoomed ? 'zoomed' : ''}
               style={isZoomed ? { transform: `translate(${pan.x}px, ${pan.y}px) scale(1.8)` } : {}}
               src={gallery[lightboxIndex].url}
-              onClick={handleZoomToggle}
+              onDoubleClick={handleDoubleClick}
               onMouseDown={handleMouseDown}
               onTouchStart={handleTouchStart}
               draggable={false}
             />
+            {lightboxIndex < gallery.length - 1 && (
+              <button className="lb-btn nav-right" onClick={goNext}>▶</button>
+            )}
             <button className="lb-btn right" onClick={() => setLightboxIndex(-1)}>✕</button>
           </div>
         </div>
