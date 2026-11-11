@@ -35,6 +35,7 @@ export default function App() {
   // Reference image for Qwen Image Edit
   const [referenceImage, setReferenceImage] = useState(null)
   const [referenceImagePreview, setReferenceImagePreview] = useState('')
+  const [imageUrlInput, setImageUrlInput] = useState('')
 
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
@@ -49,6 +50,7 @@ export default function App() {
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
   const fileInputRef = useRef(null)
+  const pasteAreaRef = useRef(null)
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
@@ -58,6 +60,22 @@ export default function App() {
     )
     setSavedPrompts(migrated)
     loadGallery()
+
+    // Global paste listener for clipboard images
+    const handlePaste = (e) => {
+      const items = e.clipboardData?.items
+      if (!items) return
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault()
+          const blob = item.getAsFile()
+          if (blob) loadImageFromBlob(blob)
+          return
+        }
+      }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
   }, [])
 
   async function loadGallery() {
@@ -128,20 +146,43 @@ export default function App() {
     return backendUrl.trim().replace(/\/$/, '')
   }
 
+  function loadImageFromBlob(blob) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      setReferenceImage(reader.result)
+      setReferenceImagePreview(reader.result)
+      setStatusMsg('Image loaded from clipboard', 'ok')
+    }
+    reader.readAsDataURL(blob)
+  }
+
   function handleReferenceImage(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setReferenceImage(reader.result) // data URL
-      setReferenceImagePreview(reader.result)
+    loadImageFromBlob(file)
+  }
+
+  async function loadImageFromUrl() {
+    const url = imageUrlInput.trim()
+    if (!url) return setStatusMsg('Paste an image URL first', 'error')
+
+    setStatusMsg('Loading image from URL...')
+    try {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Failed to fetch')
+      const blob = await res.blob()
+      if (!blob.type.startsWith('image/')) throw new Error('Not an image')
+      loadImageFromBlob(blob)
+      setImageUrlInput('')
+    } catch (e) {
+      setStatusMsg('Could not load image from URL: ' + e.message, 'error')
     }
-    reader.readAsDataURL(file)
   }
 
   function clearReferenceImage() {
     setReferenceImage(null)
     setReferenceImagePreview('')
+    setImageUrlInput('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -265,7 +306,7 @@ export default function App() {
     setTimeout(() => setShowProgress(false), 700)
   }
 
-  // ... rest of the functions remain the same (savePrompt, openPromptEditor, etc.)
+  // ... rest of the functions remain the same
 
   function savePrompt() {
     const name = prompt('Name this prompt:', positive.slice(0, 40) || 'Untitled')
@@ -563,25 +604,51 @@ export default function App() {
       <label>Backend URL</label>
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.trycloudflare.com" />
 
-      {/* Reference Image Upload for Qwen Image Edit */}
+      {/* Reference Image for Qwen Image Edit */}
       <label style={{marginTop: 16}}>Reference Image (for Qwen Image Edit)</label>
-      <div style={{display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12}}>
+      
+      {/* Paste area hint */}
+      <div
+        ref={pasteAreaRef}
+        style={{
+          border: '2px dashed #555',
+          borderRadius: 8,
+          padding: 16,
+          textAlign: 'center',
+          color: '#888',
+          marginBottom: 12,
+          background: referenceImagePreview ? 'transparent' : '#1a1a1a'
+        }}
+      >
+        {referenceImagePreview ? (
+          <img src={referenceImagePreview} alt="Reference" style={{maxWidth: '100%', maxHeight: 200, borderRadius: 8}} />
+        ) : (
+          <div>Paste image here (Ctrl+V) or upload below</div>
+        )}
+      </div>
+
+      {/* File upload + URL paste */}
+      <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8}}>
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
           onChange={handleReferenceImage}
-          style={{flex: 1}}
+          style={{flex: 1, minWidth: 200}}
         />
+        <input
+          type="text"
+          value={imageUrlInput}
+          onChange={e => setImageUrlInput(e.target.value)}
+          placeholder="Or paste image URL"
+          style={{flex: 1, minWidth: 200}}
+          onKeyDown={e => e.key === 'Enter' && loadImageFromUrl()}
+        />
+        <button className="secondary" onClick={loadImageFromUrl}>Load URL</button>
         {referenceImagePreview && (
           <button className="secondary" onClick={clearReferenceImage}>Clear</button>
         )}
       </div>
-      {referenceImagePreview && (
-        <div style={{marginBottom: 16}}>
-          <img src={referenceImagePreview} alt="Reference" style={{maxWidth: 200, maxHeight: 200, borderRadius: 8, border: '1px solid #333'}} />
-        </div>
-      )}
 
       <div className="row">
         <div>
@@ -675,7 +742,7 @@ export default function App() {
       )}
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
-      {/* Rest of UI (Saved Prompts, Gallery, Lightbox, etc.) remains the same */}
+      {/* Rest of UI remains the same */}
     </div>
   )
 }
