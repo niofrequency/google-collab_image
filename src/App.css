@@ -100,6 +100,18 @@ button.danger:hover { background: #7a2a2a; }
 }
 .lb-btn.left { top: 12px; left: 12px; }
 .lb-btn.right { top: 12px; right: 12px; }
+.lb-btn.nav-left {
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  font-size: 22px;
+}
+.lb-btn.nav-right {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  font-size: 22px;
+}
 .lb-btn:hover { background: rgba(40,40,40,0.95); }
 .status { margin: 12px 0; min-height: 20px; font-size: 14px; }
 .status.error {
