@@ -3,6 +3,12 @@ import './App.css'
  
 const CIVITAI_TOKEN = "777a5632707c15ecf54e13eb3b1b862b"
 
+// Header to bypass ngrok free tier browser warning
+const NGROK_HEADERS = {
+  'Content-Type': 'application/json',
+  'ngrok-skip-browser-warning': 'true'
+}
+
 export default function App() {
   const [backendUrl, setBackendUrl] = useState('')
   const [checkpoint, setCheckpoint] = useState('')
@@ -177,7 +183,7 @@ export default function App() {
     const backend = getBackend()
     if (!backend) return
     try {
-      const res = await fetch(backend + '/user_models')
+      const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
       setCheckpoints(data.checkpoints || [])
       setLoras(data.loras || [])
@@ -198,7 +204,7 @@ export default function App() {
     try {
       const res = await fetch(backend + '/download_model', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: NGROK_HEADERS,
         body: JSON.stringify({ url: finalUrl, type })
       })
       const data = await res.json()
@@ -236,7 +242,7 @@ export default function App() {
     try {
       const res = await fetch(backend + '/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: NGROK_HEADERS,
         body: JSON.stringify(payload)
       })
       const data = await res.json()
@@ -459,7 +465,7 @@ export default function App() {
       <h1>ARX Image Generator</h1>
 
       <label>Backend URL</label>
-      <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.trycloudflare.com" />
+      <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
 
       <label style={{marginTop: 16}}>Reference Image (for Qwen Image Edit)</label>
       <div style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: referenceImagePreview ? 'transparent' : '#1a1a1a'}}>
