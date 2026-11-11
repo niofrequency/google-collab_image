@@ -32,7 +32,6 @@ export default function App() {
   const [newLoraUrl, setNewLoraUrl] = useState('')
   const [newCheckpointUrl, setNewCheckpointUrl] = useState('')
 
-  // Reference image for Qwen Image Edit
   const [referenceImage, setReferenceImage] = useState(null)
   const [referenceImagePreview, setReferenceImagePreview] = useState('')
   const [imageUrlInput, setImageUrlInput] = useState('')
@@ -50,7 +49,6 @@ export default function App() {
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
   const fileInputRef = useRef(null)
-  const pasteAreaRef = useRef(null)
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
@@ -61,7 +59,6 @@ export default function App() {
     setSavedPrompts(migrated)
     loadGallery()
 
-    // Global paste listener for clipboard images
     const handlePaste = (e) => {
       const items = e.clipboardData?.items
       if (!items) return
@@ -151,7 +148,7 @@ export default function App() {
     reader.onload = () => {
       setReferenceImage(reader.result)
       setReferenceImagePreview(reader.result)
-      setStatusMsg('Image loaded from clipboard', 'ok')
+      setStatusMsg('Image loaded', 'ok')
     }
     reader.readAsDataURL(blob)
   }
@@ -165,7 +162,6 @@ export default function App() {
   async function loadImageFromUrl() {
     const url = imageUrlInput.trim()
     if (!url) return setStatusMsg('Paste an image URL first', 'error')
-
     setStatusMsg('Loading image from URL...')
     try {
       const res = await fetch(url)
@@ -283,16 +279,9 @@ export default function App() {
         for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
         const blob = new Blob([array], { type: 'image/png' })
         await saveImage(blob, {
-          positive,
-          negative,
-          checkpoint: checkpoint || '',
-          sampler,
-          scheduler,
-          steps: +steps,
-          cfg: +cfg,
-          width: +width,
-          height: +height,
-          loras: [...loras]
+          positive, negative, checkpoint: checkpoint || '',
+          sampler, scheduler, steps: +steps, cfg: +cfg,
+          width: +width, height: +height, loras: [...loras]
         })
         await loadGallery()
         setStatusMsg('Done', 'ok')
@@ -305,8 +294,6 @@ export default function App() {
     }
     setTimeout(() => setShowProgress(false), 700)
   }
-
-  // ... rest of the functions remain the same
 
   function savePrompt() {
     const name = prompt('Name this prompt:', positive.slice(0, 40) || 'Untitled')
@@ -328,11 +315,7 @@ export default function App() {
   function saveEditedPrompt() {
     if (!editingPrompt) return
     const updated = [...savedPrompts]
-    updated[editingPrompt.index] = {
-      name: editName || 'Untitled',
-      positive: editPositive,
-      negative: editNegative
-    }
+    updated[editingPrompt.index] = { name: editName || 'Untitled', positive: editPositive, negative: editNegative }
     setSavedPrompts(updated)
     localStorage.setItem('prompts', JSON.stringify(updated))
     setEditingPrompt(null)
@@ -363,11 +346,8 @@ export default function App() {
   }
 
   function selectAll() {
-    if (selectedIds.size === gallery.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(gallery.map(item => item.id)))
-    }
+    if (selectedIds.size === gallery.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(gallery.map(item => item.id)))
   }
 
   function togglePromptSelect(i) {
@@ -385,26 +365,18 @@ export default function App() {
       const entry = prev[i] || { count: 0, last: 0 }
       const isRapid = now - entry.last < 500
       const newCount = isRapid ? entry.count + 1 : 1
-
       if (newCount >= 3) {
         openPromptEditor(i)
         return { ...prev, [i]: { count: 0, last: 0 } }
       }
-
-      if (newCount === 1) {
-        togglePromptSelect(i)
-      }
-
+      if (newCount === 1) togglePromptSelect(i)
       return { ...prev, [i]: { count: newCount, last: now } }
     })
   }
 
   function selectAllPrompts() {
-    if (selectedPromptIndices.size === savedPrompts.length) {
-      setSelectedPromptIndices(new Set())
-    } else {
-      setSelectedPromptIndices(new Set(savedPrompts.map((_, i) => i)))
-    }
+    if (selectedPromptIndices.size === savedPrompts.length) setSelectedPromptIndices(new Set())
+    else setSelectedPromptIndices(new Set(savedPrompts.map((_, i) => i)))
   }
 
   function deleteSelectedPrompts() {
@@ -443,21 +415,15 @@ export default function App() {
       setStatusMsg('Deletion cancelled', 'error')
       return
     }
-
     const db = await openDB()
     const tx = db.transaction('images', 'readwrite')
     const store = tx.objectStore('images')
-
     for (const id of selectedIds) {
-      await new Promise(resolve => {
-        store.delete(id).onsuccess = resolve
-      })
+      await new Promise(resolve => { store.delete(id).onsuccess = resolve })
     }
-
     gallery.forEach(item => {
       if (selectedIds.has(item.id)) URL.revokeObjectURL(item.url)
     })
-
     setGallery(prev => prev.filter(item => !selectedIds.has(item.id)))
     setSelectedIds(new Set())
     if (lightboxIndex >= 0) setLightboxIndex(-1)
@@ -468,22 +434,13 @@ export default function App() {
     const db = await openDB()
     const tx = db.transaction('images', 'readwrite')
     const store = tx.objectStore('images')
-    await new Promise(resolve => {
-      store.delete(item.id).onsuccess = resolve
-    })
+    await new Promise(resolve => { store.delete(item.id).onsuccess = resolve })
     URL.revokeObjectURL(item.url)
     const newGallery = gallery.filter((_, i) => i !== index)
     setGallery(newGallery)
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      next.delete(item.id)
-      return next
-    })
-    if (newGallery.length === 0) {
-      setLightboxIndex(-1)
-    } else if (index >= newGallery.length) {
-      setLightboxIndex(newGallery.length - 1)
-    }
+    setSelectedIds(prev => { const next = new Set(prev); next.delete(item.id); return next })
+    if (newGallery.length === 0) setLightboxIndex(-1)
+    else if (index >= newGallery.length) setLightboxIndex(newGallery.length - 1)
     setIsZoomed(false)
     setPan({ x: 0, y: 0 })
   }
@@ -548,10 +505,7 @@ export default function App() {
   function handleDoubleClick(e) {
     e.preventDefault()
     e.stopPropagation()
-    setIsZoomed(prev => {
-      if (prev) setPan({ x: 0, y: 0 })
-      return !prev
-    })
+    setIsZoomed(prev => { if (prev) setPan({ x: 0, y: 0 }); return !prev })
   }
 
   function handleMouseDown(e) {
@@ -565,15 +519,10 @@ export default function App() {
   function handleMouseMove(e) {
     if (!isDragging || !isZoomed) return
     e.preventDefault()
-    setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y
-    })
+    setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
   }
 
-  function handleMouseUp() {
-    setIsDragging(false)
-  }
+  function handleMouseUp() { setIsDragging(false) }
 
   function handleTouchStart(e) {
     if (!isZoomed || e.touches.length !== 1) return
@@ -587,15 +536,10 @@ export default function App() {
     if (!isDragging || !isZoomed || e.touches.length !== 1) return
     e.preventDefault()
     const touch = e.touches[0]
-    setPan({
-      x: touch.clientX - dragStart.x,
-      y: touch.clientY - dragStart.y
-    })
+    setPan({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y })
   }
 
-  function handleTouchEnd() {
-    setIsDragging(false)
-  }
+  function handleTouchEnd() { setIsDragging(false) }
 
   return (
     <div className="container">
@@ -604,50 +548,19 @@ export default function App() {
       <label>Backend URL</label>
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.trycloudflare.com" />
 
-      {/* Reference Image for Qwen Image Edit */}
       <label style={{marginTop: 16}}>Reference Image (for Qwen Image Edit)</label>
-      
-      {/* Paste area hint */}
-      <div
-        ref={pasteAreaRef}
-        style={{
-          border: '2px dashed #555',
-          borderRadius: 8,
-          padding: 16,
-          textAlign: 'center',
-          color: '#888',
-          marginBottom: 12,
-          background: referenceImagePreview ? 'transparent' : '#1a1a1a'
-        }}
-      >
+      <div style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: referenceImagePreview ? 'transparent' : '#1a1a1a'}}>
         {referenceImagePreview ? (
           <img src={referenceImagePreview} alt="Reference" style={{maxWidth: '100%', maxHeight: 200, borderRadius: 8}} />
         ) : (
           <div>Paste image here (Ctrl+V) or upload below</div>
         )}
       </div>
-
-      {/* File upload + URL paste */}
-      <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8}}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleReferenceImage}
-          style={{flex: 1, minWidth: 200}}
-        />
-        <input
-          type="text"
-          value={imageUrlInput}
-          onChange={e => setImageUrlInput(e.target.value)}
-          placeholder="Or paste image URL"
-          style={{flex: 1, minWidth: 200}}
-          onKeyDown={e => e.key === 'Enter' && loadImageFromUrl()}
-        />
+      <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} />
+        <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl()} />
         <button className="secondary" onClick={loadImageFromUrl}>Load URL</button>
-        {referenceImagePreview && (
-          <button className="secondary" onClick={clearReferenceImage}>Clear</button>
-        )}
+        {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage}>Clear</button>}
       </div>
 
       <div className="row">
@@ -687,20 +600,11 @@ export default function App() {
       {loras.length === 0 && <div className="empty-msg">No LoRAs added yet.</div>}
       {loras.map((l, i) => (
         <div key={i} className="lora-item">
-          <input value={l.name} onChange={e => {
-            const newLoras = [...loras]
-            newLoras[i].name = e.target.value
-            setLoras(newLoras)
-          }} />
-          <input type="number" step="0.1" value={l.strength} style={{width:80}} onChange={e => {
-            const newLoras = [...loras]
-            newLoras[i].strength = parseFloat(e.target.value)
-            setLoras(newLoras)
-          }} />
+          <input value={l.name} onChange={e => { const n = [...loras]; n[i].name = e.target.value; setLoras(n) }} />
+          <input type="number" step="0.1" value={l.strength} style={{width:80}} onChange={e => { const n = [...loras]; n[i].strength = parseFloat(e.target.value); setLoras(n) }} />
           <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
         </div>
       ))}
-
       {showAddLora && (
         <div className="add-box">
           <input value={newLoraUrl} onChange={e => setNewLoraUrl(e.target.value)} placeholder="Paste LoRA URL" />
@@ -742,7 +646,100 @@ export default function App() {
       )}
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
-      {/* Rest of UI remains the same */}
+      <h3>Saved Prompts</h3>
+      {selectedPromptIndices.size > 0 && (
+        <div style={{display:'flex', gap:8, marginBottom:8}}>
+          <button className="danger" onClick={deleteSelectedPrompts}>Delete Selected ({selectedPromptIndices.size})</button>
+          <button className="secondary" onClick={selectAllPrompts}>{selectedPromptIndices.size === savedPrompts.length ? 'Deselect All' : 'Select All'}</button>
+        </div>
+      )}
+      <div className="prompts-list">
+        {savedPrompts.map((p, i) => (
+          <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={() => handlePromptClick(i)} onDoubleClick={() => startRename(i, p.name)}>
+            {editingNameIndex === i ? (
+              <input value={editingNameValue} onChange={e => setEditingNameValue(e.target.value)} onBlur={() => commitRename(i)} onKeyDown={e => e.key === 'Enter' && commitRename(i)} autoFocus style={{width:'100%'}} />
+            ) : (
+              <span>{p.name || p.positive.slice(0, 60)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {editingPrompt && (
+        <div className="prompt-popup">
+          <h4>Edit Prompt</h4>
+          <label>Name</label>
+          <input value={editName} onChange={e => setEditName(e.target.value)} />
+          <label>Positive</label>
+          <textarea value={editPositive} onChange={e => setEditPositive(e.target.value)} />
+          <label>Negative</label>
+          <textarea value={editNegative} onChange={e => setEditNegative(e.target.value)} />
+          <div className="row">
+            <button onClick={saveEditedPrompt}>Save</button>
+            <button className="secondary" onClick={loadEditedPrompt}>Load</button>
+            <button className="secondary" onClick={() => setEditingPrompt(null)}>Close</button>
+          </div>
+        </div>
+      )}
+
+      <h3>Gallery</h3>
+      {selectedIds.size > 0 && (
+        <div style={{display:'flex', gap:8, marginBottom:8}}>
+          <button className="danger" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>
+          <button className="secondary" onClick={selectAll}>{selectedIds.size === gallery.length ? 'Deselect All' : 'Select All'}</button>
+        </div>
+      )}
+      <div className="gallery">
+        {gallery.map((item, i) => (
+          <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} onClick={() => toggleSelect(item.id)}>
+            <img src={item.url} alt="" />
+            <div className="gallery-overlay">
+              <button className="icon-btn" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
+              <button className="icon-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {lightboxIndex >= 0 && gallery[lightboxIndex] && (
+        <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
+          <div className="lightbox-content" onClick={e => e.stopPropagation()}>
+            <button className="lightbox-close" onClick={() => setLightboxIndex(-1)}>×</button>
+            <button className="lightbox-nav left" onClick={goPrev} disabled={lightboxIndex === 0}>‹</button>
+            <img
+              ref={imageRef}
+              src={gallery[lightboxIndex].url}
+              alt=""
+              style={{transform: isZoomed ? `scale(2) translate(${pan.x/2}px, ${pan.y/2}px)` : 'none', cursor: isZoomed ? 'grab' : 'zoom-in'}}
+              onDoubleClick={handleDoubleClick}
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+            />
+            <button className="lightbox-nav right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
+          </div>
+        </div>
+      )}
+
+      {infoItem && (
+        <div className="info-popup" onClick={() => setInfoItem(null)}>
+          <div className="info-content" onClick={e => e.stopPropagation()}>
+            <h4>Image Info</h4>
+            <p><strong>Positive:</strong> {infoItem.positive || '(none)'}</p>
+            <p><strong>Negative:</strong> {infoItem.negative || '(none)'}</p>
+            <div className="row">
+              <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>
+              <button className="secondary" onClick={() => loadPromptOnly(infoItem)}>Prompt Only</button>
+              <button className="secondary" onClick={() => copyPrompt(infoItem)}>Copy</button>
+              <button className="secondary" onClick={() => setInfoItem(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
