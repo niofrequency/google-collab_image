@@ -43,13 +43,66 @@ button.danger:hover { background: #7a2a2a; }
   gap: 12px;
   margin-top: 16px;
 }
-.gallery img {
+.gallery-item {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.gallery-item.selected {
+  border-color: #e74c3c;
+  box-shadow: 0 0 0 1px #e74c3c;
+}
+.gallery-item img {
   width: 100%;
   height: 200px;
   object-fit: cover;
-  border-radius: 8px;
+  display: block;
+  border-radius: 6px;
+}
+.gallery-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.gallery-item:hover .gallery-overlay {
+  opacity: 1;
+}
+.magnify-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(20,20,20,0.85);
+  border: 1px solid #444;
+  color: white;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  border: 1px solid var(--border);
+  padding: 0;
+}
+.magnify-btn:hover {
+  background: rgba(40,40,40,0.95);
+  transform: scale(1.08);
+}
+.delete-selected {
+  width: auto;
+  margin: 8px 0 12px;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.selected-count {
+  color: #e74c3c;
+  font-weight: 500;
+  margin-left: 8px;
 }
 .lightbox {
   position: fixed;
@@ -97,6 +150,7 @@ button.danger:hover { background: #7a2a2a; }
   align-items: center;
   justify-content: center;
   z-index: 10;
+  padding: 0;
 }
 .lb-btn.left { top: 12px; left: 12px; }
 .lb-btn.right { top: 12px; right: 12px; }
