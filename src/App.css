@@ -178,6 +178,17 @@ button.danger:hover { background: #7a2a2a; }
   justify-content: center;
   height: 100%;
 }
+.prompt-item.selected {
+  background: #2a1515;
+  border-left: 3px solid #e74c3c;
+}
+.inline-rename {
+  width: 100%;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
 .lightbox {
   position: fixed;
   inset: 0;
