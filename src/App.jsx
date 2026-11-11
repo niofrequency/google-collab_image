@@ -32,11 +32,22 @@ export default function App() {
   const [newLoraUrl, setNewLoraUrl] = useState('')
   const [newCheckpointUrl, setNewCheckpointUrl] = useState('')
 
+  // Prompt editor popup
+  const [editingPrompt, setEditingPrompt] = useState(null) // { index, name, positive, negative } or null
+  const [editName, setEditName] = useState('')
+  const [editPositive, setEditPositive] = useState('')
+  const [editNegative, setEditNegative] = useState('')
+
   const imageRef = useRef(null)
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
-    setSavedPrompts(prompts)
+    // Migrate old format if needed
+    const migrated = prompts.map(p => typeof p === 'string' || !p.name
+      ? { name: p.positive?.slice(0, 40) || 'Untitled', positive: p.positive || p, negative: p.negative || '' }
+      : p
+    )
+    setSavedPrompts(migrated)
     loadGallery()
   }, [])
 
@@ -193,10 +204,48 @@ export default function App() {
   }
 
   function savePrompt() {
-    const newPrompts = [{ positive, negative }, ...savedPrompts]
+    const name = prompt('Name this prompt:', positive.slice(0, 40) || 'Untitled')
+    if (!name) return
+    const newPrompts = [{ name, positive, negative }, ...savedPrompts]
     setSavedPrompts(newPrompts)
     localStorage.setItem('prompts', JSON.stringify(newPrompts))
     setStatusMsg('Prompt saved', 'ok')
+  }
+
+  function openPromptEditor(i) {
+    const p = savedPrompts[i]
+    setEditingPrompt({ index: i, ...p })
+    setEditName(p.name || '')
+    setEditPositive(p.positive || '')
+    setEditNegative(p.negative || '')
+  }
+
+  function saveEditedPrompt() {
+    if (!editingPrompt) return
+    const updated = [...savedPrompts]
+    updated[editingPrompt.index] = {
+      name: editName || 'Untitled',
+      positive: editPositive,
+      negative: editNegative
+    }
+    setSavedPrompts(updated)
+    localStorage.setItem('prompts', JSON.stringify(updated))
+    setEditingPrompt(null)
+    setStatusMsg('Prompt updated', 'ok')
+  }
+
+  function loadEditedPrompt() {
+    setPositive(editPositive)
+    setNegative(editNegative)
+    setEditingPrompt(null)
+  }
+
+  function deleteSavedPrompt(i) {
+    if (!confirm('Delete this prompt?')) return
+    const updated = savedPrompts.filter((_, idx) => idx !== i)
+    setSavedPrompts(updated)
+    localStorage.setItem('prompts', JSON.stringify(updated))
+    if (editingPrompt?.index === i) setEditingPrompt(null)
   }
 
   function loadPrompt(i) {
@@ -393,9 +442,11 @@ export default function App() {
 
       <h3>Saved Prompts</h3>
       <div className="prompts-list">
+        {savedPrompts.length === 0 && <div className="empty-msg">No saved prompts yet.</div>}
         {savedPrompts.map((p, i) => (
-          <div key={i} className="prompt-item" onClick={() => loadPrompt(i)}>
-            {p.positive.slice(0, 90)}...
+          <div key={i} className="prompt-item" onClick={() => openPromptEditor(i)}>
+            <strong>{p.name || 'Untitled'}</strong>
+            <div className="prompt-preview">{(p.positive || '').slice(0, 80)}...</div>
           </div>
         ))}
       </div>
@@ -406,6 +457,27 @@ export default function App() {
           <img key={item.id} src={item.url} onClick={() => { setLightboxIndex(i); setIsZoomed(false); setPan({ x: 0, y: 0 }) }} />
         ))}
       </div>
+
+      {/* Prompt Editor Popup */}
+      {editingPrompt && (
+        <div className="prompt-popup-overlay" onClick={() => setEditingPrompt(null)}>
+          <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+            <h3>Edit Prompt</h3>
+            <label>Name</label>
+            <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Prompt name" />
+            <label>Positive</label>
+            <textarea value={editPositive} onChange={e => setEditPositive(e.target.value)} rows={6} />
+            <label>Negative</label>
+            <textarea value={editNegative} onChange={e => setEditNegative(e.target.value)} rows={3} />
+            <div className="row" style={{marginTop:16}}>
+              <button onClick={saveEditedPrompt}>Save Changes</button>
+              <button className="secondary" onClick={loadEditedPrompt}>Load into Generator</button>
+              <button className="danger" onClick={() => deleteSavedPrompt(editingPrompt.index)}>Delete</button>
+              <button className="secondary" onClick={() => setEditingPrompt(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && (
         <div 
