@@ -281,11 +281,14 @@ button.danger:hover { background: #7a2a2a; }
   transition: width 0.4s ease;
 }
 .prompts-list {
-  max-height: 220px;
+  min-height: 120px;
+  max-height: 600px;
+  height: 220px;
   overflow-y: auto;
   background: var(--surface);
   border-radius: 8px;
   border: 1px solid var(--border);
+  resize: vertical;
 }
 .prompt-item {
   padding: 10px 12px;
