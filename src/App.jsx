@@ -32,8 +32,11 @@ export default function App() {
   const [newLoraUrl, setNewLoraUrl] = useState('')
   const [newCheckpointUrl, setNewCheckpointUrl] = useState('')
 
+  // Multi-select for gallery delete
+  const [selectedIds, setSelectedIds] = useState(new Set())
+
   // Prompt editor popup
-  const [editingPrompt, setEditingPrompt] = useState(null) // { index, name, positive, negative } or null
+  const [editingPrompt, setEditingPrompt] = useState(null)
   const [editName, setEditName] = useState('')
   const [editPositive, setEditPositive] = useState('')
   const [editNegative, setEditNegative] = useState('')
@@ -42,7 +45,6 @@ export default function App() {
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
-    // Migrate old format if needed
     const migrated = prompts.map(p => typeof p === 'string' || !p.name
       ? { name: p.positive?.slice(0, 40) || 'Untitled', positive: p.positive || p, negative: p.negative || '' }
       : p
@@ -64,6 +66,7 @@ export default function App() {
       id: item.id,
       url: URL.createObjectURL(item.blob)
     })))
+    setSelectedIds(new Set())
   }
 
   function openDB() {
@@ -248,9 +251,37 @@ export default function App() {
     if (editingPrompt?.index === i) setEditingPrompt(null)
   }
 
-  function loadPrompt(i) {
-    setPositive(savedPrompts[i].positive)
-    setNegative(savedPrompts[i].negative)
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function deleteSelected() {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Delete ${selectedIds.size} image(s)?`)) return
+
+    const db = await openDB()
+    const tx = db.transaction('images', 'readwrite')
+    const store = tx.objectStore('images')
+
+    for (const id of selectedIds) {
+      await new Promise(resolve => {
+        store.delete(id).onsuccess = resolve
+      })
+    }
+
+    // Revoke object URLs
+    gallery.forEach(item => {
+      if (selectedIds.has(item.id)) URL.revokeObjectURL(item.url)
+    })
+
+    setGallery(prev => prev.filter(item => !selectedIds.has(item.id)))
+    setSelectedIds(new Set())
+    if (lightboxIndex >= 0) setLightboxIndex(-1)
   }
 
   async function deleteImage(index) {
@@ -264,11 +295,22 @@ export default function App() {
     URL.revokeObjectURL(item.url)
     const newGallery = gallery.filter((_, i) => i !== index)
     setGallery(newGallery)
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.delete(item.id)
+      return next
+    })
     if (newGallery.length === 0) {
       setLightboxIndex(-1)
     } else if (index >= newGallery.length) {
       setLightboxIndex(newGallery.length - 1)
     }
+    setIsZoomed(false)
+    setPan({ x: 0, y: 0 })
+  }
+
+  function openLightbox(i) {
+    setLightboxIndex(i)
     setIsZoomed(false)
     setPan({ x: 0, y: 0 })
   }
@@ -451,10 +493,30 @@ export default function App() {
         ))}
       </div>
 
-      <h3>Gallery</h3>
+      <h3>Gallery {selectedIds.size > 0 && <span className="selected-count">({selectedIds.size} selected)</span>}</h3>
+      {selectedIds.size > 0 && (
+        <button className="danger delete-selected" onClick={deleteSelected}>
+          🗑 Delete Selected ({selectedIds.size})
+        </button>
+      )}
       <div className="gallery">
         {gallery.map((item, i) => (
-          <img key={item.id} src={item.url} onClick={() => { setLightboxIndex(i); setIsZoomed(false); setPan({ x: 0, y: 0 }) }} />
+          <div
+            key={item.id}
+            className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+            onClick={() => toggleSelect(item.id)}
+          >
+            <img src={item.url} alt="" />
+            <div className="gallery-overlay">
+              <button
+                className="magnify-btn"
+                onClick={(e) => { e.stopPropagation(); openLightbox(i) }}
+                title="View full"
+              >
+                🔍
+              </button>
+            </div>
+          </div>
         ))}
       </div>
 
