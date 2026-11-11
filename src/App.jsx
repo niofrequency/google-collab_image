@@ -121,27 +121,19 @@ export default function App() {
     const store = tx.objectStore('images')
     await new Promise((resolve, reject) => {
       const req = store.add({
-        blob,
-        created: Date.now(),
-        positive: meta.positive || '',
-        negative: meta.negative || '',
-        checkpoint: meta.checkpoint || '',
-        sampler: meta.sampler || '',
-        scheduler: meta.scheduler || '',
-        steps: meta.steps || 0,
-        cfg: meta.cfg || 0,
-        width: meta.width || 0,
-        height: meta.height || 0,
-        loras: meta.loras || []
+        blob, created: Date.now(),
+        positive: meta.positive || '', negative: meta.negative || '',
+        checkpoint: meta.checkpoint || '', sampler: meta.sampler || '',
+        scheduler: meta.scheduler || '', steps: meta.steps || 0,
+        cfg: meta.cfg || 0, width: meta.width || 0,
+        height: meta.height || 0, loras: meta.loras || []
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
     })
   }
 
-  function getBackend() {
-    return backendUrl.trim().replace(/\/$/, '')
-  }
+  function getBackend() { return backendUrl.trim().replace(/\/$/, '') }
 
   function loadImageFromBlob(blob) {
     const reader = new FileReader()
@@ -155,8 +147,7 @@ export default function App() {
 
   function handleReferenceImage(e) {
     const file = e.target.files?.[0]
-    if (!file) return
-    loadImageFromBlob(file)
+    if (file) loadImageFromBlob(file)
   }
 
   async function loadImageFromUrl() {
@@ -190,9 +181,7 @@ export default function App() {
       const data = await res.json()
       setCheckpoints(data.checkpoints || [])
       setLoras(data.loras || [])
-    } catch (e) {
-      console.log('Could not load user models')
-    }
+    } catch {}
   }
 
   async function addModel(type, url) {
@@ -203,11 +192,9 @@ export default function App() {
     }
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
-
     setStatusMsg('Downloading...')
     setShowProgress(true)
     setProgress(30)
-
     try {
       const res = await fetch(backend + '/download_model', {
         method: 'POST',
@@ -232,36 +219,20 @@ export default function App() {
     setTimeout(() => setShowProgress(false), 800)
   }
 
-  function setStatusMsg(msg, type = '') {
-    setStatus(msg)
-    setStatusType(type)
-  }
+  function setStatusMsg(msg, type = '') { setStatus(msg); setStatusType(type) }
 
   async function generate() {
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
-
     setStatusMsg('Generating...')
     setShowProgress(true)
     setProgress(5)
-    const timer = setInterval(() => {
-      setProgress(p => Math.min(p + Math.random() * 6, 92))
-    }, 600)
-
+    const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const payload = {
-      checkpoint: checkpoint || null,
-      sampler,
-      scheduler,
-      steps: +steps,
-      cfg: +cfg,
-      width: +width,
-      height: +height,
-      loras,
-      positive,
-      negative,
-      reference_image: referenceImage || null
+      checkpoint: checkpoint || null, sampler, scheduler,
+      steps: +steps, cfg: +cfg, width: +width, height: +height,
+      loras, positive, negative, reference_image: referenceImage || null
     }
-
     try {
       const res = await fetch(backend + '/generate', {
         method: 'POST',
@@ -271,18 +242,13 @@ export default function App() {
       const data = await res.json()
       clearInterval(timer)
       setProgress(100)
-
       if (data.image) {
         const base64 = data.image.includes(',') ? data.image.split(',')[1] : data.image
         const binary = atob(base64)
         const array = new Uint8Array(binary.length)
         for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
         const blob = new Blob([array], { type: 'image/png' })
-        await saveImage(blob, {
-          positive, negative, checkpoint: checkpoint || '',
-          sampler, scheduler, steps: +steps, cfg: +cfg,
-          width: +width, height: +height, loras: [...loras]
-        })
+        await saveImage(blob, { positive, negative, checkpoint: checkpoint || '', sampler, scheduler, steps: +steps, cfg: +cfg, width: +width, height: +height, loras: [...loras] })
         await loadGallery()
         setStatusMsg('Done', 'ok')
       } else {
@@ -326,14 +292,6 @@ export default function App() {
     setPositive(editPositive)
     setNegative(editNegative)
     setEditingPrompt(null)
-  }
-
-  function deleteSavedPrompt(i) {
-    if (!confirm('Delete this prompt?')) return
-    const updated = savedPrompts.filter((_, idx) => idx !== i)
-    setSavedPrompts(updated)
-    localStorage.setItem('prompts', JSON.stringify(updated))
-    if (editingPrompt?.index === i) setEditingPrompt(null)
   }
 
   function toggleSelect(id) {
@@ -382,10 +340,7 @@ export default function App() {
   function deleteSelectedPrompts() {
     if (selectedPromptIndices.size === 0) return
     const confirmText = prompt(`Type DELETE to confirm removal of ${selectedPromptIndices.size} prompt(s):`)
-    if (confirmText !== 'DELETE') {
-      setStatusMsg('Deletion cancelled', 'error')
-      return
-    }
+    if (confirmText !== 'DELETE') { setStatusMsg('Deletion cancelled', 'error'); return }
     const updated = savedPrompts.filter((_, i) => !selectedPromptIndices.has(i))
     setSavedPrompts(updated)
     localStorage.setItem('prompts', JSON.stringify(updated))
@@ -411,38 +366,17 @@ export default function App() {
   async function deleteSelected() {
     if (selectedIds.size === 0) return
     const confirmText = prompt(`Type DELETE to confirm removal of ${selectedIds.size} image(s):`)
-    if (confirmText !== 'DELETE') {
-      setStatusMsg('Deletion cancelled', 'error')
-      return
-    }
+    if (confirmText !== 'DELETE') { setStatusMsg('Deletion cancelled', 'error'); return }
     const db = await openDB()
     const tx = db.transaction('images', 'readwrite')
     const store = tx.objectStore('images')
     for (const id of selectedIds) {
       await new Promise(resolve => { store.delete(id).onsuccess = resolve })
     }
-    gallery.forEach(item => {
-      if (selectedIds.has(item.id)) URL.revokeObjectURL(item.url)
-    })
+    gallery.forEach(item => { if (selectedIds.has(item.id)) URL.revokeObjectURL(item.url) })
     setGallery(prev => prev.filter(item => !selectedIds.has(item.id)))
     setSelectedIds(new Set())
     if (lightboxIndex >= 0) setLightboxIndex(-1)
-  }
-
-  async function deleteImage(index) {
-    const item = gallery[index]
-    const db = await openDB()
-    const tx = db.transaction('images', 'readwrite')
-    const store = tx.objectStore('images')
-    await new Promise(resolve => { store.delete(item.id).onsuccess = resolve })
-    URL.revokeObjectURL(item.url)
-    const newGallery = gallery.filter((_, i) => i !== index)
-    setGallery(newGallery)
-    setSelectedIds(prev => { const next = new Set(prev); next.delete(item.id); return next })
-    if (newGallery.length === 0) setLightboxIndex(-1)
-    else if (index >= newGallery.length) setLightboxIndex(newGallery.length - 1)
-    setIsZoomed(false)
-    setPan({ x: 0, y: 0 })
   }
 
   function openLightbox(i) {
@@ -494,12 +428,8 @@ export default function App() {
   async function copyPrompt(item) {
     if (!item) return
     const text = `Positive:\n${item.positive || ''}\n\nNegative:\n${item.negative || ''}`
-    try {
-      await navigator.clipboard.writeText(text)
-      setStatusMsg('Prompt copied', 'ok')
-    } catch {
-      setStatusMsg('Copy failed', 'error')
-    }
+    try { await navigator.clipboard.writeText(text); setStatusMsg('Prompt copied', 'ok') }
+    catch { setStatusMsg('Copy failed', 'error') }
   }
 
   function handleDoubleClick(e) {
@@ -524,23 +454,6 @@ export default function App() {
 
   function handleMouseUp() { setIsDragging(false) }
 
-  function handleTouchStart(e) {
-    if (!isZoomed || e.touches.length !== 1) return
-    e.stopPropagation()
-    const touch = e.touches[0]
-    setIsDragging(true)
-    setDragStart({ x: touch.clientX - pan.x, y: touch.clientY - pan.y })
-  }
-
-  function handleTouchMove(e) {
-    if (!isDragging || !isZoomed || e.touches.length !== 1) return
-    e.preventDefault()
-    const touch = e.touches[0]
-    setPan({ x: touch.clientX - dragStart.x, y: touch.clientY - dragStart.y })
-  }
-
-  function handleTouchEnd() { setIsDragging(false) }
-
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
@@ -559,8 +472,8 @@ export default function App() {
       <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} />
         <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl()} />
-        <button className="secondary" onClick={loadImageFromUrl}>Load URL</button>
-        {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage}>Clear</button>}
+        <button className="secondary" onClick={loadImageFromUrl} style={{width:'auto'}}>Load URL</button>
+        {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear</button>}
       </div>
 
       <div className="row">
@@ -639,99 +552,102 @@ export default function App() {
         <button className="secondary" onClick={savePrompt}>Save Prompt</button>
       </div>
 
-      {showProgress && (
-        <div className="progress">
-          <div className="progress-bar" style={{width: progress + '%'}} />
-        </div>
-      )}
+      {showProgress && <div className="progress"><div className="progress-bar" style={{width: progress + '%'}} /></div>}
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
       <h3>Saved Prompts</h3>
       {selectedPromptIndices.size > 0 && (
-        <div style={{display:'flex', gap:8, marginBottom:8}}>
-          <button className="danger" onClick={deleteSelectedPrompts}>Delete Selected ({selectedPromptIndices.size})</button>
-          <button className="secondary" onClick={selectAllPrompts}>{selectedPromptIndices.size === savedPrompts.length ? 'Deselect All' : 'Select All'}</button>
+        <div style={{display:'flex', gap:8, marginBottom:8, alignItems:'center'}}>
+          <button className="danger" style={{width:'auto'}} onClick={deleteSelectedPrompts}>Delete Selected ({selectedPromptIndices.size})</button>
+          <div className={`select-all-box ${selectedPromptIndices.size === savedPrompts.length ? 'checked' : ''}`} onClick={selectAllPrompts} title="Select all prompts" />
         </div>
       )}
       <div className="prompts-list">
         {savedPrompts.map((p, i) => (
           <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={() => handlePromptClick(i)} onDoubleClick={() => startRename(i, p.name)}>
             {editingNameIndex === i ? (
-              <input value={editingNameValue} onChange={e => setEditingNameValue(e.target.value)} onBlur={() => commitRename(i)} onKeyDown={e => e.key === 'Enter' && commitRename(i)} autoFocus style={{width:'100%'}} />
+              <input className="inline-rename" value={editingNameValue} onChange={e => setEditingNameValue(e.target.value)} onBlur={() => commitRename(i)} onKeyDown={e => e.key === 'Enter' && commitRename(i)} autoFocus />
             ) : (
-              <span>{p.name || p.positive.slice(0, 60)}</span>
+              <><strong>{p.name || 'Untitled'}</strong><div className="prompt-preview">{p.positive.slice(0, 80)}</div></>
             )}
           </div>
         ))}
       </div>
 
       {editingPrompt && (
-        <div className="prompt-popup">
-          <h4>Edit Prompt</h4>
-          <label>Name</label>
-          <input value={editName} onChange={e => setEditName(e.target.value)} />
-          <label>Positive</label>
-          <textarea value={editPositive} onChange={e => setEditPositive(e.target.value)} />
-          <label>Negative</label>
-          <textarea value={editNegative} onChange={e => setEditNegative(e.target.value)} />
-          <div className="row">
-            <button onClick={saveEditedPrompt}>Save</button>
-            <button className="secondary" onClick={loadEditedPrompt}>Load</button>
-            <button className="secondary" onClick={() => setEditingPrompt(null)}>Close</button>
+        <div className="prompt-popup-overlay" onClick={() => setEditingPrompt(null)}>
+          <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+            <h3>Edit Prompt</h3>
+            <label>Name</label>
+            <input value={editName} onChange={e => setEditName(e.target.value)} />
+            <label>Positive</label>
+            <textarea value={editPositive} onChange={e => setEditPositive(e.target.value)} />
+            <label>Negative</label>
+            <textarea value={editNegative} onChange={e => setEditNegative(e.target.value)} />
+            <div className="row" style={{marginTop:12}}>
+              <button onClick={saveEditedPrompt}>Save</button>
+              <button className="secondary" onClick={loadEditedPrompt}>Load</button>
+              <button className="secondary" onClick={() => setEditingPrompt(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
 
-      <h3>Gallery</h3>
-      {selectedIds.size > 0 && (
-        <div style={{display:'flex', gap:8, marginBottom:8}}>
-          <button className="danger" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>
-          <button className="secondary" onClick={selectAll}>{selectedIds.size === gallery.length ? 'Deselect All' : 'Select All'}</button>
-        </div>
-      )}
+      <div className="gallery-header">
+        <h3>Gallery</h3>
+        {selectedIds.size > 0 && (
+          <div className="gallery-actions">
+            <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>
+            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
+          </div>
+        )}
+      </div>
+
       <div className="gallery">
         {gallery.map((item, i) => (
           <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} onClick={() => toggleSelect(item.id)}>
             <img src={item.url} alt="" />
             <div className="gallery-overlay">
-              <button className="icon-btn" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
-              <button className="icon-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
+              <button className="magnify-btn" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
             </div>
+            <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
           </div>
         ))}
       </div>
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && (
         <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
-          <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-            <button className="lightbox-close" onClick={() => setLightboxIndex(-1)}>×</button>
-            <button className="lightbox-nav left" onClick={goPrev} disabled={lightboxIndex === 0}>‹</button>
+          <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
+            <button className="lb-btn left" onClick={() => setLightboxIndex(-1)}>×</button>
+            <button className="lb-btn nav-left" onClick={goPrev} disabled={lightboxIndex === 0}>‹</button>
             <img
               ref={imageRef}
               src={gallery[lightboxIndex].url}
               alt=""
-              style={{transform: isZoomed ? `scale(2) translate(${pan.x/2}px, ${pan.y/2}px)` : 'none', cursor: isZoomed ? 'grab' : 'zoom-in'}}
+              className={isZoomed ? 'zoomed' : ''}
+              style={{transform: isZoomed ? `scale(2) translate(${pan.x/2}px, ${pan.y/2}px)` : 'none'}}
               onDoubleClick={handleDoubleClick}
               onMouseDown={handleMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
             />
-            <button className="lightbox-nav right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
           </div>
         </div>
       )}
 
       {infoItem && (
-        <div className="info-popup" onClick={() => setInfoItem(null)}>
-          <div className="info-content" onClick={e => e.stopPropagation()}>
-            <h4>Image Info</h4>
-            <p><strong>Positive:</strong> {infoItem.positive || '(none)'}</p>
-            <p><strong>Negative:</strong> {infoItem.negative || '(none)'}</p>
-            <div className="row">
+        <div className="prompt-popup-overlay" onClick={() => setInfoItem(null)}>
+          <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+            <h3>Image Info</h3>
+            <p><strong>Positive:</strong><br/>{infoItem.positive || '(none)'}</p>
+            <p><strong>Negative:</strong><br/>{infoItem.negative || '(none)'}</p>
+            <div className="meta-info">
+              Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
+              Sampler: {infoItem.sampler} / {infoItem.scheduler}
+            </div>
+            <div className="row" style={{marginTop:16}}>
               <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>
               <button className="secondary" onClick={() => loadPromptOnly(infoItem)}>Prompt Only</button>
               <button className="secondary" onClick={() => copyPrompt(infoItem)}>Copy</button>
