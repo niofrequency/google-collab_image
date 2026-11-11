@@ -123,7 +123,7 @@ button.danger:hover { background: #7a2a2a; }
 }
 .delete-selected {
   width: auto;
-  margin: 8px 0 12px;
+  margin: 0;
   padding: 8px 16px;
   font-size: 14px;
 }
@@ -137,6 +137,46 @@ button.danger:hover { background: #7a2a2a; }
   font-size: 12px;
   color: var(--muted);
   line-height: 1.5;
+}
+.gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 28px 0 12px;
+}
+.gallery-header h3 {
+  margin: 0;
+}
+.gallery-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.select-all-box {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #666;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.select-all-box:hover {
+  border-color: #999;
+}
+.select-all-box.checked {
+  background: #e74c3c;
+  border-color: #e74c3c;
+}
+.select-all-box.checked::after {
+  content: "✓";
+  color: white;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
 }
 .lightbox {
   position: fixed;
