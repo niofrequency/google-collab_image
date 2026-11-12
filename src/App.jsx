@@ -19,6 +19,7 @@ export default function App() {
   const [cfg, setCfg] = useState(4.0)
   const [width, setWidth] = useState(1024)
   const [height, setHeight] = useState(1024)
+  const [batchSize, setBatchSize] = useState(1)
   const [loras, setLoras] = useState([])
   const [positive, setPositive] = useState('')
   const [negative, setNegative] = useState('')
@@ -227,16 +228,26 @@ export default function App() {
 
   function setStatusMsg(msg, type = '') { setStatus(msg); setStatusType(type) }
 
+  function base64ToBlob(dataUrl) {
+    const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl
+    const binary = atob(base64)
+    const array = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
+    return new Blob([array], { type: 'image/png' })
+  }
+
   async function generate() {
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
-    setStatusMsg('Generating...')
+    const count = Math.max(1, Math.min(8, +batchSize || 1))
+    setStatusMsg(`Generating ${count} image(s)...`)
     setShowProgress(true)
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
+      batch_size: count,
       loras, positive, negative, reference_image: referenceImage || null
     }
     try {
@@ -248,15 +259,28 @@ export default function App() {
       const data = await res.json()
       clearInterval(timer)
       setProgress(100)
-      if (data.image) {
-        const base64 = data.image.includes(',') ? data.image.split(',')[1] : data.image
-        const binary = atob(base64)
-        const array = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
-        const blob = new Blob([array], { type: 'image/png' })
-        await saveImage(blob, { positive, negative, checkpoint: checkpoint || '', sampler, scheduler, steps: +steps, cfg: +cfg, width: +width, height: +height, loras: [...loras] })
+
+      const meta = {
+        positive, negative,
+        checkpoint: checkpoint || '',
+        sampler, scheduler,
+        steps: +steps, cfg: +cfg,
+        width: +width, height: +height,
+        loras: [...loras]
+      }
+
+      // Prefer the images array if present, fall back to single image
+      const imageList = Array.isArray(data.images) && data.images.length > 0
+        ? data.images
+        : (data.image ? [data.image] : [])
+
+      if (imageList.length > 0) {
+        for (const imgData of imageList) {
+          const blob = base64ToBlob(imgData)
+          await saveImage(blob, meta)
+        }
         await loadGallery()
-        setStatusMsg('Done', 'ok')
+        setStatusMsg(`Done — ${imageList.length} image(s)`, 'ok')
       } else {
         setStatusMsg(data.error || 'No image returned', 'error')
       }
@@ -513,6 +537,7 @@ export default function App() {
         <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
         <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
         <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
+        <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
       <label>LoRAs</label>
