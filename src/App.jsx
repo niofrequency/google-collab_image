@@ -16,6 +16,9 @@ function mergeOptions(base, extra) {
   return [...new Set([...(extra || []), ...base])]
 }
 
+// Settings used when a backend doesn't publish its own (e.g. BigLust / SDXL)
+const BASE_SETTINGS = { steps: 20, cfg: 4.0, sampler: 'euler', scheduler: 'simple', width: 1024, height: 1024, denoise: 1.0 }
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 export default function App() {
@@ -67,6 +70,7 @@ export default function App() {
 
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
+  const usedBackendDefaults = useRef(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -204,7 +208,19 @@ export default function App() {
       if (Array.isArray(data.schedulers)) setSchedulerOptions(mergeOptions(DEFAULT_SCHEDULERS, data.schedulers))
       // Backends such as the Qwen Rapid AIO edit notebook publish their recommended settings
       const d = data.defaults
+      if (!d && usedBackendDefaults.current) {
+        // Switched from a backend with its own settings (e.g. Qwen AIO) to one without (e.g. BigLust)
+        usedBackendDefaults.current = false
+        setSamplerOptions(DEFAULT_SAMPLERS)
+        setSchedulerOptions(DEFAULT_SCHEDULERS)
+        setSteps(BASE_SETTINGS.steps); setCfg(BASE_SETTINGS.cfg)
+        setSampler(BASE_SETTINGS.sampler); setScheduler(BASE_SETTINGS.scheduler)
+        setWidth(BASE_SETTINGS.width); setHeight(BASE_SETTINGS.height)
+        setDenoise(BASE_SETTINGS.denoise); setCheckpoint('')
+        setStatusMsg('Connected — previous backend settings reset to defaults', 'ok')
+      }
       if (d) {
+        usedBackendDefaults.current = true
         if (d.steps != null) setSteps(d.steps)
         if (d.cfg != null) setCfg(d.cfg)
         if (d.sampler) { setSampler(d.sampler); setSamplerOptions(o => mergeOptions(o, [d.sampler])) }
