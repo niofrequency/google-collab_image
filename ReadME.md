@@ -16,6 +16,16 @@ https://colab.research.google.com/github/niofrequency/google-collab_image/blob/m
 **Direct link:**  
 https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb
 
+### Qwen Image Edit Rapid AIO (GGUF)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb)
+
+**Direct link:**  
+https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb
+
+Run cells 1, 2 and 4 (cell 3 is an optional in-notebook test). Paste the `READY:` URL into the
+frontend's Backend URL field; it switches to the recommended settings (4 steps, CFG 1,
+`sa_solver` / `beta`). Add a reference image to edit it, or leave it empty for text-to-image.
+
 ## How to use
 
 1. Click one of the **Open in Colab** buttons above.

@@ -9,6 +9,15 @@ const NGROK_HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 }
 
+const DEFAULT_SAMPLERS = ['euler', 'dpmpp_2m', 'euler_ancestral', 'sa_solver', 'res_multistep', 'er_sde']
+const DEFAULT_SCHEDULERS = ['simple', 'karras', 'normal', 'beta', 'sgm_uniform']
+
+function mergeOptions(base, extra) {
+  return [...new Set([...(extra || []), ...base])]
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+
 export default function App() {
   const [backendUrl, setBackendUrl] = useState('')
   const [checkpoint, setCheckpoint] = useState('')
@@ -20,6 +29,9 @@ export default function App() {
   const [width, setWidth] = useState(1024)
   const [height, setHeight] = useState(1024)
   const [batchSize, setBatchSize] = useState(1)
+  const [denoise, setDenoise] = useState(1.0)
+  const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
+  const [schedulerOptions, setSchedulerOptions] = useState(DEFAULT_SCHEDULERS)
   const [loras, setLoras] = useState([])
   const [positive, setPositive] = useState('')
   const [negative, setNegative] = useState('')
@@ -188,6 +200,21 @@ export default function App() {
       const data = await res.json()
       setCheckpoints(data.checkpoints || [])
       setLoras(data.loras || [])
+      if (Array.isArray(data.samplers)) setSamplerOptions(mergeOptions(DEFAULT_SAMPLERS, data.samplers))
+      if (Array.isArray(data.schedulers)) setSchedulerOptions(mergeOptions(DEFAULT_SCHEDULERS, data.schedulers))
+      // Backends such as the Qwen Rapid AIO edit notebook publish their recommended settings
+      const d = data.defaults
+      if (d) {
+        if (d.steps != null) setSteps(d.steps)
+        if (d.cfg != null) setCfg(d.cfg)
+        if (d.sampler) { setSampler(d.sampler); setSamplerOptions(o => mergeOptions(o, [d.sampler])) }
+        if (d.scheduler) { setScheduler(d.scheduler); setSchedulerOptions(o => mergeOptions(o, [d.scheduler])) }
+        if (d.width) setWidth(d.width)
+        if (d.height) setHeight(d.height)
+        if (d.denoise != null) setDenoise(d.denoise)
+        if (data.checkpoints?.length === 1) setCheckpoint(data.checkpoints[0])
+        setStatusMsg(`Connected (${data.model_type || 'backend'}) — recommended settings applied`, 'ok')
+      }
     } catch {}
   }
 
@@ -247,7 +274,7 @@ export default function App() {
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
-      batch_size: count,
+      denoise: +denoise, batch_size: count,
       loras, positive, negative, reference_image: referenceImage || null
     }
     try {
@@ -256,7 +283,27 @@ export default function App() {
         headers: NGROK_HEADERS,
         body: JSON.stringify(payload)
       })
-      const data = await res.json()
+      let data = await res.json()
+
+      // Job-based backends (e.g. Qwen AIO edit behind a Cloudflare tunnel, which cuts
+      // requests after ~100 s) return a job_id right away; poll until it finishes.
+      if (data.job_id && !data.image && !(data.images && data.images.length)) {
+        clearInterval(timer)
+        while (data.status !== 'done' && data.status !== 'error') {
+          await sleep(1500)
+          const r = await fetch(backend + '/job/' + data.job_id, { headers: NGROK_HEADERS })
+          data = await r.json()
+          const total = data.batch_size || count
+          const stepFrac = data.total_steps ? data.step / data.total_steps : 0
+          const frac = Math.min(((data.done || 0) + stepFrac) / total, 1)
+          setProgress(5 + frac * 90)
+          if (data.status === 'queued') setStatusMsg('Queued — waiting for GPU...')
+          else if (data.status === 'running') {
+            setStatusMsg(`Generating image ${Math.min((data.done || 0) + 1, total)}/${total}` +
+              (data.total_steps ? ` — step ${data.step}/${data.total_steps}` : '...'))
+          }
+        }
+      }
       clearInterval(timer)
       setProgress(100)
 
@@ -517,17 +564,13 @@ export default function App() {
         <div>
           <label>Sampler</label>
           <select value={sampler} onChange={e => setSampler(e.target.value)}>
-            <option value="euler">euler</option>
-            <option value="dpmpp_2m">dpmpp_2m</option>
-            <option value="euler_ancestral">euler_ancestral</option>
+            {samplerOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
         <div>
           <label>Scheduler</label>
           <select value={scheduler} onChange={e => setScheduler(e.target.value)}>
-            <option value="simple">simple</option>
-            <option value="karras">karras</option>
-            <option value="normal">normal</option>
+            {schedulerOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
@@ -537,6 +580,7 @@ export default function App() {
         <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
         <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
         <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
+        <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
