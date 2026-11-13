@@ -16,6 +16,19 @@ function mergeOptions(base, extra) {
   return [...new Set([...(extra || []), ...base])]
 }
 
+// Settings used when a backend doesn't publish its own (e.g. BigLust / SDXL)
+const BASE_SETTINGS = { steps: 20, cfg: 4.0, sampler: 'euler', scheduler: 'simple', width: 1024, height: 1024, denoise: 1.0 }
+
+function extractImgSrc(html) {
+  if (!html) return ''
+  const m = html.match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i)
+  return m ? m[1].replace(/&amp;/g, '&') : ''
+}
+
+function isImageAddress(text) {
+  return /^data:image\//i.test(text) || /^https?:\/\/\S+$/i.test(text)
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 export default function App() {
@@ -67,6 +80,7 @@ export default function App() {
 
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
+  const usedBackendDefaults = useRef(false)
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -79,16 +93,25 @@ export default function App() {
     loadGallery()
 
     const handlePaste = (e) => {
-      const items = e.clipboardData?.items
-      if (!items) return
-      for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          e.preventDefault()
+      const cd = e.clipboardData
+      if (!cd) return
+      // 1) An actual image on the clipboard ("Copy image", screenshots) — works anywhere on the page
+      for (const item of cd.items || []) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
           const blob = item.getAsFile()
-          if (blob) loadImageFromBlob(blob)
-          return
+          if (blob) { e.preventDefault(); loadImageFromBlob(blob); return }
         }
       }
+      // Don't hijack normal text pastes into the prompt boxes / other inputs
+      const t = e.target
+      const inTextField = t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.dataset.imageUrl !== 'true'))
+      if (inTextField) return
+      // 2) Copied image that arrives as HTML (<img src=...>)
+      const htmlSrc = extractImgSrc(cd.getData('text/html'))
+      // 3) A copied image address
+      const text = (cd.getData('text/plain') || '').trim()
+      const url = htmlSrc || (isImageAddress(text) ? text : '')
+      if (url) { e.preventDefault(); loadImageFromUrl(url) }
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
@@ -169,20 +192,38 @@ export default function App() {
     if (file) loadImageFromBlob(file)
   }
 
-  async function loadImageFromUrl() {
-    const url = imageUrlInput.trim()
+  async function loadImageFromUrl(rawUrl) {
+    const url = (rawUrl || '').trim()
     if (!url) return setStatusMsg('Paste an image URL first', 'error')
+    if (url.startsWith('data:image/')) {
+      setReferenceImage(url); setReferenceImagePreview(url); setImageUrlInput('')
+      return setStatusMsg('Image loaded', 'ok')
+    }
+    if (!/^https?:\/\//i.test(url)) return setStatusMsg('That does not look like an image address (must start with http)', 'error')
     setStatusMsg('Loading image from URL...')
     try {
+      // Works when the image host allows cross-site requests (CORS)
       const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch')
+      if (!res.ok) throw new Error('HTTP ' + res.status)
       const blob = await res.blob()
       if (!blob.type.startsWith('image/')) throw new Error('Not an image')
       loadImageFromBlob(blob)
-      setImageUrlInput('')
-    } catch (e) {
-      setStatusMsg('Could not load image from URL: ' + e.message, 'error')
+    } catch {
+      // Most sites block that, but the browser can still display the image and the
+      // Colab backend can download it, so send the address itself to the backend.
+      setReferenceImage(url)
+      setReferenceImagePreview(url)
+      setStatusMsg('Image address loaded — the backend will download it', 'ok')
     }
+    setImageUrlInput('')
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'))
+    if (file) return loadImageFromBlob(file)
+    const url = extractImgSrc(e.dataTransfer?.getData('text/html')) || (e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '').split('\n')[0].trim()
+    if (url) loadImageFromUrl(url)
   }
 
   function clearReferenceImage() {
@@ -204,7 +245,19 @@ export default function App() {
       if (Array.isArray(data.schedulers)) setSchedulerOptions(mergeOptions(DEFAULT_SCHEDULERS, data.schedulers))
       // Backends such as the Qwen Rapid AIO edit notebook publish their recommended settings
       const d = data.defaults
+      if (!d && usedBackendDefaults.current) {
+        // Switched from a backend with its own settings (e.g. Qwen AIO) to one without (e.g. BigLust)
+        usedBackendDefaults.current = false
+        setSamplerOptions(DEFAULT_SAMPLERS)
+        setSchedulerOptions(DEFAULT_SCHEDULERS)
+        setSteps(BASE_SETTINGS.steps); setCfg(BASE_SETTINGS.cfg)
+        setSampler(BASE_SETTINGS.sampler); setScheduler(BASE_SETTINGS.scheduler)
+        setWidth(BASE_SETTINGS.width); setHeight(BASE_SETTINGS.height)
+        setDenoise(BASE_SETTINGS.denoise); setCheckpoint('')
+        setStatusMsg('Connected — previous backend settings reset to defaults', 'ok')
+      }
       if (d) {
+        usedBackendDefaults.current = true
         if (d.steps != null) setSteps(d.steps)
         if (d.cfg != null) setCfg(d.cfg)
         if (d.sampler) { setSampler(d.sampler); setSamplerOptions(o => mergeOptions(o, [d.sampler])) }
@@ -539,17 +592,18 @@ export default function App() {
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
 
       <label style={{marginTop: 16}}>Reference Image (for Qwen Image Edit)</label>
-      <div style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: referenceImagePreview ? 'transparent' : '#1a1a1a'}}>
+      <div onDragOver={e => e.preventDefault()} onDrop={handleDrop} style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: referenceImagePreview ? 'transparent' : '#1a1a1a'}}>
         {referenceImagePreview ? (
-          <img src={referenceImagePreview} alt="Reference" style={{maxWidth: '100%', maxHeight: 200, borderRadius: 8}} />
+          <img src={referenceImagePreview} alt="Reference" style={{maxWidth: '100%', maxHeight: 200, borderRadius: 8}}
+            onError={() => setStatusMsg('Could not display that image — check the address', 'error')} />
         ) : (
-          <div>Paste image here (Ctrl+V) or upload below</div>
+          <div>Paste an image or image address here (Ctrl+V), drag &amp; drop, or upload below</div>
         )}
       </div>
       <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} />
-        <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl()} />
-        <button className="secondary" onClick={loadImageFromUrl} style={{width:'auto'}}>Load URL</button>
+        <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" data-image-url="true" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl(imageUrlInput)} />
+        <button className="secondary" onClick={() => loadImageFromUrl(imageUrlInput)} style={{width:'auto'}}>Load URL</button>
         {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear</button>}
       </div>
 
