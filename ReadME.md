@@ -62,6 +62,10 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
 - **Face fix** (toggle under the settings): after the image is made, each face is found, redrawn at full resolution
   with your LoRAs and prompt, and blended back in (like ADetailer). Faces — especially small ones in full-body shots —
   get much more detail and look more like a person LoRA. *Strength* 0.3 = subtle, 0.4 = default, 0.5–0.6 = stronger.
+- **Where each LoRA is used** (dropdown on each LoRA): *Whole image*, *Main image only* or *Face fix only*. For the
+  best likeness, put a full-body LoRA (e.g. `Stephanie_v1`) on *Main image only* and a LoRA trained only on face
+  close-ups (e.g. `Stephanie_face`) on *Face fix only*, with Face fix on and the same trigger word in the prompt:
+  the body comes from the first LoRA, the face from the second.
 - **Presets:** one click sets size, steps, CFG, sampler, face fix and LoRA strength — *Default*, *Portrait (best
   likeness)*, *Upper body*, *Full body*, *Landscape*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
