@@ -1,83 +1,143 @@
 # Google Colab Image Generator
 
-Simple Colab notebooks for generating images with BigLust (SDXL) and Wan2.1.
+Free Google Colab notebooks for generating, editing and training images with ComfyUI, plus a website
+(**ARX Image Generator**) that controls them.
 
-## Open in Colab
+- **Website:** https://google-collabimage-one.vercel.app
+- **Repository:** https://github.com/niofrequency/google-collab_image
 
-### BigLust (SDXL)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb)
+Each notebook runs on a free **T4 GPU** in Colab and prints a `READY:` URL. Paste that URL into the website to use it.
 
-**Direct link:**  
-https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb
+## Notebooks
 
-### Wan 2.1
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb)
+| Notebook | What it does | Open in Colab |
+|---|---|---|
+| **BigLust** (SDXL) | Text-to-image with BigLust or any SDXL checkpoint, with LoRAs. Download checkpoints/LoRAs from the website. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb) |
+| **Qwen Image Edit Rapid AIO** (GGUF) | Edits photos from a text instruction, up to 3 reference images, with Qwen LoRAs. Also text-to-image. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) |
+| **SDXL LoRA training** | Trains your own SDXL LoRA from 15–40 images, controlled from the website's LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) |
+| Into Realism (SDXL) | Older SDXL text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb) |
+| Krea 2 Realism | Older Krea 2 text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb) |
+| Qwen Image Edit 2511 (fp8) | Older notebook with the official Qwen-Image-Edit-2511 fp8 model (~20 GB, likely too big for a free T4; uses ngrok). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb) |
+| Wan 2.1 (GGUF) | Text-to-image with Wan 2.1 14B inside the notebook (no website server). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb) |
 
-**Direct link:**  
-https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb
+Direct links:
+- BigLust: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb
+- Qwen Image Edit Rapid AIO: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb
+- SDXL LoRA training: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb
+- Into Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb
+- Krea 2 Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb
+- Qwen Image Edit 2511: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb
+- Wan 2.1: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb
 
-### Qwen Image Edit Rapid AIO (GGUF)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb)
+## Quick start
 
-**Direct link:**  
-https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb
+1. Open a notebook with its **Open in Colab** button.
+2. **Runtime → Change runtime type → T4 GPU.**
+3. Run the cells in order (see each notebook below). The first cell asks for **Google Drive** access — allow it
+   (LoRAs and training images are kept there).
+4. Copy the `READY: https://….trycloudflare.com` URL the notebook prints.
+5. Open the [website](https://google-collabimage-one.vercel.app) and paste the URL:
+   - **Image Generator** tab → *Backend URL* (BigLust, Qwen, Into Realism, Krea 2)
+   - **LoRA Training** tab → *Training server URL* (SDXL LoRA training)
 
-Run cells 1, 2 and 4 (cell 3 is an optional in-notebook test). Paste the `READY:` URL into the
-frontend's Backend URL field; it switches to the recommended settings (4 steps, CFG 1,
-`sa_solver` / `beta`). Add a reference image to edit it, or leave it empty for text-to-image.
+Run **one GPU notebook at a time** — on the free tier they share one GPU.
 
-Up to 3 reference images: Picture 1 is the image being edited (it also sets the default
-Width/Height); Pictures 2 and 3 are extra references. Refer to them in the prompt, e.g.
-"put the person from Picture 1 in the outfit from Picture 2". Each extra picture makes every edit slower.
+## BigLust (SDXL)
 
-LoRAs: use **+ Download LoRA** in the website (Civitai or Hugging Face link) or pick one you already
-downloaded. They must be **Qwen-Image / Qwen-Image-Edit** LoRAs; SDXL LoRAs don't work with this model.
-Each LoRA makes generation somewhat slower on a T4.
+[Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb) ·
+**Run all cells**; the last one prints the URL.
 
-### SDXL LoRA training
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb)
-
-Trains an SDXL LoRA on a free T4 with kohya-ss sd-scripts. Run cells 1–2, then use the website's **LoRA Training** tab:
-paste the `READY:` URL, name the LoRA, drop in 15–40 images, edit or auto-tag their captions, and start training (every
-option has an ⓘ explaining it). Images live in `MyDrive/ComfyUI/training/<name>/images`; the finished LoRA is saved to
-`MyDrive/ComfyUI/loras_sdxl` and appears in the Image Generator's LoRA list when you next start BigLust. Progress is saved
-every 250 steps; after a disconnect, start cells 1–2 again and press Start training with the same name to continue.
-Cell 3 trains without the website. Don't run it at the same time as the BigLust or Qwen notebook.
-
-## Adding your own SDXL checkpoints and LoRAs (BigLust notebook)
-
-With the BigLust notebook running and its URL in the website's Backend URL field:
-
-- **+ Download Checkpoint** / **+ Download LoRA**: paste a link and click *Download & Add*. Works with
-  - Civitai model pages (`https://civitai.com/models/12345/...`, uses the newest version, or the one in `?modelVersionId=`)
+- **Checkpoints and LoRAs from the website:** *+ Download Checkpoint* / *+ Download LoRA*, then paste a link:
+  - Civitai model pages (`https://civitai.com/models/12345/...` — newest version, or the one in `?modelVersionId=`)
   - Civitai download links (`https://civitai.com/api/download/models/67890`)
   - Hugging Face file links (`.../blob/main/model.safetensors` or `.../resolve/main/...`)
-- Big files download in the background on the Colab runtime with progress shown. A new checkpoint is selected
-  and a new LoRA is enabled at strength 0.8 automatically.
-- The **Checkpoint** dropdown and the **Use a downloaded LoRA** list show every file in the runtime's
-  `models/checkpoints` and `models/loras` folders, so anything you add there yourself shows up too.
-- Use SDXL-based checkpoints (SDXL, Pony, Illustrious, ...) with SDXL LoRAs. SD 1.5 also loads, but LoRAs must match the checkpoint's base model.
-- Files live on the Colab runtime, so they need to be downloaded again after the runtime is reset.
 
-## LoRAs are kept in Google Drive
+  Downloads run in the background with progress shown. A new checkpoint is selected and a new LoRA is enabled at
+  strength 0.8 automatically. Use SDXL-based checkpoints (SDXL, Pony, Illustrious, …) with SDXL LoRAs.
+- **Checkpoint dropdown / "Use a downloaded LoRA"** list everything in the runtime's `models/checkpoints` and
+  `models/loras` folders.
+- **LoRAs are kept in Google Drive** (`MyDrive/ComfyUI/loras_sdxl`), including LoRAs you train with the training
+  notebook. Checkpoints stay on the runtime and must be downloaded again after it's deleted.
+- One checkpoint is loaded at a time; switching frees the previous one.
 
-Both notebooks connect your Google Drive in their first cell (Colab asks you to allow it) and save
-LoRAs in `MyDrive/ComfyUI/loras_qwen` (Qwen) or `MyDrive/ComfyUI/loras_sdxl` (BigLust), so they're
-still there after the runtime is deleted. Set `USE_GOOGLE_DRIVE = False` at the top of that cell to
-keep them on the runtime only. You can also copy `.safetensors` LoRAs into those Drive folders yourself.
+## Qwen Image Edit Rapid AIO (GGUF)
 
-If a LoRA doesn't fit the model (e.g. an SDXL LoRA on Qwen), generation stops with an error saying
-so; if it only partly fits, the image is made and the website shows a warning.
+[Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) ·
+Run cells **1, 2 and 4** (cell 3 is an optional test). Model: [Qwen-Rapid-NSFW-v23 Q2_K](https://huggingface.co/Novice25/Qwen-Image-Edit-Rapid-AIO-GGUF)
+with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
 
-## How to use
+- Pasting the URL switches the website to the recommended settings: **4 steps, CFG 1, `sa_solver` / `beta`**.
+- **Reference images (up to 3):** paste (Ctrl+V), drag & drop, upload or paste an image address. **Picture 1** is
+  the image being edited and sets Width/Height to its size (change them for a different output size; the output is
+  exactly Width × Height and the photo is never stretched). **Pictures 2–3** are extra references — refer to them in
+  the prompt, e.g. *"put the person from Picture 1 in the outfit from Picture 2"*. Each extra picture is slower.
+  No reference image = text-to-image.
+- **Faster:** lower Width/Height (e.g. 768 × 768). Re-rolls with the same prompt and image reuse the encoding.
+- **Keeping faces:** Denoise 0.7–0.85, same shape as the photo, and *"keep the face unchanged"* in the prompt.
+- **LoRAs:** *+ Download LoRA* on the website. Only **Qwen-Image / Qwen-Image-Edit** LoRAs work; they're kept in
+  `MyDrive/ComfyUI/loras_qwen`. Each LoRA adds some time per image.
+- Cell 4 finishes after printing the URL; the server keeps running. Re-running it updates the server.
+  To stop it: **Runtime → Restart session**.
 
-1. Click one of the **Open in Colab** buttons above.
-2. Click **Copy to Drive** (or just run it).
-3. Go to **Runtime → Change runtime type → T4 GPU**.
-4. Run the cells from top to bottom.
+## SDXL LoRA training
 
-## Notes
+[Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) ·
+Uses [kohya-ss sd-scripts](https://github.com/kohya-ss/sd-scripts).
 
-- Free Colab sessions can disconnect after 1–2 hours.
-- Models are downloaded on first run.
-- Frontend (if deployed): [Vercel](https://google-collabimage-one.vercel.app)
+1. Run **cell 1** (setup, ~3 minutes) and **cell 2** — cell 2 prints the `READY:` URL.
+2. On the website's **LoRA Training** tab: paste the URL, name the LoRA, pick a made-up **trigger word**
+   (e.g. `zxq_anna` — you'll type it in prompts later) and a class word (`woman`, `man`, …).
+3. Drop in **15–40 images** (varied poses, outfits, backgrounds; jpg/png/webp — convert iPhone HEIC to jpg).
+4. Check the tags under each image. **Auto-tag all** fills them in; **Tag for all images** adds/removes one tag everywhere.
+5. Press **Start training**. Expect about **1–3 hours**; the website shows the step, % and time left. The first
+   5–15 minutes are loading the model and preparing the images (step 0).
+6. The finished LoRA is saved to `MyDrive/ComfyUI/loras_sdxl/<name>.safetensors` and appears in BigLust's LoRA list.
+
+Every setting on the website has an **ⓘ** explaining it. Images and captions are stored in
+`MyDrive/ComfyUI/training/<name>/images`; checkpoints every 250 steps in `.../<name>/output`. If Colab disconnects,
+run cells 1–2 again and press Start training with the same name — it continues from the last saved step. If you get
+*"CUDA out of memory"*, set Batch size to 1. Cell 3 trains without the website; cell 4 shows progress in Colab.
+
+## Google Drive folders
+
+| Folder | Contents |
+|---|---|
+| `MyDrive/ComfyUI/loras_sdxl` | SDXL LoRAs (downloaded in BigLust, or trained) |
+| `MyDrive/ComfyUI/loras_qwen` | Qwen-Image-Edit LoRAs |
+| `MyDrive/ComfyUI/training/<name>/images` | Training images and their `.txt` captions |
+| `MyDrive/ComfyUI/training/<name>/output` | Training checkpoints and resumable state |
+
+You can add files to these folders yourself with the Google Drive website or app.
+
+## Troubleshooting
+
+- **Notebook changes don't show up:** a running cell keeps its old code. Use **Runtime → Disconnect and delete
+  runtime**, then open the notebook again from the links above (not an old Colab tab).
+- **"This backend has no model downloads" / 404 on the website:** the website is connected to an old server. Restart
+  the notebook as above and paste the new URL (it changes every run).
+- **A cell is stuck on the spinner before starting:** another cell (or another tab on the same runtime) is still
+  running. Stop it, or end old runtimes under **Runtime → Manage sessions**.
+- **"Your session crashed after using all available RAM":** run one GPU notebook at a time and use the notebooks as
+  they are in this repo (they're set up for the free tier's 12.7 GB RAM).
+- **A LoRA does nothing or errors:** it must match the model (SDXL LoRAs for BigLust, Qwen LoRAs for Qwen). The
+  notebooks report LoRAs that don't fit.
+- Free Colab sessions disconnect after a while and have daily GPU limits.
+
+## Website (frontend)
+
+React + Vite app in `src/`, deployed on Vercel at https://google-collabimage-one.vercel.app.
+
+```bash
+npm install
+```
+
+```bash
+npm run dev
+```
+
+Generated images and saved prompts are stored in your browser (IndexedDB / localStorage).
+
+## Please note
+
+Only edit or train on images you have the rights to use. Don't make sexual or nude images of real people without
+their consent, and only train a LoRA of a real person with that person's consent.
