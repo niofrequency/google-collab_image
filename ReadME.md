@@ -37,12 +37,12 @@ Each LoRA makes generation somewhat slower on a T4.
 ### SDXL LoRA training
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb)
 
-Trains an SDXL LoRA on a free T4 with kohya-ss sd-scripts. Set the name and trigger word in cell 1, run cells 1–2,
-then upload 15–40 images (or one .zip, with optional `.txt` captions) with cell 3's file picker. They're saved to
-`MyDrive/ComfyUI/training/<name>/images`, and you can also upload there with Google Drive. Then run cells 4–5. The finished LoRA
-is saved to `MyDrive/ComfyUI/loras_sdxl`, so it appears in the website's LoRA list when you next start BigLust.
-Progress is saved every 250 steps; if Colab disconnects, run all cells again with the same settings to resume.
-Don't run it at the same time as the BigLust or Qwen notebook.
+Trains an SDXL LoRA on a free T4 with kohya-ss sd-scripts. Run cells 1–2, then use the website's **LoRA Training** tab:
+paste the `READY:` URL, name the LoRA, drop in 15–40 images, edit or auto-tag their captions, and start training (every
+option has an ⓘ explaining it). Images live in `MyDrive/ComfyUI/training/<name>/images`; the finished LoRA is saved to
+`MyDrive/ComfyUI/loras_sdxl` and appears in the Image Generator's LoRA list when you next start BigLust. Progress is saved
+every 250 steps; after a disconnect, start cells 1–2 again and press Start training with the same name to continue.
+Cell 3 trains without the website. Don't run it at the same time as the BigLust or Qwen notebook.
 
 ## Adding your own SDXL checkpoints and LoRAs (BigLust notebook)
 
