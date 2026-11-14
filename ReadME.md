@@ -85,6 +85,18 @@ with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
 - **Faster:** lower Width/Height (e.g. 768 × 768). Re-rolls with the same prompt and image reuse the encoding.
 - **Keeping faces:** Denoise 0.7–0.85, same shape as the photo, and *"keep the face unchanged"* in the prompt.
 - **Presets:** *Default*, *Keep face (subtle edit)*, *More detail (6 steps)*, *Fast (smaller)*, plus your own.
+- **Model size** (dropdown on the website): the same v23 model in sizes Q2_K (7.4 GB) to Q8_0 (21.8 GB) — bigger means
+  better quality but needs a bigger GPU. Cell 1 picks the best size for the Colab GPU automatically:
+
+  | Colab GPU | GPU memory | Sizes that fit | Picked automatically |
+  |---|---|---|---|
+  | T4 (free) | 15 GB | Q2_K | Q2_K |
+  | L4 | 24 GB | Q2_K – Q5_K | Q4_K |
+  | A100 | 40 GB | all | Q8_0 |
+
+  Picking another size on the website downloads it (first time) and loads it. If a size is too big for the current GPU,
+  the website says so and explains how to switch to a bigger GPU (**Runtime → Change runtime type → L4 / A100**, which
+  needs Colab Pro or compute units).
 - **LoRAs:** *+ Download LoRA* on the website. Only **Qwen-Image / Qwen-Image-Edit** LoRAs work; they're kept in
   `MyDrive/ComfyUI/loras_qwen`. Each LoRA adds some time per image.
 - Re-running cell 3 restarts the server with the current code (same URL). To stop it: **Runtime → Restart session**.
