@@ -59,6 +59,7 @@ export default function Training({ active }) {
   const [settings, setSettings] = useState({ ...SETTINGS_DEFAULTS, ...load('settings', {}) })
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [images, setImages] = useState([])           // [{file, caption, saved}]
+  const [progressInfo, setProgressInfo] = useState({ saved_step: null, has_lora: false })  // for the current name
   const [thumbVersion, setThumbVersion] = useState(0)
   const [bulkTag, setBulkTag] = useState('')
   const [tagThreshold, setTagThreshold] = useState(load('tagThreshold', 0.35))
@@ -131,10 +132,11 @@ export default function Training({ active }) {
   }
 
   async function loadDataset(n = dsName) {
-    if (!connected || !n) { setImages([]); return }
+    if (!connected || !n) { setImages([]); setProgressInfo({ saved_step: null, has_lora: false }); return }
     try {
       const data = await api(`/training/dataset/${encodeURIComponent(n)}`)
       setImages(data.images.map(i => ({ ...i, saved: i.caption })))
+      setProgressInfo({ saved_step: data.saved_step ?? null, has_lora: !!data.has_lora })
       setThumbVersion(v => v + 1)
     } catch (e) { say(e.message, 'error') }
   }
@@ -158,8 +160,8 @@ export default function Training({ active }) {
           const s = await api('/training/status')
           setTask(s)
           if (s.status !== 'running') {
+            await loadDataset()  // refresh tags (auto-tag) and saved-progress info (training)
             if (s.task === 'auto-tagging') {
-              await loadDataset()
               say(s.status === 'done' ? `Auto-tagged ${s.result?.tagged ?? ''} images — check the tags below` : (s.error || 'Auto-tagging stopped'), s.status === 'done' ? 'ok' : 'error')
             } else if (s.status === 'done') {
               say(`Training finished! ${s.result?.lora} is in Google Drive (ComfyUI/loras_sdxl). Start the BigLust notebook and pick it in the Image Generator's LoRA list.`, 'ok')
@@ -265,6 +267,22 @@ export default function Training({ active }) {
       })
       setTask(s)
       say('Training started. You can close this page — it keeps running in Colab. Come back to see progress.', 'ok')
+    } catch (e) { say(e.message, 'error') }
+  }
+
+  // Move the previous run aside (output -> output_vN, finished LoRA -> <name>_vN) so training starts from zero
+  async function startFresh() {
+    const what = [
+      progressInfo.saved_step != null && `saved progress (step ${progressInfo.saved_step}) → kept as output_vN`,
+      progressInfo.has_lora && `the finished ${dsName}.safetensors → renamed ${dsName}_vN.safetensors`,
+    ].filter(Boolean)
+    if (!what.length) return say('Nothing to set aside — the next training already starts from zero', 'ok')
+    if (!confirm(`Start "${dsName}" from zero?\n\nThis moves aside (nothing is deleted):\n• ${what.join('\n• ')}\n\nYour images and tags stay as they are.`)) return
+    try {
+      const r = await api(`/training/dataset/${encodeURIComponent(dsName)}/start_fresh`, { method: 'POST' })
+      setProgressInfo({ saved_step: r.saved_step ?? null, has_lora: !!r.has_lora })
+      refreshDatasets()
+      say(`Ready to start fresh. Moved aside in Google Drive: ${r.moved.join('; ')}. Now press Start training.`, 'ok')
     } catch (e) { say(e.message, 'error') }
   }
 
@@ -428,9 +446,22 @@ export default function Training({ active }) {
       )}
       <button className="link-btn secondary" onClick={() => applyTrainingPreset(TRAINING_PRESETS[0])}>Reset settings to defaults</button>
 
+      {connected && dsName && (progressInfo.saved_step != null || progressInfo.has_lora) && (
+        <div className="muted" style={{ marginTop: 14 }}>
+          {progressInfo.saved_step != null
+            ? <>“{dsName}” has saved progress at step {progressInfo.saved_step} — <b>Start training</b> continues it (same settings needed).</>
+            : <>“{dsName}” already has a finished LoRA — training again replaces {dsName}.safetensors.</>}
+          {' '}To train from zero instead (e.g. with a different preset), press <b>Start fresh</b>.
+        </div>
+      )}
       <div className="row" style={{ marginTop: 16 }}>
         <button onClick={startTraining} disabled={!connected || running}>Start training</button>
+        <button className="secondary" onClick={startFresh} disabled={!connected || running || !dsName}
+          title="Move the previous run aside and train from zero">Start fresh</button>
         {running && <button className="danger" onClick={stopTask}>Stop</button>}
+      </div>
+      <div className="muted" style={{ marginTop: 6 }}>
+        Start fresh <Info text={<>Use this to retrain from zero — for example with the <b>Person / face</b> preset after a first version. It moves the previous run aside in Google Drive instead of deleting it: <i>training/&lt;name&gt;/output</i> → <i>output_v1</i> (then v2…), and the finished <i>&lt;name&gt;.safetensors</i> → <i>&lt;name&gt;_v1.safetensors</i>, so you can still compare the old LoRA in BigLust. Your images and tags are not changed. Then press Start training.</>} />
       </div>
 
       {task && task.status !== 'idle' && (
