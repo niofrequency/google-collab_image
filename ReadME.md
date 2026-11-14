@@ -26,6 +26,10 @@ Run cells 1, 2 and 4 (cell 3 is an optional in-notebook test). Paste the `READY:
 frontend's Backend URL field; it switches to the recommended settings (4 steps, CFG 1,
 `sa_solver` / `beta`). Add a reference image to edit it, or leave it empty for text-to-image.
 
+LoRAs: use **+ Download LoRA** in the website (Civitai or Hugging Face link) or pick one you already
+downloaded. They must be **Qwen-Image / Qwen-Image-Edit** LoRAs; SDXL LoRAs don't work with this model.
+Each LoRA makes generation somewhat slower on a T4.
+
 ## Adding your own SDXL checkpoints and LoRAs (BigLust notebook)
 
 With the BigLust notebook running and its URL in the website's Backend URL field:

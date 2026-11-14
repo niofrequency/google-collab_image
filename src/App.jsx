@@ -44,6 +44,7 @@ export default function App() {
   const [batchSize, setBatchSize] = useState(1)
   const [denoise, setDenoise] = useState(1.0)
   const [backendType, setBackendType] = useState('')
+  const [supportsLoras, setSupportsLoras] = useState(true)
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
   const [schedulerOptions, setSchedulerOptions] = useState(DEFAULT_SCHEDULERS)
   const [loras, setLoras] = useState([])            // LoRAs applied to the next generation
@@ -244,6 +245,8 @@ export default function App() {
       const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
       setBackendType(data.model_type || '')
+      // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
+      setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
       const ckpts = data.checkpoints || []
       setCheckpoints(ckpts)
       setCheckpoint(c => (c && !ckpts.includes(c) ? '' : c))
@@ -682,8 +685,8 @@ export default function App() {
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
-      {backendType !== 'qwen_image_edit' && (<>
-      <label>LoRAs</label>
+      {supportsLoras && (<>
+      <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : ''}</label>
       {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
       {loras.map((l, i) => (
         <div key={l.name + i} className="lora-item">
@@ -714,7 +717,9 @@ export default function App() {
         </div>
       )}
       <button className="secondary" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>
+      </>)}
 
+      {backendType !== 'qwen_image_edit' && (<>
       <label style={{marginTop:20}}>Add Checkpoint</label>
       {showAddCheckpoint && (
         <div className="add-box">
