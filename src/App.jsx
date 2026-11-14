@@ -43,6 +43,7 @@ export default function App() {
   const [height, setHeight] = useState(1024)
   const [batchSize, setBatchSize] = useState(1)
   const [denoise, setDenoise] = useState(1.0)
+  const [backendType, setBackendType] = useState('')
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
   const [schedulerOptions, setSchedulerOptions] = useState(DEFAULT_SCHEDULERS)
   const [loras, setLoras] = useState([])
@@ -239,6 +240,7 @@ export default function App() {
     try {
       const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
+      setBackendType(data.model_type || '')
       setCheckpoints(data.checkpoints || [])
       setLoras(data.loras || [])
       if (Array.isArray(data.samplers)) setSamplerOptions(mergeOptions(DEFAULT_SAMPLERS, data.samplers))
@@ -353,6 +355,7 @@ export default function App() {
           if (data.status === 'queued') setStatusMsg('Queued — waiting for GPU...')
           else if (data.status === 'running') {
             setStatusMsg(`Generating image ${Math.min((data.done || 0) + 1, total)}/${total}` +
+              (data.width ? ` (${data.width}×${data.height})` : '') +
               (data.total_steps ? ` — step ${data.step}/${data.total_steps}` : '...'))
           }
         }
@@ -365,7 +368,7 @@ export default function App() {
         checkpoint: checkpoint || '',
         sampler, scheduler,
         steps: +steps, cfg: +cfg,
-        width: +width, height: +height,
+        width: data.width || +width, height: data.height || +height,
         loras: [...loras]
       }
 
@@ -380,7 +383,8 @@ export default function App() {
           await saveImage(blob, meta)
         }
         await loadGallery()
-        setStatusMsg(`Done — ${imageList.length} image(s)`, 'ok')
+        const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
+        setStatusMsg(`Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}`, 'ok')
       } else {
         setStatusMsg(data.error || 'No image returned', 'error')
       }
@@ -584,6 +588,9 @@ export default function App() {
 
   function handleMouseUp() { setIsDragging(false) }
 
+  // Qwen edit keeps the reference image's shape, so Width/Height act as a maximum box
+  const fitBox = backendType === 'qwen_image_edit' && !!referenceImage
+
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
@@ -632,8 +639,8 @@ export default function App() {
       <div className="row">
         <div><label>Steps</label><input type="number" value={steps} onChange={e => setSteps(e.target.value)} /></div>
         <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
-        <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
-        <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
+        <div><label title={fitBox ? 'Output keeps the reference image shape and fits inside Max Width × Max Height (never larger than the reference)' : ''}>{fitBox ? 'Max Width' : 'Width'}</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
+        <div><label title={fitBox ? 'Output keeps the reference image shape and fits inside Max Width × Max Height (never larger than the reference)' : ''}>{fitBox ? 'Max Height' : 'Height'}</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
         <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
