@@ -33,7 +33,7 @@ const MAX_REFS = 3
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-export default function App() {
+export default function App({ active = true }) {
   const [backendUrl, setBackendUrl] = useState('')
   const [checkpoint, setCheckpoint] = useState('')
   const [checkpoints, setCheckpoints] = useState([])
@@ -90,7 +90,9 @@ export default function App() {
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
   const usedBackendDefaults = useRef(false)
-  const backendTypeRef = useRef('')  // read by the paste handler, which is registered once
+  const backendTypeRef = useRef('')
+  const activeRef = useRef(active)  // the paste handler ignores pastes while another tab is shown
+  activeRef.current = active  // read by the paste handler, which is registered once
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function App() {
     loadGallery()
 
     const handlePaste = (e) => {
+      if (!activeRef.current) return
       const cd = e.clipboardData
       if (!cd) return
       // 1) An actual image on the clipboard ("Copy image", screenshots) — works anywhere on the page
