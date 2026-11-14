@@ -68,6 +68,9 @@ export default function App({ active = true }) {
   const [faceStrength, setFaceStrength] = useState(0.4)
   const [supportsFaceFix, setSupportsFaceFix] = useState(false)
   const [supportsLoraTargets, setSupportsLoraTargets] = useState(false)  // BigLust: LoRA for main image / face fix only
+  const [qwenModels, setQwenModels] = useState([])   // Qwen: every model size, with installed / fits / current
+  const [gpuInfo, setGpuInfo] = useState(null)       // { name, vram_gib } of the Colab GPU
+  const [switching, setSwitching] = useState(false)
   const [backendType, setBackendType] = useState('')
   const [supportsLoras, setSupportsLoras] = useState(true)
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
@@ -327,6 +330,8 @@ export default function App({ active = true }) {
       backendTypeRef.current = data.model_type || ''
       setSupportsFaceFix(!!data.supports_face_fix)
       setSupportsLoraTargets(!!data.supports_lora_targets)
+      setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
+      setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
       // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
       setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
@@ -691,6 +696,56 @@ export default function App({ active = true }) {
     }
   }
 
+  // Qwen: download (if needed) and load another size of the model
+  async function switchQwenModel(file) {
+    const m = qwenModels.find(x => x.file === file)
+    if (!m || m.current) return
+    const backend = getBackend()
+    if (!m.fits && !confirm(
+      `${m.quant} needs about ${m.need_gib} GB of GPU memory, but this Colab GPU (${gpuInfo?.name || 'unknown'}) has ${gpuInfo?.vram_gib ?? '?'} GB.\n\n` +
+      `On this GPU it will be very slow or may crash (the server then restarts with the previous model).\n\n` +
+      `For ${m.quant}, switch Colab to a bigger GPU first: Runtime → Change runtime type → L4 or A100.\n\nSwitch anyway?`)) return
+    setSwitching(true)
+    setShowProgress(true)
+    setProgress(2)
+    setStatusMsg(`Switching to ${m.quant}...`)
+    try {
+      const res = await fetch(backend + '/switch_model', { method: 'POST', headers: NGROK_HEADERS, body: JSON.stringify({ file }) })
+      let data = await res.json()
+      let downSince = null
+      while (data.job_id && data.status !== 'done' && data.status !== 'error') {
+        await sleep(2000)
+        const next = await fetchJob(backend, data.job_id)
+        if (!next) {
+          downSince ??= Date.now()
+          if (Date.now() - downSince > SERVER_RESTART_WAIT_MS) throw new Error(SERVER_GONE_MSG)
+          setStatusMsg(SERVER_DOWN_MSG)
+          continue
+        }
+        downSince = null
+        data = next
+        if (data.phase === 'downloading') {
+          if (data.progress != null) setProgress(Math.max(2, data.progress * 0.8))
+          setStatusMsg(`Downloading ${m.quant} (${m.size_gb} GB)... ${data.done_mb || 0}${data.total_mb ? ' / ' + data.total_mb : ''} MB`)
+        } else if (data.phase === 'loading') {
+          setProgress(85)
+          setStatusMsg(`Loading ${m.quant} onto the GPU...`)
+        }
+      }
+      setProgress(100)
+      if (data.status === 'error') throw new Error(data.error || 'Switching failed')
+      await loadUserModels()
+      setStatusMsg(`Now using ${m.quant}.` + (m.fits ? '' : ' It is too big for this GPU — see the note under the model list.'), m.fits ? 'ok' : 'error')
+    } catch (e) {
+      await loadUserModels()
+      setStatusMsg('Could not switch the model: ' + e.message, 'error')
+    }
+    setSwitching(false)
+    setTimeout(() => setShowProgress(false), 800)
+  }
+
+  const currentQwenModel = qwenModels.find(m => m.current)
+
   // Presets: one click sets the generation settings for the connected backend
   function applyGeneratorPreset(p) {
     const s = p.s || {}
@@ -831,11 +886,22 @@ export default function App({ active = true }) {
 
       <div className="row">
         <div>
+          {backendType === 'qwen_image_edit' && qwenModels.length > 0 ? (<>
+            <label>Model size <Info text={<>The same Qwen Rapid AIO v23 model in different sizes. <b>Bigger = better quality</b> (sharper faces and details) but needs more GPU memory:<br />• <b>Q2_K</b> — free T4 (15 GB)<br />• <b>Q3_K–Q5_K</b> — L4 (24 GB); Q4_K is the best fit<br />• <b>Q6_K, Q8_0</b> — A100 (40 GB)<br /><br />Picking one downloads it (first time only, a few minutes) and loads it. Sizes marked “needs a bigger GPU” won't fit the current Colab GPU. Cell 1 picks the best size for your GPU automatically.</>} /></label>
+            <select value={currentQwenModel?.file || ''} disabled={switching} onChange={e => switchQwenModel(e.target.value)}>
+              {qwenModels.map(m => (
+                <option key={m.file} value={m.file}>
+                  {m.quant} · {m.size_gb} GB{m.installed ? '' : ' · downloads'}{m.fits ? '' : ' · needs a bigger GPU'}
+                </option>
+              ))}
+            </select>
+          </>) : (<>
           <label>Checkpoint</label>
           <select value={checkpoint} onChange={e => setCheckpoint(e.target.value)}>
             <option value="">{checkpoints.length ? "Default (" + checkpoints[0] + ")" : "Default"}</option>
             {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
+          </>)}
         </div>
         <div>
           <label>Sampler</label>
@@ -850,6 +916,23 @@ export default function App({ active = true }) {
           </select>
         </div>
       </div>
+
+      {backendType === 'qwen_image_edit' && gpuInfo?.name && (
+        currentQwenModel && !currentQwenModel.fits ? (
+          <div className="gpu-note warn">
+            <b>Switch to a bigger GPU.</b> {currentQwenModel.quant} needs about {currentQwenModel.need_gib} GB of GPU memory,
+            but this Colab GPU ({gpuInfo.name}) has {gpuInfo.vram_gib} GB, so it's very slow or may crash.
+            In Colab: <b>Runtime → Change runtime type → L4</b> (or A100) — needs Colab Pro or compute units — then open the
+            Qwen notebook fresh from GitHub and run cells 1–3; it picks the best size for that GPU automatically.
+            Or pick a smaller size above (Q2_K fits a T4).
+          </div>
+        ) : (
+          <div className="gpu-note">
+            GPU: {gpuInfo.name} ({gpuInfo.vram_gib} GB){currentQwenModel ? ` · using ${currentQwenModel.quant}` : ''}
+            {qwenModels.some(m => !m.fits) && ' · bigger sizes (better quality) need an L4 or A100 GPU'}
+          </div>
+        )
+      )}
 
       <div className="row">
         <div><label>Steps</label><input type="number" value={steps} onChange={e => setSteps(e.target.value)} /></div>
