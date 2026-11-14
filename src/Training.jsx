@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import Info from './Info.jsx'
+import PresetBar from './PresetBar.jsx'
+import { TRAINING_PRESETS } from './presets.js'
 
 // LoRA Training tab: talks to the training server started by cell 2 of SDXL-LORA-TRAINING.ipynb.
 // Images and captions live in Google Drive (MyDrive/ComfyUI/training/<name>/images); this page edits them there.
@@ -17,23 +20,6 @@ function load(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem('train_' + key)); return v ?? fallback } catch { return fallback }
 }
 function save(key, value) { localStorage.setItem('train_' + key, JSON.stringify(value)) }
-
-export function Info({ text }) {
-  const [open, setOpen] = useState(false)
-  useEffect(() => {  // close when clicking anywhere else
-    if (!open) return
-    const close = () => setOpen(false)
-    const t = setTimeout(() => document.addEventListener('click', close), 0)
-    return () => { clearTimeout(t); document.removeEventListener('click', close) }
-  }, [open])
-  return (
-    <span className="info-wrap">
-      <button type="button" className="info-i" aria-label="More info" title={typeof text === 'string' ? text : ''}
-        onClick={e => { e.preventDefault(); e.stopPropagation(); setOpen(o => !o) }}>i</button>
-      {open && <span className="info-pop" onClick={() => setOpen(false)}>{text}</span>}
-    </span>
-  )
-}
 
 function cleanName(name) {
   return (name || '').trim().replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '')
@@ -75,8 +61,9 @@ export default function Training({ active }) {
   const [images, setImages] = useState([])           // [{file, caption, saved}]
   const [thumbVersion, setThumbVersion] = useState(0)
   const [bulkTag, setBulkTag] = useState('')
-  const [tagThreshold, setTagThreshold] = useState(0.35)
-  const [tagMode, setTagMode] = useState('append')
+  const [tagThreshold, setTagThreshold] = useState(load('tagThreshold', 0.35))
+  const [tagMode, setTagMode] = useState(load('tagMode', 'append'))
+  const [excludeTags, setExcludeTags] = useState(load('excludeTags', ''))
   const [task, setTask] = useState(null)             // server status
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [upload, setUpload] = useState(null)         // {done, total}
@@ -93,6 +80,26 @@ export default function Training({ active }) {
   useEffect(() => save('name', name), [name])
   useEffect(() => save('trigger', trigger), [trigger])
   useEffect(() => save('settings', settings), [settings])
+  useEffect(() => save('tagThreshold', tagThreshold), [tagThreshold])
+  useEffect(() => save('tagMode', tagMode), [tagMode])
+  useEffect(() => save('excludeTags', excludeTags), [excludeTags])
+
+  // Presets set the training settings and the auto-tag settings together
+  function applyTrainingPreset(p) {
+    setSettings(s => ({ ...s, ...p.s, ...(p.classWord ? { class_word: p.classWord } : {}) }))
+    if (p.tag) {
+      if (p.tag.threshold != null) setTagThreshold(p.tag.threshold)
+      if (p.tag.mode) setTagMode(p.tag.mode)
+      if (p.tag.exclude != null) setExcludeTags(p.tag.exclude)
+    }
+    say(`Preset "${p.name}" applied to the training and auto-tag settings` +
+      (images.length && p.tag ? ' — press Auto-tag all to re-tag with them' : ''), 'ok')
+  }
+
+  function currentTrainingSettings() {
+    const { class_word, ...s } = settings
+    return { s, classWord: class_word, tag: { threshold: +tagThreshold, mode: tagMode, exclude: excludeTags } }
+  }
 
   function say(text, type = '') { setMsg({ text, type }) }
 
@@ -239,7 +246,7 @@ export default function Training({ active }) {
     if (!images.length) return say('Add images first', 'error')
     try {
       const s = await api(`/training/dataset/${encodeURIComponent(dsName)}/autotag`, {
-        method: 'POST', body: JSON.stringify({ threshold: +tagThreshold, mode: tagMode, trigger_word: trigger }),
+        method: 'POST', body: JSON.stringify({ threshold: +tagThreshold, mode: tagMode, trigger_word: trigger, exclude_tags: excludeTags }),
       })
       setTask(s)
       say('Auto-tagging... (the first time it downloads the tagger, about 1 minute)')
@@ -354,6 +361,8 @@ export default function Training({ active }) {
                 <input type="number" step="0.05" min="0.1" max="0.9" value={tagThreshold} onChange={e => setTagThreshold(e.target.value)} style={{ width: 90 }} title="Sensitivity threshold (0.35 is typical)" />
                 <button className="secondary" onClick={autoTag} disabled={running}>Auto-tag all</button>
               </div>
+              <label>Leave out these tags <Info text="Comma-separated tags auto-tag never adds. For a person LoRA, list things that are always true of them (hair colour, eye colour, freckles…): left out of the captions, they're learned by the trigger word, so you don't have to type them in every prompt. The Person / face preset fills in a common list." /></label>
+              <input value={excludeTags} onChange={e => setExcludeTags(e.target.value)} placeholder="e.g. brown hair, blue eyes, freckles" />
             </div>
           </div>
 
@@ -374,7 +383,9 @@ export default function Training({ active }) {
         </>
       )}
 
-      <h3>Training settings <Info text="The defaults are tuned for a free Colab T4 and 15–40 images. You normally only change the steps." /></h3>
+      <h3>Training settings <Info text="The defaults are tuned for a free Colab T4 and 15–40 images. Pick a preset for your kind of LoRA, or change the steps." /></h3>
+      <PresetBar scope="training" builtins={TRAINING_PRESETS} onApply={applyTrainingPreset} getCurrent={currentTrainingSettings}
+        help={'One click sets the training settings and the auto-tag settings (sensitivity, add/replace, tags to leave out) for that kind of LoRA. "Default" goes back to the standard settings. After changing auto-tag settings, press "Auto-tag all" again to re-tag. Save your own with "+ Save current as preset".'} />
       <div className="row">
         <div>
           <label>Steps <Info text="How long to train. ~1500 for 15–40 images; more images → more steps. Too many steps makes the LoRA 'overcooked' (stiff, same face/pose everywhere). Checkpoints are saved every 250 steps so you can pick an earlier one." /></label>
@@ -415,7 +426,7 @@ export default function Training({ active }) {
           </div>
         </div>
       )}
-      <button className="link-btn secondary" onClick={() => setSettings({ ...SETTINGS_DEFAULTS, class_word: settings.class_word })}>Reset settings to defaults</button>
+      <button className="link-btn secondary" onClick={() => applyTrainingPreset(TRAINING_PRESETS[0])}>Reset settings to defaults</button>
 
       <div className="row" style={{ marginTop: 16 }}>
         <button onClick={startTraining} disabled={!connected || running}>Start training</button>

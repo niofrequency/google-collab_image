@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import Info from './Info.jsx'
+import PresetBar from './PresetBar.jsx'
+import { GENERATOR_PRESETS } from './presets.js'
  
 const CIVITAI_TOKEN = "777a5632707c15ecf54e13eb3b1b862b"
 
@@ -61,6 +64,9 @@ export default function App({ active = true }) {
   const [height, setHeight] = useState(1024)
   const [batchSize, setBatchSize] = useState(1)
   const [denoise, setDenoise] = useState(1.0)
+  const [faceFix, setFaceFix] = useState(false)          // BigLust: redraw faces at full resolution (like ADetailer)
+  const [faceStrength, setFaceStrength] = useState(0.4)
+  const [supportsFaceFix, setSupportsFaceFix] = useState(false)
   const [backendType, setBackendType] = useState('')
   const [supportsLoras, setSupportsLoras] = useState(true)
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
@@ -167,7 +173,9 @@ export default function App({ active = true }) {
       cfg: item.cfg || 0,
       width: item.width || 0,
       height: item.height || 0,
-      loras: item.loras || []
+      loras: item.loras || [],
+      faceFix: !!item.faceFix,
+      faceStrength: item.faceStrength || 0
     })))
     setSelectedIds(new Set())
   }
@@ -197,7 +205,8 @@ export default function App({ active = true }) {
         checkpoint: meta.checkpoint || '', sampler: meta.sampler || '',
         scheduler: meta.scheduler || '', steps: meta.steps || 0,
         cfg: meta.cfg || 0, width: meta.width || 0,
-        height: meta.height || 0, loras: meta.loras || []
+        height: meta.height || 0, loras: meta.loras || [],
+        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
@@ -315,6 +324,7 @@ export default function App({ active = true }) {
       const data = await res.json()
       setBackendType(data.model_type || '')
       backendTypeRef.current = data.model_type || ''
+      setSupportsFaceFix(!!data.supports_face_fix)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
       // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
       setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
@@ -457,6 +467,8 @@ export default function App({ active = true }) {
       loras, positive, negative,
       reference_image: refImages[0] || null,        // Picture 1
       reference_images: refImages.slice(1),         // Pictures 2 and 3
+      face_fix: backendType === 'sdxl' && faceFix,
+      face_fix_strength: +faceStrength,
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -503,7 +515,8 @@ export default function App({ active = true }) {
         sampler, scheduler,
         steps: +steps, cfg: +cfg,
         width: data.width || +width, height: data.height || +height,
-        loras: [...loras]
+        loras: [...loras],
+        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength
       }
 
       // Prefer the images array if present, fall back to single image
@@ -518,7 +531,9 @@ export default function App({ active = true }) {
         }
         await loadGallery()
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
-        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}`
+        const faces = data.faces_fixed == null ? ''
+          : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
+        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}`
         if (Array.isArray(data.warnings) && data.warnings.length) {
           setStatusMsg(`${done}. Warning: ${data.warnings.join(' ')}`, 'error')
         } else {
@@ -674,6 +689,38 @@ export default function App({ active = true }) {
     }
   }
 
+  // Presets: one click sets the generation settings for the connected backend
+  function applyGeneratorPreset(p) {
+    const s = p.s || {}
+    if (s.steps != null) setSteps(s.steps)
+    if (s.cfg != null) setCfg(s.cfg)
+    if (s.sampler) { setSampler(s.sampler); setSamplerOptions(o => mergeOptions(o, [s.sampler])) }
+    if (s.scheduler) { setScheduler(s.scheduler); setSchedulerOptions(o => mergeOptions(o, [s.scheduler])) }
+    if (s.denoise != null) setDenoise(s.denoise)
+    if (s.batch != null) setBatchSize(s.batch)
+    if (s.width) setWidth(s.width)
+    if (s.height) setHeight(s.height)
+    if (s.maxSide) {
+      const scale = Math.min(1, s.maxSide / Math.max(+width, +height))
+      setWidth(Math.max(256, Math.round(+width * scale / 16) * 16))
+      setHeight(Math.max(256, Math.round(+height * scale / 16) * 16))
+    }
+    if (s.faceFix != null) setFaceFix(s.faceFix && supportsFaceFix)
+    if (s.faceStrength != null) setFaceStrength(s.faceStrength)
+    if (s.loraStrength != null && loras.length) setLoras(prev => prev.map(l => ({ ...l, strength: s.loraStrength })))
+    const note = s.faceFix && !supportsFaceFix ? ' (face fix needs the updated BigLust notebook — open it fresh from GitHub)' : ''
+    setStatusMsg(`Preset "${p.name}" applied${note}`, note ? 'error' : 'ok')
+  }
+
+  function currentGeneratorSettings() {
+    return { s: {
+      steps: +steps, cfg: +cfg, sampler, scheduler, denoise: +denoise, batch: +batchSize,
+      ...(backendType === 'qwen_image_edit' ? {} : { width: +width, height: +height }),
+      faceFix, faceStrength: +faceStrength,
+      ...(loras.length ? { loraStrength: loras[0].strength } : {}),
+    } }
+  }
+
   function loadFullWorkflow(item) {
     if (!item) return
     setPositive(item.positive || '')
@@ -686,6 +733,8 @@ export default function App({ active = true }) {
     if (item.width) setWidth(item.width)
     if (item.height) setHeight(item.height)
     if (item.loras && item.loras.length) setLoras(item.loras)
+    setFaceFix(!!item.faceFix)
+    if (item.faceStrength) setFaceStrength(item.faceStrength)
     setInfoItem(null)
     setStatusMsg('Full workflow loaded', 'ok')
   }
@@ -770,6 +819,14 @@ export default function App({ active = true }) {
         {refImages.length > 0 && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>}
       </div>
 
+      {GENERATOR_PRESETS[backendType] && (
+        <PresetBar key={backendType} scope={'gen_' + backendType} builtins={GENERATOR_PRESETS[backendType]}
+          onApply={applyGeneratorPreset} getCurrent={currentGeneratorSettings}
+          help={backendType === 'sdxl'
+            ? 'One click sets size, steps, CFG, sampler, face fix and the strength of your LoRAs. "Default" goes back to the standard settings. Your prompt is not changed. Save your own settings with "+ Save current as preset".'
+            : 'One click sets steps, CFG, sampler and denoise for Qwen edit (Width/Height stay at Picture 1\'s size unless the preset says otherwise). "Default" goes back to the recommended settings. Save your own with "+ Save current as preset".'} />
+      )}
+
       <div className="row">
         <div>
           <label>Checkpoint</label>
@@ -801,11 +858,26 @@ export default function App({ active = true }) {
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
+      {backendType === 'sdxl' && (
+        <div className="face-fix">
+          <button className={`toggle ${faceFix ? 'on' : ''}`} disabled={!supportsFaceFix}
+            onClick={() => setFaceFix(f => !f)} title={supportsFaceFix ? 'Click to turn face fix on or off' : 'Needs the updated BigLust notebook'}>
+            Face fix: {faceFix ? 'On' : 'Off'}
+          </button>
+          {faceFix && (
+            <label className="inline-label">Strength
+              <input type="number" step="0.05" min="0.1" max="0.8" value={faceStrength} onChange={e => setFaceStrength(e.target.value)} />
+            </label>
+          )}
+          <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (it installs the face detector in cell 1).</>}</>} />
+        </div>
+      )}
+
       {!supportsLoras && (<>
         <label>LoRAs</label>
         <div className="empty-msg">
           The Qwen notebook running in Colab is an older version without LoRA support.
-          Open it fresh from GitHub (QWEN-AIO-NSFW-EDIT.ipynb), run cells 1, 2 and 4, and paste the new URL here.
+          Open it fresh from GitHub (QWEN-AIO-NSFW-EDIT.ipynb), run cells 1, 2 and 3, and paste the new URL here.
         </div>
       </>)}
       {supportsLoras && (<>
@@ -961,6 +1033,7 @@ export default function App({ active = true }) {
             <div className="meta-info">
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
+              {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
             </div>
             <div className="row" style={{marginTop:16}}>
               <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>
