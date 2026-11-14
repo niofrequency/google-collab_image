@@ -59,6 +59,12 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
 - **LoRAs are kept in Google Drive** (`MyDrive/ComfyUI/loras_sdxl`), including LoRAs you train with the training
   notebook. Checkpoints stay on the runtime and must be downloaded again after it's deleted.
 - One checkpoint is loaded at a time; switching frees the previous one.
+- **Face fix** (toggle under the settings): after the image is made, each face is found, redrawn at full resolution
+  with your LoRAs and prompt, and blended back in (like ADetailer). Faces — especially small ones in full-body shots —
+  get much more detail and look more like a person LoRA. *Strength* 0.3 = subtle, 0.4 = default, 0.5–0.6 = stronger.
+- **Presets:** one click sets size, steps, CFG, sampler, face fix and LoRA strength — *Default*, *Portrait (best
+  likeness)*, *Upper body*, *Full body*, *Landscape*, *Fast draft*. Save your own with *+ Save current as preset*
+  (kept in your browser). Presets don't change your prompt.
 
 ## Qwen Image Edit Rapid AIO (GGUF)
 
@@ -74,6 +80,7 @@ with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
   No reference image = text-to-image.
 - **Faster:** lower Width/Height (e.g. 768 × 768). Re-rolls with the same prompt and image reuse the encoding.
 - **Keeping faces:** Denoise 0.7–0.85, same shape as the photo, and *"keep the face unchanged"* in the prompt.
+- **Presets:** *Default*, *Keep face (subtle edit)*, *More detail (6 steps)*, *Fast (smaller)*, plus your own.
 - **LoRAs:** *+ Download LoRA* on the website. Only **Qwen-Image / Qwen-Image-Edit** LoRAs work; they're kept in
   `MyDrive/ComfyUI/loras_qwen`. Each LoRA adds some time per image.
 - Re-running cell 3 restarts the server with the current code (same URL). To stop it: **Runtime → Restart session**.
@@ -87,7 +94,10 @@ Uses [kohya-ss sd-scripts](https://github.com/kohya-ss/sd-scripts).
 2. On the website's **LoRA Training** tab: paste the URL, name the LoRA, pick a made-up **trigger word**
    (e.g. `zxq_anna` — you'll type it in prompts later) and a class word (`woman`, `man`, …).
 3. Drop in **15–40 images** (varied poses, outfits, backgrounds; jpg/png/webp — convert iPhone HEIC to jpg).
-4. Check the tags under each image. **Auto-tag all** fills them in; **Tag for all images** adds/removes one tag everywhere.
+4. Pick a **preset** for your kind of LoRA — *Default*, *Person / face*, *Style* or *Quick test*. It sets the training
+   settings **and** the auto-tag settings (sensitivity, add/replace, and **tags to leave out**: for a person, things that
+   never change like hair or eye colour are left out so the trigger word learns them).
+   Check the tags under each image. **Auto-tag all** fills them in; **Tag for all images** adds/removes one tag everywhere.
 5. Press **Start training**. Expect about **1–3 hours**; the website shows the step, % and time left. The first
    5–15 minutes are loading the model and preparing the images (step 0).
 6. The finished LoRA is saved to `MyDrive/ComfyUI/loras_sdxl/<name>.safetensors` and appears in BigLust's LoRA list.
