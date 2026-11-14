@@ -98,6 +98,46 @@ Every setting on the website has an **ⓘ** explaining it. Images and captions a
 run cells 1–2 again and press Start training with the same name — it continues from the last saved step. If you get
 *"CUDA out of memory"*, set Batch size to 1. Cell 3 trains without the website; cell 4 shows progress in Colab.
 
+### Using your LoRA after training
+
+You don't need to download anything. The LoRA is saved to your Google Drive, and BigLust picks it up automatically.
+
+1. **Free the GPU.** In the training notebook: **Runtime → Disconnect and delete runtime**. Free Colab gives you one
+   GPU, so BigLust can't run alongside the trainer.
+2. **Start BigLust:** [open it from GitHub](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb),
+   choose a T4 GPU, and run all cells. Allow Drive access when asked; that's how it finds your LoRA in
+   `MyDrive/ComfyUI/loras_sdxl`.
+3. **On the [website](https://google-collabimage-one.vercel.app)**, **Image Generator** tab, paste BigLust's URL.
+   In the **LoRAs** section, open **"+ Use a downloaded LoRA…"** and pick **`<name>.safetensors`**
+   (e.g. `Stephanie.safetensors`).
+4. **Put your trigger word in the prompt**, e.g. *"photo of Stephanie, smiling, in a café, natural light"*. Start at
+   strength **0.8**: lower it if it looks overdone, raise it if the likeness is weak.
+
+You only need to download it from Drive if you want to use it in some other program.
+
+### If training stops
+
+Cell 4 alone won't restart it — cell 4 only *shows* progress. What to do depends on what stopped:
+
+| What happened | What to do |
+|---|---|
+| **Colab disconnected** (new runtime, "Reconnect" message) | Run **cell 1**, then either **cell 2** (website) or **cell 3** (no website). See below. |
+| **Training errored but Colab is still connected** | Just start training again (Start training on the website, or re-run cell 3). No need to re-run cell 1. |
+
+**Resuming with the website:**
+1. Run cell 1, then cell 2, and copy the **new** `READY:` URL; it changes every time.
+2. On the **LoRA Training** tab, paste the new URL. Your name, trigger word and settings are remembered by your
+   browser. If the name field is empty, click your LoRA's button (e.g. **Stephanie**) under the URL box.
+3. Press **Start training**. It continues from the last save.
+
+**Resuming without the website (cell 3):**
+1. Run cell 1.
+2. Run cell 3 again with the **same values** in the form: same name, trigger word and steps. Your images are already
+   in Drive, so it skips the file picker and continues.
+
+**Keep these the same when resuming:** the **name** and the **number of steps** (default 1,500). Progress after the
+last save is redone. Saves happen every 250 steps, so you lose at most about 15–20 minutes at the default settings.
+
 ## Google Drive folders
 
 | Folder | Contents |
