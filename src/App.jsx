@@ -46,7 +46,10 @@ export default function App() {
   const [backendType, setBackendType] = useState('')
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
   const [schedulerOptions, setSchedulerOptions] = useState(DEFAULT_SCHEDULERS)
-  const [loras, setLoras] = useState([])
+  const [loras, setLoras] = useState([])            // LoRAs applied to the next generation
+  const [loraFiles, setLoraFiles] = useState([])    // LoRA files available on the backend
+  const [loraToAdd, setLoraToAdd] = useState('')
+  const [downloading, setDownloading] = useState(false)
   const [positive, setPositive] = useState('')
   const [negative, setNegative] = useState('')
   const [status, setStatus] = useState('')
@@ -241,8 +244,15 @@ export default function App() {
       const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
       setBackendType(data.model_type || '')
-      setCheckpoints(data.checkpoints || [])
-      setLoras(data.loras || [])
+      const ckpts = data.checkpoints || []
+      setCheckpoints(ckpts)
+      setCheckpoint(c => (c && !ckpts.includes(c) ? '' : c))
+      // lora_files: plain file names. Older backends sent loras: [{name, strength}]
+      const files = Array.isArray(data.lora_files)
+        ? data.lora_files
+        : (data.loras || []).map(l => (typeof l === 'string' ? l : l.name)).filter(Boolean)
+      setLoraFiles(files)
+      setLoras(prev => prev.filter(l => files.includes(l.name)))
       if (Array.isArray(data.samplers)) setSamplerOptions(mergeOptions(DEFAULT_SAMPLERS, data.samplers))
       if (Array.isArray(data.schedulers)) setSchedulerOptions(mergeOptions(DEFAULT_SCHEDULERS, data.schedulers))
       // Backends such as the Qwen Rapid AIO edit notebook publish their recommended settings
@@ -274,6 +284,7 @@ export default function App() {
   }
 
   async function addModel(type, url) {
+    url = (url || '').trim()
     if (!url) return setStatusMsg('Paste a URL', 'error')
     let finalUrl = url
     if (url.includes('civitai.com') && !url.includes('token=')) {
@@ -281,31 +292,57 @@ export default function App() {
     }
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
-    setStatusMsg('Downloading...')
+    const label = type === 'lora' ? 'LoRA' : 'checkpoint'
+    setDownloading(true)
+    setStatusMsg(`Downloading ${label}...`)
     setShowProgress(true)
-    setProgress(30)
+    setProgress(2)
     try {
       const res = await fetch(backend + '/download_model', {
         method: 'POST',
         headers: NGROK_HEADERS,
         body: JSON.stringify({ url: finalUrl, type })
       })
-      const data = await res.json()
+      let data = await res.json()
+      // Newer backends download in the background and return a job to poll
+      // (big checkpoints take longer than the tunnel's ~100 s request limit)
+      if (data.job_id && !data.filename) {
+        while (data.status !== 'done' && data.status !== 'error') {
+          await sleep(2000)
+          const r = await fetch(backend + '/job/' + data.job_id, { headers: NGROK_HEADERS })
+          data = await r.json()
+          if (data.progress != null) setProgress(Math.max(2, data.progress))
+          const mb = data.done_mb ? ` ${data.done_mb}${data.total_mb ? ' / ' + data.total_mb : ''} MB` : ''
+          setStatusMsg(`Downloading ${label}${data.filename ? ' ' + data.filename : ''}...${mb}`)
+        }
+      }
       setProgress(100)
-      if (data.filename) {
-        setStatusMsg('Added: ' + data.filename, 'ok')
-        if (type === 'lora') setShowAddLora(false)
-        else setShowAddCheckpoint(false)
-        setNewLoraUrl('')
-        setNewCheckpointUrl('')
+      if (data.status !== 'error' && data.filename) {
         await loadUserModels()
+        if (type === 'lora') {
+          setLoras(prev => prev.some(l => l.name === data.filename) ? prev : [...prev, { name: data.filename, strength: 0.8 }])
+          setShowAddLora(false)
+          setNewLoraUrl('')
+        } else {
+          setCheckpoint(data.filename)
+          setShowAddCheckpoint(false)
+          setNewCheckpointUrl('')
+        }
+        setStatusMsg(`Added ${label}: ${data.filename}` + (type === 'lora' ? ' (enabled at 0.8)' : ' (selected)'), 'ok')
       } else {
         setStatusMsg(data.error || 'Download failed', 'error')
       }
     } catch (e) {
       setStatusMsg('Error: ' + e.message, 'error')
     }
+    setDownloading(false)
     setTimeout(() => setShowProgress(false), 800)
+  }
+
+  function addLoraFromList(name) {
+    if (!name) return
+    setLoras(prev => prev.some(l => l.name === name) ? prev : [...prev, { name, strength: 0.8 }])
+    setLoraToAdd('')
   }
 
   function setStatusMsg(msg, type = '') { setStatus(msg); setStatusType(type) }
@@ -618,7 +655,7 @@ export default function App() {
         <div>
           <label>Checkpoint</label>
           <select value={checkpoint} onChange={e => setCheckpoint(e.target.value)}>
-            <option value="">Default</option>
+            <option value="">{checkpoints.length ? "Default (" + checkpoints[0] + ")" : "Default"}</option>
             {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
         </div>
@@ -645,37 +682,51 @@ export default function App() {
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
+      {backendType !== 'qwen_image_edit' && (<>
       <label>LoRAs</label>
-      {loras.length === 0 && <div className="empty-msg">No LoRAs added yet.</div>}
+      {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
       {loras.map((l, i) => (
-        <div key={i} className="lora-item">
-          <input value={l.name} onChange={e => { const n = [...loras]; n[i].name = e.target.value; setLoras(n) }} />
-          <input type="number" step="0.1" value={l.strength} style={{width:80}} onChange={e => { const n = [...loras]; n[i].strength = parseFloat(e.target.value); setLoras(n) }} />
+        <div key={l.name + i} className="lora-item">
+          <select value={l.name} onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}>
+            {!loraFiles.includes(l.name) && <option value={l.name}>{l.name} (not on server)</option>}
+            {loraFiles.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <input type="number" step="0.05" value={l.strength} style={{width:80}} title="Strength"
+            onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, strength: parseFloat(e.target.value) } : x))} />
           <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
         </div>
       ))}
+      {loraFiles.some(f => !loras.some(l => l.name === f)) && (
+        <div className="lora-item">
+          <select value={loraToAdd} onChange={e => addLoraFromList(e.target.value)}>
+            <option value="">+ Use a downloaded LoRA...</option>
+            {loraFiles.filter(f => !loras.some(l => l.name === f)).map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+      )}
       {showAddLora && (
         <div className="add-box">
-          <input value={newLoraUrl} onChange={e => setNewLoraUrl(e.target.value)} placeholder="Paste LoRA URL" />
+          <input value={newLoraUrl} onChange={e => setNewLoraUrl(e.target.value)} placeholder="Civitai or Hugging Face LoRA link (page or download link)" />
           <div className="row">
-            <button className="secondary" onClick={() => addModel('lora', newLoraUrl)}>Download & Add</button>
+            <button className="secondary" disabled={downloading} onClick={() => addModel('lora', newLoraUrl)}>Download & Add</button>
             <button className="secondary" onClick={() => setShowAddLora(false)}>Cancel</button>
           </div>
         </div>
       )}
-      <button className="secondary" onClick={() => setShowAddLora(true)}>+ Add LoRA</button>
+      <button className="secondary" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>
 
       <label style={{marginTop:20}}>Add Checkpoint</label>
       {showAddCheckpoint && (
         <div className="add-box">
-          <input value={newCheckpointUrl} onChange={e => setNewCheckpointUrl(e.target.value)} placeholder="Paste Checkpoint URL" />
+          <input value={newCheckpointUrl} onChange={e => setNewCheckpointUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link (page or download link)" />
           <div className="row">
-            <button className="secondary" onClick={() => addModel('checkpoint', newCheckpointUrl)}>Download & Add</button>
+            <button className="secondary" disabled={downloading} onClick={() => addModel('checkpoint', newCheckpointUrl)}>Download & Add</button>
             <button className="secondary" onClick={() => setShowAddCheckpoint(false)}>Cancel</button>
           </div>
         </div>
       )}
-      <button className="secondary" onClick={() => setShowAddCheckpoint(true)}>+ Add Checkpoint</button>
+      <button className="secondary" onClick={() => setShowAddCheckpoint(true)}>+ Download Checkpoint</button>
+      </>)}
 
       <label>Positive Prompt</label>
       <textarea value={positive} onChange={e => setPositive(e.target.value)} />
