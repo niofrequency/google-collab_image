@@ -67,6 +67,7 @@ export default function App({ active = true }) {
   const [faceFix, setFaceFix] = useState(false)          // BigLust: redraw faces at full resolution (like ADetailer)
   const [faceStrength, setFaceStrength] = useState(0.4)
   const [supportsFaceFix, setSupportsFaceFix] = useState(false)
+  const [supportsLoraTargets, setSupportsLoraTargets] = useState(false)  // BigLust: LoRA for main image / face fix only
   const [backendType, setBackendType] = useState('')
   const [supportsLoras, setSupportsLoras] = useState(true)
   const [samplerOptions, setSamplerOptions] = useState(DEFAULT_SAMPLERS)
@@ -325,6 +326,7 @@ export default function App({ active = true }) {
       setBackendType(data.model_type || '')
       backendTypeRef.current = data.model_type || ''
       setSupportsFaceFix(!!data.supports_face_fix)
+      setSupportsLoraTargets(!!data.supports_lora_targets)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
       // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
       setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
@@ -891,9 +893,25 @@ export default function App({ active = true }) {
           </select>
           <input type="number" step="0.05" value={l.strength} style={{width:80}} title="Strength"
             onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, strength: parseFloat(e.target.value) } : x))} />
+          {backendType === 'sdxl' && supportsLoraTargets && (
+            <select className="lora-target" value={l.target || 'all'} title="Where this LoRA is used"
+              onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, target: e.target.value } : x))}>
+              <option value="all">Whole image</option>
+              <option value="main">Main image only</option>
+              <option value="face">Face fix only</option>
+            </select>
+          )}
           <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
         </div>
       ))}
+      {backendType === 'sdxl' && supportsLoraTargets && loras.length > 0 && (
+        <div className="muted lora-target-help">
+          Where each LoRA is used <Info text={<><b>Whole image</b>: the main image and the face fix (normal).<br /><b>Main image only</b>: body, outfit, pose — not used when face fix redraws the face.<br /><b>Face fix only</b>: used only to redraw the face (needs Face fix on).<br /><br />Example for best likeness: your full-body LoRA (e.g. Stephanie_v1) on <i>Main image only</i> and a face-only LoRA (e.g. Stephanie_face) on <i>Face fix only</i>, with the same trigger word in the prompt.</>} />
+          {loras.some(l => l.target === 'face') && !faceFix && (
+            <span className="warn"> — a LoRA is set to “Face fix only”, but Face fix is off, so it won't be used.</span>
+          )}
+        </div>
+      )}
       {loraFiles.some(f => !loras.some(l => l.name === f)) && (
         <div className="lora-item">
           <select value={loraToAdd} onChange={e => addLoraFromList(e.target.value)}>

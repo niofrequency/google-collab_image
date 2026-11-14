@@ -429,3 +429,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .toggle.on:hover { background: #22462b; }
 .inline-label { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; color: var(--muted); }
 .inline-label input { width: 80px; }
+.lora-item select.lora-target { flex: 0 0 160px; }
+.lora-target-help { margin: -2px 0 8px; }
+.lora-target-help .warn { color: #e67e22; }
