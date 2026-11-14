@@ -45,7 +45,7 @@ Run **one GPU notebook at a time** — on the free tier they share one GPU.
 ## BigLust (SDXL)
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb) ·
-**Run all cells**; the last one prints the URL.
+Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loaded. Cell 4 shows the server's log and memory use.
 
 - **Checkpoints and LoRAs from the website:** *+ Download Checkpoint* / *+ Download LoRA*, then paste a link:
   - Civitai model pages (`https://civitai.com/models/12345/...` — newest version, or the one in `?modelVersionId=`)
@@ -63,7 +63,7 @@ Run **one GPU notebook at a time** — on the free tier they share one GPU.
 ## Qwen Image Edit Rapid AIO (GGUF)
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) ·
-Run cells **1, 2 and 4** (cell 3 is an optional test). Model: [Qwen-Rapid-NSFW-v23 Q2_K](https://huggingface.co/Novice25/Qwen-Image-Edit-Rapid-AIO-GGUF)
+Run cells **1–3**; cell 3 prints the URL once the models have loaded. Cell 4 shows the server's log and memory use. Model: [Qwen-Rapid-NSFW-v23 Q2_K](https://huggingface.co/Novice25/Qwen-Image-Edit-Rapid-AIO-GGUF)
 with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
 
 - Pasting the URL switches the website to the recommended settings: **4 steps, CFG 1, `sa_solver` / `beta`**.
@@ -76,8 +76,7 @@ with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
 - **Keeping faces:** Denoise 0.7–0.85, same shape as the photo, and *"keep the face unchanged"* in the prompt.
 - **LoRAs:** *+ Download LoRA* on the website. Only **Qwen-Image / Qwen-Image-Edit** LoRAs work; they're kept in
   `MyDrive/ComfyUI/loras_qwen`. Each LoRA adds some time per image.
-- Cell 4 finishes after printing the URL; the server keeps running. Re-running it updates the server.
-  To stop it: **Runtime → Restart session**.
+- Re-running cell 3 restarts the server with the current code (same URL). To stop it: **Runtime → Restart session**.
 
 ## SDXL LoRA training
 
@@ -138,6 +137,14 @@ Cell 4 alone won't restart it — cell 4 only *shows* progress. What to do depen
 **Keep these the same when resuming:** the **name** and the **number of steps** (default 1,500). Progress after the
 last save is redone. Saves happen every 250 steps, so you lose at most about 15–20 minutes at the default settings.
 
+## Why generation no longer crashes the notebook
+
+In the BigLust and Qwen notebooks, **cell 2 saves the generation server as its own program and cell 3 runs it
+separately** from the notebook. If an image runs out of memory, only that program stops: cell 3 restarts it
+automatically with the **same URL** (models reload in 1–3 minutes), and the website waits, then tells you the job was
+lost and why. If it crashes 4 times within 10 minutes it stays stopped — check cell 4's log and run cell 3 again.
+To lower the chance of crashes: smaller Width/Height, fewer reference pictures, batch 1, fewer LoRAs.
+
 ## Google Drive folders
 
 | Folder | Contents |
@@ -157,8 +164,9 @@ You can add files to these folders yourself with the Google Drive website or app
   the notebook as above and paste the new URL (it changes every run).
 - **A cell is stuck on the spinner before starting:** another cell (or another tab on the same runtime) is still
   running. Stop it, or end old runtimes under **Runtime → Manage sessions**.
-- **"Your session crashed after using all available RAM":** run one GPU notebook at a time and use the notebooks as
-  they are in this repo (they're set up for the free tier's 12.7 GB RAM).
+- **"Your session crashed after using all available RAM":** run one GPU notebook at a time, and open the notebooks
+  fresh from this repo — in the current versions an out-of-memory error only restarts the server program, not the
+  session. The website then says *"The generation server ran out of memory…"*; use a smaller size or fewer pictures.
 - **A LoRA does nothing or errors:** it must match the model (SDXL LoRAs for BigLust, Qwen LoRAs for Qwen). The
   notebooks report LoRAs that don't fit.
 - Free Colab sessions disconnect after a while and have daily GPU limits.

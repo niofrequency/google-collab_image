@@ -31,6 +31,22 @@ function isImageAddress(text) {
 
 const MAX_REFS = 3
 
+// Poll a background job. Returns null (instead of throwing) while the server doesn't answer, e.g. while
+// the notebook restarts it after it ran out of memory; the caller keeps waiting for a while.
+async function fetchJob(backend, jobId) {
+  try {
+    const r = await fetch(backend + '/job/' + jobId, { headers: NGROK_HEADERS })
+    if (!r.ok) return null
+    return await r.json()
+  } catch {
+    return null
+  }
+}
+
+const SERVER_RESTART_WAIT_MS = 5 * 60 * 1000
+const SERVER_DOWN_MSG = 'The server is not answering — it may be restarting after running out of memory (1–3 minutes). Waiting...'
+const SERVER_GONE_MSG = 'The server stopped answering for 5 minutes. Check the Colab notebook (cell 4 shows the server log).'
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 export default function App({ active = true }) {
@@ -370,10 +386,18 @@ export default function App({ active = true }) {
       // Newer backends download in the background and return a job to poll
       // (big checkpoints take longer than the tunnel's ~100 s request limit)
       if (data.job_id && !data.filename) {
+        let downSince = null
         while (data.status !== 'done' && data.status !== 'error') {
           await sleep(2000)
-          const r = await fetch(backend + '/job/' + data.job_id, { headers: NGROK_HEADERS })
-          data = await r.json()
+          const next = await fetchJob(backend, data.job_id)
+          if (!next) {
+            downSince ??= Date.now()
+            if (Date.now() - downSince > SERVER_RESTART_WAIT_MS) throw new Error(SERVER_GONE_MSG)
+            setStatusMsg(SERVER_DOWN_MSG)
+            continue
+          }
+          downSince = null
+          data = next
           if (data.progress != null) setProgress(Math.max(2, data.progress))
           const mb = data.done_mb ? ` ${data.done_mb}${data.total_mb ? ' / ' + data.total_mb : ''} MB` : ''
           setStatusMsg(`Downloading ${label}${data.filename ? ' ' + data.filename : ''}...${mb}`)
@@ -446,10 +470,18 @@ export default function App({ active = true }) {
       // requests after ~100 s) return a job_id right away; poll until it finishes.
       if (data.job_id && !data.image && !(data.images && data.images.length)) {
         clearInterval(timer)
+        let downSince = null
         while (data.status !== 'done' && data.status !== 'error') {
           await sleep(1500)
-          const r = await fetch(backend + '/job/' + data.job_id, { headers: NGROK_HEADERS })
-          data = await r.json()
+          const next = await fetchJob(backend, data.job_id)
+          if (!next) {
+            downSince ??= Date.now()
+            if (Date.now() - downSince > SERVER_RESTART_WAIT_MS) throw new Error(SERVER_GONE_MSG)
+            setStatusMsg(SERVER_DOWN_MSG)
+            continue
+          }
+          downSince = null
+          data = next
           const total = data.batch_size || count
           const stepFrac = data.total_steps ? data.step / data.total_steps : 0
           const frac = Math.min(((data.done || 0) + stepFrac) / total, 1)
