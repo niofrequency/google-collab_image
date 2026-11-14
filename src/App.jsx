@@ -483,7 +483,12 @@ export default function App() {
         }
         await loadGallery()
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
-        setStatusMsg(`Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}`, 'ok')
+        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}`
+        if (Array.isArray(data.warnings) && data.warnings.length) {
+          setStatusMsg(`${done}. Warning: ${data.warnings.join(' ')}`, 'error')
+        } else {
+          setStatusMsg(done, 'ok')
+        }
       } else {
         setStatusMsg(data.error || 'No image returned', 'error')
       }

@@ -49,6 +49,16 @@ With the BigLust notebook running and its URL in the website's Backend URL field
 - Use SDXL-based checkpoints (SDXL, Pony, Illustrious, ...) with SDXL LoRAs. SD 1.5 also loads, but LoRAs must match the checkpoint's base model.
 - Files live on the Colab runtime, so they need to be downloaded again after the runtime is reset.
 
+## LoRAs are kept in Google Drive
+
+Both notebooks connect your Google Drive in their first cell (Colab asks you to allow it) and save
+LoRAs in `MyDrive/ComfyUI/loras_qwen` (Qwen) or `MyDrive/ComfyUI/loras_sdxl` (BigLust), so they're
+still there after the runtime is deleted. Set `USE_GOOGLE_DRIVE = False` at the top of that cell to
+keep them on the runtime only. You can also copy `.safetensors` LoRAs into those Drive folders yourself.
+
+If a LoRA doesn't fit the model (e.g. an SDXL LoRA on Qwen), generation stops with an error saying
+so; if it only partly fits, the image is made and the website shows a warning.
+
 ## How to use
 
 1. Click one of the **Open in Colab** buttons above.
