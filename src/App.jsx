@@ -685,6 +685,13 @@ export default function App() {
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
 
+      {!supportsLoras && (<>
+        <label>LoRAs</label>
+        <div className="empty-msg">
+          The Qwen notebook running in Colab is an older version without LoRA support.
+          Open it fresh from GitHub (QWEN-AIO-NSFW-EDIT.ipynb), run cells 1, 2 and 4, and paste the new URL here.
+        </div>
+      </>)}
       {supportsLoras && (<>
       <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : ''}</label>
       {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
