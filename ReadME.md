@@ -34,6 +34,15 @@ LoRAs: use **+ Download LoRA** in the website (Civitai or Hugging Face link) or 
 downloaded. They must be **Qwen-Image / Qwen-Image-Edit** LoRAs; SDXL LoRAs don't work with this model.
 Each LoRA makes generation somewhat slower on a T4.
 
+### SDXL LoRA training
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb)
+
+Trains an SDXL LoRA on a free T4 with kohya-ss sd-scripts. Put 15–40 images (and optional `.txt` captions) in
+`MyDrive/ComfyUI/training/<name>/images`, set the name and trigger word in cell 1, and run cells 1–4. The finished LoRA
+is saved to `MyDrive/ComfyUI/loras_sdxl`, so it appears in the website's LoRA list when you next start BigLust.
+Progress is saved every 250 steps; if Colab disconnects, run all cells again with the same settings to resume.
+Don't run it at the same time as the BigLust or Qwen notebook.
+
 ## Adding your own SDXL checkpoints and LoRAs (BigLust notebook)
 
 With the BigLust notebook running and its URL in the website's Backend URL field:
