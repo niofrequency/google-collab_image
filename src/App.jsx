@@ -29,6 +29,8 @@ function isImageAddress(text) {
   return /^data:image\//i.test(text) || /^https?:\/\/\S+$/i.test(text)
 }
 
+const MAX_REFS = 3
+
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 export default function App() {
@@ -69,8 +71,10 @@ export default function App() {
   const [newLoraUrl, setNewLoraUrl] = useState('')
   const [newCheckpointUrl, setNewCheckpointUrl] = useState('')
 
-  const [referenceImage, setReferenceImage] = useState(null)
-  const [referenceImagePreview, setReferenceImagePreview] = useState('')
+  // Reference images for Qwen edit: [0] is "Picture 1" (the image being edited), up to MAX_REFS
+  const [refImages, setRefImagesState] = useState([])
+  const refImagesRef = useRef([])  // read by the paste handler, which is registered once
+  const [maxRefImages, setMaxRefImages] = useState(MAX_REFS)
   const [imageUrlInput, setImageUrlInput] = useState('')
 
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -202,10 +206,19 @@ export default function App() {
     img.src = src
   }
 
-  // When editing with Qwen, start from the reference image's size (you can still change it)
+  function setRefImages(list) {
+    refImagesRef.current = list
+    setRefImagesState(list)
+  }
+
+  // Adds an image to the next free slot. Picture 1 also sets Width/Height when editing with Qwen.
   function setReference(src, msg) {
-    setReferenceImage(src)
-    setReferenceImagePreview(src)
+    const current = refImagesRef.current
+    if (current.includes(src)) return setStatusMsg('That image is already added', 'error')
+    if (current.length >= MAX_REFS) return setStatusMsg(`Up to ${MAX_REFS} images — remove one first (× on the image)`, 'error')
+    const next = [...current, src]
+    setRefImages(next)
+    if (next.length > 1) return setStatusMsg(`${msg} as Picture ${next.length} — refer to it as "Picture ${next.length}" in the prompt`, 'ok')
     if (backendTypeRef.current === 'qwen_image_edit') {
       const img = new Image()
       img.onload = () => {
@@ -227,8 +240,14 @@ export default function App() {
   }
 
   function handleReferenceImage(e) {
-    const file = e.target.files?.[0]
-    if (file) loadImageFromBlob(file)
+    const files = [...(e.target.files || [])].filter(f => f.type.startsWith('image/'))
+    files.slice(0, Math.max(0, MAX_REFS - refImagesRef.current.length) || 1).forEach(loadImageFromBlob)
+    e.target.value = ''
+  }
+
+  function removeRefImage(i) {
+    setRefImages(refImagesRef.current.filter((_, idx) => idx !== i))
+    if (i === 0 && refImagesRef.current.length) setStatusMsg('Picture 2 is now Picture 1 — press "Use image size" if you want its size', 'ok')
   }
 
   async function loadImageFromUrl(rawUrl) {
@@ -257,15 +276,14 @@ export default function App() {
 
   function handleDrop(e) {
     e.preventDefault()
-    const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'))
-    if (file) return loadImageFromBlob(file)
+    const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'))
+    if (files.length) return files.forEach(loadImageFromBlob)
     const url = extractImgSrc(e.dataTransfer?.getData('text/html')) || (e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '').split('\n')[0].trim()
     if (url) loadImageFromUrl(url)
   }
 
   function clearReferenceImage() {
-    setReferenceImage(null)
-    setReferenceImagePreview('')
+    setRefImages([])
     setImageUrlInput('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -278,6 +296,7 @@ export default function App() {
       const data = await res.json()
       setBackendType(data.model_type || '')
       backendTypeRef.current = data.model_type || ''
+      setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
       // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
       setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
       const ckpts = data.checkpoints || []
@@ -408,7 +427,9 @@ export default function App() {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
       denoise: +denoise, batch_size: count,
-      loras, positive, negative, reference_image: referenceImage || null
+      loras, positive, negative,
+      reference_image: refImages[0] || null,        // Picture 1
+      reference_images: refImages.slice(1),         // Pictures 2 and 3
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -673,21 +694,40 @@ export default function App() {
       <label>Backend URL</label>
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
 
-      <label style={{marginTop: 16}}>Reference Image (for Qwen Image Edit)</label>
-      <div onDragOver={e => e.preventDefault()} onDrop={handleDrop} style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: referenceImagePreview ? 'transparent' : '#1a1a1a'}}>
-        {referenceImagePreview ? (
-          <img src={referenceImagePreview} alt="Reference" style={{maxWidth: '100%', maxHeight: 200, borderRadius: 8}}
-            onError={() => setStatusMsg('Could not display that image — check the address', 'error')} />
+      <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
+      <div onDragOver={e => e.preventDefault()} onDrop={handleDrop} style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: refImages.length ? 'transparent' : '#1a1a1a'}}>
+        {refImages.length > 0 ? (
+          <div style={{display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap'}}>
+            {refImages.map((src, i) => (
+              <div key={src.slice(0, 64) + i} style={{position: 'relative'}}>
+                <img src={src} alt={`Picture ${i + 1}`} style={{maxWidth: 220, maxHeight: 200, borderRadius: 8, display: 'block'}}
+                  onError={() => setStatusMsg(`Could not display Picture ${i + 1} — check the address`, 'error')} />
+                <div style={{fontSize: 12, marginTop: 4, color: '#bbb'}}>Picture {i + 1}{i === 0 ? ' (edited)' : ''}</div>
+                <button className="danger" title={`Remove Picture ${i + 1}`} onClick={() => removeRefImage(i)}
+                  style={{position: 'absolute', top: 4, right: 4, width: 24, height: 24, padding: 0, borderRadius: 12, lineHeight: '22px'}}>×</button>
+              </div>
+            ))}
+          </div>
         ) : (
-          <div>Paste an image or image address here (Ctrl+V), drag &amp; drop, or upload below</div>
+          <div>Paste an image or image address here (Ctrl+V), drag &amp; drop, or upload below — up to {MAX_REFS} images</div>
+        )}
+        {refImages.length > 1 && (
+          <div style={{fontSize: 12, marginTop: 10, color: '#aaa'}}>
+            Picture 1 is edited; refer to the others in the prompt, e.g. "put the person from Picture 1 in the outfit from Picture 2".
+          </div>
+        )}
+        {refImages.length > maxRefImages && (
+          <div style={{fontSize: 12, marginTop: 6, color: '#e88'}}>
+            The notebook running in Colab only uses Picture 1. Open it fresh from GitHub and run its cells again to use more pictures.
+          </div>
         )}
       </div>
       <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
-        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} />
+        <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} disabled={refImages.length >= MAX_REFS} />
         <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" data-image-url="true" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl(imageUrlInput)} />
-        <button className="secondary" onClick={() => loadImageFromUrl(imageUrlInput)} style={{width:'auto'}}>Load URL</button>
-        {referenceImagePreview && <button className="secondary" onClick={() => applyImageSize(referenceImagePreview, true)} style={{width:'auto'}} title="Set Width/Height to this image's size">Use image size</button>}
-        {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear</button>}
+        <button className="secondary" onClick={() => loadImageFromUrl(imageUrlInput)} style={{width:'auto'}} disabled={refImages.length >= MAX_REFS}>Load URL</button>
+        {refImages.length > 0 && <button className="secondary" onClick={() => applyImageSize(refImages[0], true)} style={{width:'auto'}} title="Set Width/Height to Picture 1's size">Use image size</button>}
+        {refImages.length > 0 && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>}
       </div>
 
       <div className="row">

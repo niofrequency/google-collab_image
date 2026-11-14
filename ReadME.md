@@ -26,6 +26,10 @@ Run cells 1, 2 and 4 (cell 3 is an optional in-notebook test). Paste the `READY:
 frontend's Backend URL field; it switches to the recommended settings (4 steps, CFG 1,
 `sa_solver` / `beta`). Add a reference image to edit it, or leave it empty for text-to-image.
 
+Up to 3 reference images: Picture 1 is the image being edited (it also sets the default
+Width/Height); Pictures 2 and 3 are extra references. Refer to them in the prompt, e.g.
+"put the person from Picture 1 in the outfit from Picture 2". Each extra picture makes every edit slower.
+
 LoRAs: use **+ Download LoRA** in the website (Civitai or Hugging Face link) or pick one you already
 downloaded. They must be **Qwen-Image / Qwen-Image-Edit** LoRAs; SDXL LoRAs don't work with this model.
 Each LoRA makes generation somewhat slower on a T4.
