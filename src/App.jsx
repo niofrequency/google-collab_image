@@ -339,6 +339,11 @@ export default function App() {
         headers: NGROK_HEADERS,
         body: JSON.stringify({ url: finalUrl, type })
       })
+      if (res.status === 404) {
+        throw new Error('this backend has no model downloads. The notebook running in Colab is an older version: ' +
+          'stop it, use Runtime → Disconnect and delete runtime, open the notebook fresh from GitHub, ' +
+          'run its cells again and paste the new URL here.')
+      }
       let data = await res.json()
       // Newer backends download in the background and return a job to poll
       // (big checkpoints take longer than the tunnel's ~100 s request limit)
