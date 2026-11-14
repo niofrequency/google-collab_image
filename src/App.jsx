@@ -86,6 +86,7 @@ export default function App() {
   const [infoItem, setInfoItem] = useState(null)
   const imageRef = useRef(null)
   const usedBackendDefaults = useRef(false)
+  const backendTypeRef = useRef('')  // read by the paste handler, which is registered once
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -182,13 +183,46 @@ export default function App() {
 
   function getBackend() { return backendUrl.trim().replace(/\/$/, '') }
 
+  // Width/Height for an image: its own size, scaled down so the longest side is at most 1024,
+  // rounded to multiples of 16 (what the Qwen model needs)
+  function sizeForImage(w, h, maxSide = 1024) {
+    const scale = Math.min(1, maxSide / Math.max(w, h))
+    const r = v => Math.max(256, Math.round(v * scale / 16) * 16)
+    return [r(w), r(h)]
+  }
+
+  function applyImageSize(src, announce = false) {
+    if (!src) return
+    const img = new Image()
+    img.onload = () => {
+      const [w, h] = sizeForImage(img.naturalWidth, img.naturalHeight)
+      setWidth(w); setHeight(h)
+      if (announce) setStatusMsg(`Width/Height set to the image size: ${w}×${h}`, 'ok')
+    }
+    img.src = src
+  }
+
+  // When editing with Qwen, start from the reference image's size (you can still change it)
+  function setReference(src, msg) {
+    setReferenceImage(src)
+    setReferenceImagePreview(src)
+    if (backendTypeRef.current === 'qwen_image_edit') {
+      const img = new Image()
+      img.onload = () => {
+        const [w, h] = sizeForImage(img.naturalWidth, img.naturalHeight)
+        setWidth(w); setHeight(h)
+        setStatusMsg(`${msg} — Width/Height set to ${w}×${h} (change them for a different output size)`, 'ok')
+      }
+      img.onerror = () => setStatusMsg(msg, 'ok')
+      img.src = src
+    } else {
+      setStatusMsg(msg, 'ok')
+    }
+  }
+
   function loadImageFromBlob(blob) {
     const reader = new FileReader()
-    reader.onload = () => {
-      setReferenceImage(reader.result)
-      setReferenceImagePreview(reader.result)
-      setStatusMsg('Image loaded', 'ok')
-    }
+    reader.onload = () => setReference(reader.result, 'Image loaded')
     reader.readAsDataURL(blob)
   }
 
@@ -201,8 +235,8 @@ export default function App() {
     const url = (rawUrl || '').trim()
     if (!url) return setStatusMsg('Paste an image URL first', 'error')
     if (url.startsWith('data:image/')) {
-      setReferenceImage(url); setReferenceImagePreview(url); setImageUrlInput('')
-      return setStatusMsg('Image loaded', 'ok')
+      setImageUrlInput('')
+      return setReference(url, 'Image loaded')
     }
     if (!/^https?:\/\//i.test(url)) return setStatusMsg('That does not look like an image address (must start with http)', 'error')
     setStatusMsg('Loading image from URL...')
@@ -216,9 +250,7 @@ export default function App() {
     } catch {
       // Most sites block that, but the browser can still display the image and the
       // Colab backend can download it, so send the address itself to the backend.
-      setReferenceImage(url)
-      setReferenceImagePreview(url)
-      setStatusMsg('Image address loaded — the backend will download it', 'ok')
+      setReference(url, 'Image address loaded — the backend will download it')
     }
     setImageUrlInput('')
   }
@@ -245,6 +277,7 @@ export default function App() {
       const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
       setBackendType(data.model_type || '')
+      backendTypeRef.current = data.model_type || ''
       // Qwen edit only supports LoRAs if the backend says so (older Qwen notebooks don't)
       setSupportsLoras(data.model_type !== 'qwen_image_edit' || !!data.supports_loras)
       const ckpts = data.checkpoints || []
@@ -628,9 +661,6 @@ export default function App() {
 
   function handleMouseUp() { setIsDragging(false) }
 
-  // Qwen edit keeps the reference image's shape, so Width/Height act as a maximum box
-  const fitBox = backendType === 'qwen_image_edit' && !!referenceImage
-
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
@@ -651,6 +681,7 @@ export default function App() {
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} />
         <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" data-image-url="true" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl(imageUrlInput)} />
         <button className="secondary" onClick={() => loadImageFromUrl(imageUrlInput)} style={{width:'auto'}}>Load URL</button>
+        {referenceImagePreview && <button className="secondary" onClick={() => applyImageSize(referenceImagePreview, true)} style={{width:'auto'}} title="Set Width/Height to this image's size">Use image size</button>}
         {referenceImagePreview && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear</button>}
       </div>
 
@@ -679,8 +710,8 @@ export default function App() {
       <div className="row">
         <div><label>Steps</label><input type="number" value={steps} onChange={e => setSteps(e.target.value)} /></div>
         <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
-        <div><label title={fitBox ? 'Output keeps the reference image shape and fits inside Max Width × Max Height (never larger than the reference)' : ''}>{fitBox ? 'Max Width' : 'Width'}</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
-        <div><label title={fitBox ? 'Output keeps the reference image shape and fits inside Max Width × Max Height (never larger than the reference)' : ''}>{fitBox ? 'Max Height' : 'Height'}</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
+        <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
+        <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
         <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
