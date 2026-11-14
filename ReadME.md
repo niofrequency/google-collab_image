@@ -124,6 +124,14 @@ You don't need to download anything. The LoRA is saved to your Google Drive, and
 
 You only need to download it from Drive if you want to use it in some other program.
 
+### Retraining from zero (e.g. with the Person / face preset)
+
+Training again with the same name **continues** the saved run, which only works with the same settings. To retrain
+from zero — for example a second version with the *Person / face* preset — press **Start fresh** on the LoRA Training
+tab, then **Start training**. Nothing is deleted: the old run is moved to `training/<name>/output_v1` and the old LoRA is
+renamed `<name>_v1.safetensors` (then v2, v3…), so you can compare both in BigLust. Your images and tags stay as they
+are. Under the settings, the tab shows whether a name has saved progress.
+
 ### If training stops
 
 Cell 4 alone won't restart it — cell 4 only *shows* progress. What to do depends on what stopped:
