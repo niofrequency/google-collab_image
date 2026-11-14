@@ -285,8 +285,8 @@ export default function Training({ active }) {
       } /></h1>
       <div className="train-note">Only train on images you have the right to use, and only make a LoRA of a real person with their consent.</div>
 
-      <label>Training server URL <Info text="The READY: URL printed by cell 2 of SDXL-LORA-TRAINING.ipynb in Colab. It's a different notebook from BigLust/Qwen, and it changes every time you start cell 2." /></label>
-      <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="https://xxxx.trycloudflare.com" />
+      <label>Training server URL <Info text="In Colab, run cell 1 (setup) and then cell 2 — cell 2 prints a READY: URL. Paste that here. It's a different notebook from BigLust/Qwen, and it changes every time you start cell 2." /></label>
+      <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="Paste the READY: URL from cell 2 of the training notebook (https://….trycloudflare.com)" />
 
       {connected && datasets.length > 0 && (
         <div className="chips">
@@ -322,7 +322,7 @@ export default function Training({ active }) {
         onDragOver={e => e.preventDefault()}
         onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files) }}
         onClick={() => fileRef.current?.click()}>
-        {!connected ? 'Connect to the training server first'
+        {!connected ? 'First paste the READY: URL from cell 2 (cell 1 is setup only) into the box at the top'
           : !dsName ? 'Type a LoRA name first'
           : upload ? `Uploading ${upload.done}/${upload.total}...`
           : 'Drop images here, paste (Ctrl+V), or click to choose — you can select many at once'}
