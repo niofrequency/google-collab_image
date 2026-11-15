@@ -151,7 +151,6 @@ export default function HeadSwap({ active = true }) {
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) return image
         if (data.status === 'done' || data.status === 'completed') {
-          // Some backends publish completion before the output is readable; keep polling briefly.
           setStatusMsg('Job finished — waiting for its image…')
         } else {
           const step = data.step != null && data.total_steps ? ` — step ${data.step}/${data.total_steps}` : ''
@@ -277,6 +276,7 @@ export default function HeadSwap({ active = true }) {
       <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : 'Generate Head Swap'}</button>
 
       {status && <div className={`status ${statusType} headswap-status`} role="status">{status}</div>}
+
       {loading && <>
         <div className="progress headswap-progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>
         <section className="headswap-log-panel" aria-live="polite">
@@ -318,6 +318,7 @@ export default function HeadSwap({ active = true }) {
         </div>
         <div className="lb-help">← → browse · Esc to close</div>
       </div>}
+
     </div>
   )
 }
