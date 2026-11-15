@@ -214,6 +214,19 @@ slower). Finished videos play on the page, are kept in your browser's gallery, a
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
 encoder).
 
+### Modes, and fixing deformed bodies
+
+| Mode | What it does | Time |
+|---|---|---|
+| **Fast** | 4 steps with the Lightning speed-up on both passes | quickest — but the motion pass gets only 2 steps, so bodies often come out **deformed** and motion looks slow |
+| **Balanced** (A14B default) | the motion starts with the **full model** (2 steps at real CFG), then Lightning finishes it (2 + 4 steps) | ~2–3× Fast — bodies, arms and legs hold together much better |
+| **Quality** | the plain model, 20 steps | ~5× Fast |
+
+Presets **Better bodies** (Balanced, 480p) and **Better bodies HD** (Balanced, 720p — best short of Quality, use an
+L4/A100). Also: keep the person **large** in the start image, ask for **one simple action** ("she turns and smiles"),
+and avoid fast or complex moves (spinning, dancing, crossing arms) in short clips. On the free 5B notebook, Balanced
+is 8 Turbo steps instead of 4.
+
 ### LoRAs for video
 
 Same as in the Image Generator: **+ Download LoRA** in the Image to Video tab, paste a Civitai or Hugging Face link,

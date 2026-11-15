@@ -246,7 +246,7 @@ export default function Video({ active }) {
     if (s.seconds != null) {
       setSeconds(s.seconds === 'default' ? (info?.defaults?.seconds || 3) : s.seconds === 'max' ? (info?.max_seconds || 5) : s.seconds)
     }
-    if (s.mode) setMode(s.mode)
+    if (s.mode) setMode(s.mode === 'default' ? (info?.defaults?.mode || 'fast') : (s.mode === 'balanced' && info && !info.modes?.balanced ? 'fast' : s.mode))
     say(`Preset "${p.name}" applied`, 'ok')
   }
 
@@ -425,9 +425,10 @@ export default function Video({ active }) {
           <input type="number" step="0.5" min="1" max={info?.max_seconds || 8} value={seconds} onChange={e => setSeconds(e.target.value)} />
         </div>
         <div>
-          <label>Mode <Info text={<><b>Fast</b>: a 4-step speed-up LoRA — a few minutes per clip, good quality. <b>Quality</b>: the plain model with 20 steps — smoother motion and detail but roughly 5× slower.</>} /></label>
+          <label>Mode <Info text={<><b>Balanced</b> (A14B default): the first part of the motion is made with the full model, then the speed-up finishes it — fixes Fast mode's <b>deformed bodies</b> and slow-motion look, about 2–3× the time of Fast. On the free 5B notebook it's simply 8 steps instead of 4.<br /><b>Fast</b>: a 4-step speed-up LoRA — a few minutes per clip, good quality. <b>Quality</b>: the plain model with 20 steps — smoother motion and detail but roughly 5× slower.</>} /></label>
           <select value={mode} onChange={e => setMode(e.target.value)}>
             <option value="fast">Fast (4 steps)</option>
+            {(!info || info.modes?.balanced) && <option value="balanced">{info?.family === '5b' ? 'Balanced (8 steps)' : 'Balanced — better bodies (8 steps)'}</option>}
             <option value="quality">Quality (20 steps, slow)</option>
           </select>
         </div>

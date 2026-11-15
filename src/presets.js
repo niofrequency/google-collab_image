@@ -112,8 +112,18 @@ export const TRAINING_PRESETS = [
 export const VIDEO_PRESETS = [
   {
     name: 'Default',
-    info: 'The notebook\'s standard settings: 480p, Fast mode (4 steps). 5 seconds on the A14B notebook, 3 seconds on the free T4 notebook.',
-    s: { size: 'default', seconds: 'default', mode: 'fast' },
+    info: 'The notebook\'s standard settings: 480p; Balanced mode on the A14B notebook (5 s), Fast mode on the free T4 notebook (3 s).',
+    s: { size: 'default', seconds: 'default', mode: 'default' },
+  },
+  {
+    name: 'Better bodies',
+    info: 'Balanced mode at 480p: the motion is started with the full model so bodies, arms and legs come out right (fixes the deformed bodies of Fast mode). About 2–3× the time of Fast. Tip: keep the person large in the start image and ask for one simple action.',
+    s: { size: '480p', seconds: 'default', mode: 'balanced' },
+  },
+  {
+    name: 'Better bodies HD',
+    info: 'Balanced mode at 720p: bodies get more than twice the pixels, so hands, faces and limbs hold together best — the best result short of Best quality. Slower: use an L4 or A100.',
+    s: { size: '720p', seconds: 'default', mode: 'balanced' },
   },
   {
     name: 'Quick preview',
