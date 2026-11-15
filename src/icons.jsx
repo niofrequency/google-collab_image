@@ -18,3 +18,21 @@ export function PlayIcon({ size = 22 }) {
     </svg>
   )
 }
+
+const line = { fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }
+
+export function CloseIcon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...line} aria-hidden="true">
+      <line x1="6" y1="6" x2="18" y2="18" /><line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  )
+}
+
+export function ChevronLeftIcon({ size = 22 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" {...line} aria-hidden="true"><polyline points="15 5 8 12 15 19" /></svg>
+}
+
+export function ChevronRightIcon({ size = 22 }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" {...line} aria-hidden="true"><polyline points="9 5 16 12 9 19" /></svg>
+}

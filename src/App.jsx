@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ZoomIcon } from './icons'
+import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
@@ -1294,8 +1294,8 @@ export default function App({ active = true }) {
       {lightboxIndex >= 0 && gallery[lightboxIndex] && (
         <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
-            <button className="lb-btn left" onClick={() => setLightboxIndex(-1)}>×</button>
-            <button className="lb-btn nav-left" onClick={goPrev} disabled={lightboxIndex === 0}>‹</button>
+            <button className="lb-btn left" title="Close (Esc)" onClick={() => setLightboxIndex(-1)}><CloseIcon /></button>
+            <button className="lb-btn nav-left" onClick={goPrev} disabled={lightboxIndex === 0} title="Previous (←)"><ChevronLeftIcon /></button>
             <img
               ref={imageRef}
               src={gallery[lightboxIndex].url}
@@ -1308,7 +1308,7 @@ export default function App({ active = true }) {
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             />
-            <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1} title="Next (→)"><ChevronRightIcon /></button>
           </div>
           <div className="lb-bar" onClick={e => e.stopPropagation()}>
             <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { VIDEO_PRESETS } from './presets.js'
-import { ZoomIcon } from './icons'
+import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
@@ -523,10 +523,10 @@ export default function Video({ active }) {
       {viewing && (
         <div className="lightbox" onClick={() => setViewIndex(-1)}>
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
-            <button className="lb-btn left" onClick={() => setViewIndex(-1)}>×</button>
-            <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0}>‹</button>
+            <button className="lb-btn left" title="Close (Esc)" onClick={() => setViewIndex(-1)}><CloseIcon /></button>
+            <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0} title="Previous (←)"><ChevronLeftIcon /></button>
             <video key={viewing.id} src={viewing.src} controls autoPlay loop playsInline className="lb-video" />
-            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1}>›</button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1} title="Next (→)"><ChevronRightIcon /></button>
           </div>
           <div className="lb-bar" onClick={e => e.stopPropagation()}>
             <span className="lb-count">{viewIndex + 1} / {gallery.length}</span>
