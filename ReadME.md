@@ -126,6 +126,46 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   strong likeness*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
 
+## Face reference: which models it works with
+
+**Face reference** keeps one character's face the same across many pictures, from 1–3 pictures of that face, with no
+training. Under the hood it's **IP-Adapter FaceID Plus v2 (SDXL)**:
+
+1. **InsightFace** (a face recogniser, on the CPU) finds the face in each reference picture and turns it into an
+   *identity* — a list of numbers describing who it is (face shape, eyes, nose, mouth), not the lighting or pose.
+2. A **CLIP image encoder** looks at the aligned face crop for finer detail (skin, eyebrows, expression style).
+3. The **adapter** feeds both into SDXL's attention layers while every picture is drawn, plus a small companion
+   **LoRA** (strength 0.6) that helps SDXL follow it. With several pictures the identities are averaged — different
+   angles give a steadier likeness.
+4. It's applied after your own LoRAs, to the main image and to **face fix** (which redraws the face at full size —
+   most important for small faces in full-body shots). A same-model **refiner** pass keeps it too.
+
+Your prompt still decides everything else: pose, clothes, hair, place, style. *Strength* 0.6 light · 0.8 default ·
+1.0–1.2 strong (closer likeness, less freedom in expression).
+
+| Model / notebook | Face reference | How to keep a face instead |
+|---|---|---|
+| **BigLust** (BIGLUST notebook) | ✅ Yes — built in (toggle under Face fix, saved characters, *Character* presets) | — |
+| **Any SDXL checkpoint** you download in BigLust: Juggernaut XL, RealVisXL, Pony, Illustrious, … | ✅ Yes — best likeness on photo-style models; anime/cartoon models work but are less exact | — |
+| **SD 1.5** checkpoints | ❌ No (the adapter is made for SDXL) — the site says so | Use an SDXL checkpoint |
+| **Qwen Image Edit Rapid AIO** / **Qwen 2511** | ❌ No adapter — it isn't needed | Qwen reads pictures itself: put the face picture in as a **reference picture** (Picture 1–3) and say what to keep, e.g. *"the woman from Picture 2, keep her face exactly the same, standing on a beach at sunset"*. Use the *Keep face* preset when editing a photo of that person |
+| **Image to Video** (Wan 2.2 A14B / 5B) | ❌ Not inside the video model | The face comes from the **start image** (and the **end image** on A14B): make them with a saved character — *Make start image* in the Video tab, or *Video start* / *Video end* in the Image Generator viewer — and use *Continue from last frame* for longer scenes |
+| **Into Realism** (older SDXL notebook) | ❌ Not in that notebook | Use the BIGLUST notebook (same model, newer server) |
+| **Krea 2**, **Wan 2.1** (older notebooks) | ❌ No | — |
+| **LoRA training** | — | For the strongest likeness from every angle, train a LoRA of the character and use it *together with* Face reference |
+
+**Workflow for comics and short films**
+
+1. In the Image Generator (BigLust), make a face you like — or upload clear face pictures — and press **Use as face** in
+   the full-size viewer (up to 3 pictures).
+2. **+ Save as character**, give it a name. Characters stay in the browser and, with ☁ cloud backup, on every device.
+3. For each panel: pick the character and the **Character (face reference)** preset, describe the scene.
+4. For video shots: **Make start image** (and *end image*) from the character in the Image to Video tab, describe the
+   motion, generate, then **Continue from last frame** for the next part.
+
+Only use pictures of real people who have agreed to it — especially for anything explicit, which without consent is
+illegal in many places. Faces you generated yourself are the safe choice for characters.
+
 ## Qwen Image Edit Rapid AIO (GGUF)
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) ·
@@ -271,6 +311,15 @@ You don't need to download anything. The LoRA is saved to your Google Drive, and
    strength **0.8**: lower it if it looks overdone, raise it if the likeness is weak.
 
 You only need to download it from Drive if you want to use it in some other program.
+
+### Keeping datasets in the cloud (retrain later with more images)
+
+Your images and tags already live in Google Drive (`MyDrive/ComfyUI/training/<name>`). With ☁ **cloud backup**
+signed in, the LoRA Training tab also has **Save "name" to cloud** (full-size images, tags, trigger word, training and
+auto-tag settings) and **Restore from cloud** (puts a saved dataset back on the training server — e.g. a new Drive or
+after deleting it). To retrain with more images: restore (if needed), add the new images, tag them, then **Start
+training** to continue, or **Start fresh** to retrain from zero. Saving again later only uploads new images. See
+[Cloud backup](#cloud-backup-firebase).
 
 ### Retraining from zero (e.g. with the Person / face preset)
 
