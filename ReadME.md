@@ -387,7 +387,7 @@ last save is redone. Saves happen every 250 steps, so you lose at most about 15�
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-LORA-TRAINING.ipynb) ·
 Trains LoRAs for **Qwen-Image-Edit-2511** with [musubi-tuner](https://github.com/kohya-ss/musubi-tuner) (kohya's trainer
-for newer models). It uses the same **LoRA Training** tab: paste this notebook's URL and the tab switches to Qwen mode.
+for newer models). It uses the same **LoRA Training** tab: pick **Qwen Image Edit 2511** in the **Trainer** switch at the top (or just paste this notebook's URL — the tab switches by itself). Each trainer remembers its own server link and settings.
 Finished LoRAs go to `MyDrive/ComfyUI/loras_qwen`, so they appear in the LoRA list of **both** Qwen edit notebooks.
 
 | LoRA type | What you give it | GPU | Use it like this |
