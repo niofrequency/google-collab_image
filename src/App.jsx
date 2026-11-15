@@ -130,7 +130,6 @@ export default function App({ active = true }) {
   const [refImages, setRefImagesState] = useState([])
   const refImagesRef = useRef([])  // read by the paste handler, which is registered once
   const [maxRefImages, setMaxRefImages] = useState(MAX_REFS)
-  const [imageUrlInput, setImageUrlInput] = useState('')
 
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
@@ -356,7 +355,6 @@ export default function App({ active = true }) {
     const url = (rawUrl || '').trim()
     if (!url) return setStatusMsg('Paste an image URL first', 'error')
     if (url.startsWith('data:image/')) {
-      setImageUrlInput('')
       return setReference(url, 'Image loaded')
     }
     if (!/^https?:\/\//i.test(url)) return setStatusMsg('That does not look like an image address (must start with http)', 'error')
@@ -373,7 +371,6 @@ export default function App({ active = true }) {
       // Colab backend can download it, so send the address itself to the backend.
       setReference(url, 'Image address loaded — the backend will download it')
     }
-    setImageUrlInput('')
   }
 
   function handleDrop(e) {
@@ -386,7 +383,6 @@ export default function App({ active = true }) {
 
   function clearReferenceImage() {
     setRefImages([])
-    setImageUrlInput('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -957,7 +953,11 @@ export default function App({ active = true }) {
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
 
       <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
-      <div onDragOver={e => e.preventDefault()} onDrop={handleDrop} style={{border: '2px dashed #555', borderRadius: 8, padding: 16, textAlign: 'center', color: '#888', marginBottom: 12, background: refImages.length ? 'transparent' : '#1a1a1a'}}>
+      <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
+        title={refImages.length >= MAX_REFS ? `Up to ${MAX_REFS} images` : 'Tap to choose from your photos · hover and press Ctrl+V to paste'}
+        onClick={() => refImages.length < MAX_REFS && fileInputRef.current?.click()}
+        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && refImages.length < MAX_REFS && fileInputRef.current?.click()}
+        onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
         {refImages.length > 0 ? (
           <div style={{display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap'}}>
             {refImages.map((src, i) => (
@@ -965,32 +965,33 @@ export default function App({ active = true }) {
                 <img src={src} alt={`Picture ${i + 1}`} style={{maxWidth: 220, maxHeight: 200, borderRadius: 8, display: 'block'}}
                   onError={() => setStatusMsg(`Could not display Picture ${i + 1} — check the address`, 'error')} />
                 <div style={{fontSize: 12, marginTop: 4, color: '#bbb'}}>Picture {i + 1}{i === 0 ? ' (edited)' : ''}</div>
-                <button className="danger" title={`Remove Picture ${i + 1}`} onClick={() => removeRefImage(i)}
+                <button className="danger" title={`Remove Picture ${i + 1}`} onClick={e => { e.stopPropagation(); removeRefImage(i) }}
                   style={{position: 'absolute', top: 4, right: 4, width: 24, height: 24, padding: 0, borderRadius: 12, lineHeight: '22px'}}>×</button>
               </div>
             ))}
           </div>
         ) : (
-          <div>Paste an image or image address here (Ctrl+V), drag &amp; drop, or upload below — up to {MAX_REFS} images</div>
+          <div><div className="image-drop-icon">📷</div>Tap to choose from your photos, drag &amp; drop, or hover and paste (Ctrl+V) — up to {MAX_REFS} images</div>
         )}
         {refImages.length > 1 && (
           <div style={{fontSize: 12, marginTop: 10, color: '#aaa'}}>
             Picture 1 is edited; refer to the others in the prompt, e.g. "put the person from Picture 1 in the outfit from Picture 2".
           </div>
         )}
+        {refImages.length > 0 && refImages.length < MAX_REFS && <div className="image-drop-more">Tap to add another picture</div>}
         {refImages.length > maxRefImages && (
           <div style={{fontSize: 12, marginTop: 6, color: '#e88'}}>
             The notebook running in Colab only uses Picture 1. Open it fresh from GitHub and run its cells again to use more pictures.
           </div>
         )}
       </div>
-      <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
-        <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleReferenceImage} style={{flex: 1, minWidth: 200}} disabled={refImages.length >= MAX_REFS} />
-        <input type="text" value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" data-image-url="true" style={{flex: 1, minWidth: 200}} onKeyDown={e => e.key === 'Enter' && loadImageFromUrl(imageUrlInput)} />
-        <button className="secondary" onClick={() => loadImageFromUrl(imageUrlInput)} style={{width:'auto'}} disabled={refImages.length >= MAX_REFS}>Load URL</button>
-        {refImages.length > 0 && <button className="secondary" onClick={() => applyImageSize(refImages[0], true)} style={{width:'auto'}} title="Set Width/Height to Picture 1's size">Use image size</button>}
-        {refImages.length > 0 && <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>}
-      </div>
+      <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImage} />
+      {refImages.length > 0 && (
+        <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
+          <button className="secondary" onClick={() => applyImageSize(refImages[0], true)} style={{width:'auto'}} title="Set Width/Height to Picture 1's size">Use image size</button>
+          <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>
+        </div>
+      )}
 
       {GENERATOR_PRESETS[backendType] && (
         <PresetBar key={backendType} scope={'gen_' + backendType} builtins={GENERATOR_PRESETS[backendType]}

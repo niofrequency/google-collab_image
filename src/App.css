@@ -676,13 +676,26 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
   border-radius: 12px; line-height: 22px;
 }
 .headswap-upload-icon { font-size: 28px; margin-bottom: 8px; }
-.headswap-paste-hint { font-size: 12px; margin-top: 8px; color: var(--accent); }
-.headswap-upload-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.headswap-url-row { display: flex; gap: 8px; }
-.headswap-url-row input { flex: 1; min-width: 0; }
-.headswap-url-row button { width: auto; }
 .headswap-prompt-label { margin-top: 20px; }
 .headswap-generate { margin-top: 16px; padding: 14px 24px; font-size: 15px; }
 .headswap-latest-result { margin-top: 28px; }
 .headswap-latest-result img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
 .headswap-gallery-header { margin-top: 28px; }
+
+/* Image drop boxes: tap to open the photo picker, hover + Ctrl+V to paste */
+.image-drop {
+  border: 2px dashed #555;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  margin-bottom: 12px;
+  background: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.image-drop.has-image { background: transparent; }
+.image-drop:hover, .image-drop:focus { outline: none; border-color: var(--accent); color: var(--text); }
+.image-drop-icon { font-size: 28px; margin-bottom: 8px; }
+.image-drop-more { font-size: 12px; margin-top: 10px; color: #aaa; }
+.headswap-drop:hover { border-color: var(--accent); color: var(--text); }

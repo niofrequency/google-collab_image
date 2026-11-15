@@ -74,10 +74,9 @@ export default function Video({ active }) {
   const [info, setInfo] = useState(null)              // /video_info from the notebook
   const [image, setImage] = useState('')              // data URL or http(s) address
   const [endImage, setEndImage] = useState('')        // optional end frame (A14B): the clip ends on this picture
-  const [endUrlInput, setEndUrlInput] = useState('')
   const endFileRef = useRef(null)
   const topRef = useRef(null)
-  const [imageUrlInput, setImageUrlInput] = useState('')
+  const pasteSlotRef = useRef('start')  // the box the mouse is over gets Ctrl+V
   const [prompt, setPrompt] = useState(load('prompt', ''))
   const [negative, setNegative] = useState(load('negative', null))  // null = the notebook's default
   const [size, setSize] = useState(load('size', '480p'))
@@ -168,7 +167,6 @@ export default function Video({ active }) {
     const a = (address || '').trim()
     if (!/^(https?:\/\/|data:image\/)/i.test(a)) return say('Paste an image address that starts with http', 'error')
     setSlot(slot, a)   // the notebook downloads http(s) addresses itself
-    if (slot === 'end') setEndUrlInput(''); else setImageUrlInput('')
   }
 
   // Pictures sent from the Image Generator's full-size viewer ("Video start" / "Video end")
@@ -222,11 +220,12 @@ export default function Video({ active }) {
       if (!activeRef.current) return
       const cd = e.clipboardData
       const file = [...(cd?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile()
-      if (file) { e.preventDefault(); return useFile(file) }
+      const slot = pasteSlotRef.current === 'end' && info?.supports_end_frame ? 'end' : undefined
+      if (file) { e.preventDefault(); return useFile(file, slot) }
       const t = e.target
       if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !t.dataset.imageUrl))) return
       const address = extractImgSrc(cd?.getData('text/html')) || (cd?.getData('text/plain') || '').trim()
-      if (/^https?:\/\/\S+$/i.test(address)) { e.preventDefault(); useAddress(address) }
+      if (/^https?:\/\/\S+$/i.test(address)) { e.preventDefault(); useAddress(address, slot) }
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -369,41 +368,34 @@ export default function Video({ active }) {
         onImage={(slot, src) => setSlot(slot, src)} />
 
       <label ref={topRef} style={{ marginTop: 16 }}>Start image <Info text="The first frame of the video. Its shape (portrait/landscape) is kept. Clear images with one main subject animate best. Paste (Ctrl+V), drag & drop, choose a file, or paste an image address." /></label>
-      <div className="train-drop" onDragOver={e => e.preventDefault()} onDrop={onDrop} onClick={() => !image && fileRef.current?.click()}>
+      <div className="train-drop" title="Tap to choose from your photos · hover and press Ctrl+V to paste"
+        onMouseEnter={() => { pasteSlotRef.current = 'start' }} onDragOver={e => e.preventDefault()} onDrop={onDrop} onClick={() => fileRef.current?.click()}>
         {image ? (
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <img src={image} alt="Start" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, display: 'block' }}
               onError={() => say('Could not display that image — check the address', 'error')} />
             <button className="danger train-del" title="Remove" onClick={e => { e.stopPropagation(); setImage('') }}>×</button>
           </div>
-        ) : 'Paste an image or image address (Ctrl+V), drag & drop, or click to choose'}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { useFile(e.target.files?.[0]); e.target.value = '' }} />
+        ) : 'Tap to choose from your photos, drag & drop, or hover and paste (Ctrl+V)'}
       </div>
-      <div className="inline" style={{ marginTop: 8 }}>
-        <input value={imageUrlInput} onChange={e => setImageUrlInput(e.target.value)} placeholder="Or paste image URL" data-image-url="true"
-          onKeyDown={e => e.key === 'Enter' && useAddress(imageUrlInput)} />
-        <button className="secondary" onClick={() => useAddress(imageUrlInput)}>Load URL</button>
-      </div>
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { useFile(e.target.files?.[0]); e.target.value = '' }} />
 
       {info?.supports_end_frame && (<>
         <label>End image <span className="muted">(optional)</span> <Info text={<>The picture the video <b>ends</b> on — Wan fills in the motion from the start image to this one. Make both with the same <b>character</b> (Face reference in the Image Generator) and the face stays the same all the way through.<br /><br />Good for planning film shots: e.g. start "Mia at the door", end "Mia sitting at the table". Keep start and end similar enough to get there in a few seconds (same place, same clothes, same framing works best). It is cropped to the start image's shape.<br /><br />Only on the A14B notebook. Tip: in the Image Generator's full-size viewer, <i>Video start</i> / <i>Video end</i> send an image straight here.</>} /></label>
         <div className="train-drop end-drop" onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/')); if (f) useFile(f, 'end') }}
-          onClick={() => !endImage && endFileRef.current?.click()}>
+          title="Tap to choose from your photos · hover and press Ctrl+V to paste"
+          onMouseEnter={() => { pasteSlotRef.current = 'end' }} onMouseLeave={() => { pasteSlotRef.current = 'start' }}
+          onClick={() => endFileRef.current?.click()}>
           {endImage ? (
             <div style={{ position: 'relative', display: 'inline-block' }}>
               <img src={endImage} alt="End" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, display: 'block' }}
                 onError={() => say('Could not display the end image — check the address', 'error')} />
               <button className="danger train-del" title="Remove" onClick={e => { e.stopPropagation(); setEndImage('') }}>×</button>
             </div>
-          ) : 'No end image — the model decides how the clip ends. Drag & drop or click to choose one.'}
-          <input ref={endFileRef} type="file" accept="image/*" hidden onChange={e => { useFile(e.target.files?.[0], 'end'); e.target.value = '' }} />
+          ) : 'No end image — the model decides how the clip ends. Tap to choose one, drag & drop, or hover and paste (Ctrl+V).'}
         </div>
-        <div className="inline" style={{ marginTop: 8 }}>
-          <input value={endUrlInput} onChange={e => setEndUrlInput(e.target.value)} placeholder="Or paste end image URL"
-            onKeyDown={e => e.key === 'Enter' && useAddress(endUrlInput, 'end')} />
-          <button className="secondary" onClick={() => useAddress(endUrlInput, 'end')}>Load URL</button>
-        </div>
+        <input ref={endFileRef} type="file" accept="image/*" hidden onChange={e => { useFile(e.target.files?.[0], 'end'); e.target.value = '' }} />
       </>)}
 
       <label>Motion prompt <Info text={<>Describe what should <b>happen</b>, not what's already in the picture: the action, the camera and the mood. E.g. <i>"she turns her head toward the camera and smiles, hair moving in the wind, slow camera push-in"</i>. One or two clear actions work best for a few seconds of video.</>} /></label>
