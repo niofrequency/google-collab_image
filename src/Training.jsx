@@ -53,6 +53,7 @@ async function prepareFile(file) {
 export default function Training({ active }) {
   const [url, setUrl] = useState(load('url', ''))
   const [connected, setConnected] = useState(false)
+  const [gpu, setGpu] = useState(null)               // { name, vram_gib, mode, mode_label } from the training notebook
   const [datasets, setDatasets] = useState([])
   const [name, setName] = useState(load('name', ''))
   const [trigger, setTrigger] = useState(load('trigger', ''))
@@ -87,13 +88,20 @@ export default function Training({ active }) {
 
   // Presets set the training settings and the auto-tag settings together
   function applyTrainingPreset(p) {
-    setSettings(s => ({ ...s, ...p.s, ...(p.classWord ? { class_word: p.classWord } : {}) }))
+    let ps = { ...p.s }
+    let adjusted = ''
+    // On an L4 / A100: 4 images per step and half the steps = the same amount of training, finished sooner
+    if (gpu?.mode === 'improved' && !p.custom && ps.train_batch_size === 2 && ps.max_train_steps) {
+      ps = { ...ps, train_batch_size: 4, max_train_steps: Math.max(50, Math.round(ps.max_train_steps / 2 / 50) * 50) }
+      adjusted = ` (adjusted for ${gpu.name}: batch 4, ${ps.max_train_steps} steps — same amount of training)`
+    }
+    setSettings(s => ({ ...s, ...ps, ...(p.classWord ? { class_word: p.classWord } : {}) }))
     if (p.tag) {
       if (p.tag.threshold != null) setTagThreshold(p.tag.threshold)
       if (p.tag.mode) setTagMode(p.tag.mode)
       if (p.tag.exclude != null) setExcludeTags(p.tag.exclude)
     }
-    say(`Preset "${p.name}" applied to the training and auto-tag settings` +
+    say(`Preset "${p.name}" applied to the training and auto-tag settings${adjusted}` +
       (images.length && p.tag ? ' — press Auto-tag all to re-tag with them' : ''), 'ok')
   }
 
@@ -122,6 +130,7 @@ export default function Training({ active }) {
       const data = await api('/training/info')
       if (data.mode !== 'lora_training') throw new Error('This URL is not the LoRA training server')
       setConnected(true)
+      setGpu(data.gpu || null)
       setDatasets(data.datasets || [])
       setTask(data.status)
       say('Connected to the training server', 'ok')
@@ -312,6 +321,14 @@ export default function Training({ active }) {
 
       <label>Training server URL <Info text="In Colab, run cell 1 (setup) and then cell 2 — cell 2 prints a READY: URL. Paste that here. It's a different notebook from BigLust/Qwen, and it changes every time you start cell 2." /></label>
       <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="Paste the READY: URL from cell 2 of the training notebook (https://….trycloudflare.com)" />
+      {connected && gpu?.name && (
+        <div className={`gpu-note ${gpu.mode === 'improved' ? 'good' : ''}`}>
+          GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode === 'improved' ? 'Improved training' : 'Standard training'}: {gpu.mode_label.split(': ')[1] || gpu.mode_label}
+          {' '}<Info text={gpu.mode === 'improved'
+            ? <>This GPU supports the better training mode: <b>bf16</b> precision (more stable than the T4's fp16) and the <b>text encoder is trained too</b>, which usually ties the trigger word more strongly to the person. Presets use 4 images per step with half the steps — the same amount of training, finished sooner. A run you started on a T4 continues in standard mode so its saved progress still fits; press Start fresh to retrain it in improved mode.</>
+            : <>A T4 trains in standard mode: fp16 and only the image model (that's what fits its 15 GB). It works well; an <b>L4</b> or <b>A100</b> (Runtime → Change runtime type) trains 2–3× faster and switches to the improved mode automatically: bf16 and the text encoder trained too.</>} />
+        </div>
+      )}
 
       {connected && datasets.length > 0 && (
         <div className="chips">
