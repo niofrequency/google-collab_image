@@ -748,6 +748,11 @@ export default function App({ active = true }) {
     } catch (e) { setStatusMsg(e.message, 'error') }
   }
 
+  function sendToVideo(item, slot) {
+    setLightboxIndex(-1)
+    window.dispatchEvent(new CustomEvent('send-to-video', { detail: { src: item.url, slot } }))
+  }
+
   function downloadImage(item) {
     const a = document.createElement('a')
     a.href = item.url
@@ -1281,6 +1286,8 @@ export default function App({ active = true }) {
             <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
             <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
             <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(gallery[lightboxIndex])}>Use as face</button>
+            <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
+            <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>

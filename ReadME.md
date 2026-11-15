@@ -116,7 +116,9 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   3. Press **+ Save as character** and give it a name. Saved characters stay in your browser — click one to use it
      for each panel or shot. For a film, make each shot's start frame this way, then animate it in **Image to Video**.
 
-  *Strength* 0.6 light · **0.8 default** · 1.0–1.2 strong likeness (can look stiff). It copies the face only —
+  Works with any **SDXL-based** checkpoint (BigLust, Juggernaut, RealVis, Pony, Illustrious…) — best likeness on
+  photo-style models; not SD 1.5. *Strength* 0.6 light · **0.8 default** · 1.0–1.2 strong likeness (can look stiff).
+  It copies the face only —
   describe hair, body and clothes in the prompt, or combine it with a LoRA. Only use pictures of real people who have
   agreed to it.
 - **Presets:** one click sets size, steps, CFG, sampler, face fix, face reference and LoRA strength — *Default*,
@@ -170,6 +172,19 @@ toward the camera and smiles, slow push-in"), pick a preset (*Default*, *Quick p
 slower). Finished videos play on the page, are kept in your browser's gallery, and can be downloaded as MP4. Models
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
 encoder).
+
+### Keeping a character consistent (short films)
+
+- **Start from your character:** make each shot's first frame in the Image Generator with a saved **character**
+  (Face reference), then in the full-size viewer press **Video start** — it opens here with the picture loaded.
+- **End image** (A14B notebook only): also press **Video end** on a second picture of the same character (or drop one
+  in *End image*). Wan fills in the motion between the two, so the face is fixed at both ends and can't drift far.
+  Plan shots like "Mia at the door" → "Mia sitting at the table"; keep the place, clothes and framing similar. The end
+  image is cropped to the start image's shape. The free 5B notebook has no end image.
+- **Continue from last frame** (under the finished video, in the viewer and in Info): the exact last frame becomes the
+  next clip's start image, so longer scenes join up without the character changing between clips.
+- Within a clip: close-up / medium shots, one simple action per clip, 3–5 s, and 720p or *Best quality* keep faces
+  steadier than fast spins or tiny faces.
 
 ### Sound (MMAudio)
 
