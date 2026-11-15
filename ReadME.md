@@ -14,6 +14,8 @@ Each notebook runs on a free **T4 GPU** in Colab and prints a `READY:` URL. Past
 |---|---|---|
 | **BigLust** (SDXL) | Text-to-image with BigLust or any SDXL checkpoint, with LoRAs. Download checkpoints/LoRAs from the website. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb) |
 | **Qwen Image Edit Rapid AIO** (GGUF) | Edits photos from a text instruction, up to 3 reference images, with Qwen LoRAs. Also text-to-image. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) |
+| **Image to Video — Wan 2.2 A14B** (best) | Animates a still image into a short video (up to ~7.5 s). Needs an **L4 or A100**. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-A14B.ipynb) |
+| **Image to Video — Wan 2.2 5B** (free T4) | Same, with a smaller model that fits the **free T4** (up to 5 s, lower quality). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb) |
 | **SDXL LoRA training** | Trains your own SDXL LoRA from 15–40 images, controlled from the website's LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) |
 | Into Realism (SDXL) | Older SDXL text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb) |
 | Krea 2 Realism | Older Krea 2 text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb) |
@@ -23,6 +25,8 @@ Each notebook runs on a free **T4 GPU** in Colab and prints a `READY:` URL. Past
 Direct links:
 - BigLust: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/BIGLUST.ipynb
 - Qwen Image Edit Rapid AIO: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb
+- Image to Video (A14B, L4/A100): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-A14B.ipynb
+- Image to Video (5B, free T4): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb
 - SDXL LoRA training: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb
 - Into Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb
 - Krea 2 Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb
@@ -38,6 +42,7 @@ Direct links:
 4. Copy the `READY: https://….trycloudflare.com` URL the notebook prints.
 5. Open the [website](https://google-collabimage-one.vercel.app) and paste the URL:
    - **Image Generator** tab → *Backend URL* (BigLust, Qwen, Into Realism, Krea 2)
+   - **Image to Video** tab → *Video server URL* (IMG2VID notebooks)
    - **LoRA Training** tab → *Training server URL* (SDXL LoRA training)
 
 Run **one GPU notebook at a time** — on the free tier they share one GPU.
@@ -100,6 +105,22 @@ with the Qwen2.5-VL 7B Q4_K_M text encoder (small enough for the free T4).
 - **LoRAs:** *+ Download LoRA* on the website. Only **Qwen-Image / Qwen-Image-Edit** LoRAs work; they're kept in
   `MyDrive/ComfyUI/loras_qwen`. Each LoRA adds some time per image.
 - Re-running cell 3 restarts the server with the current code (same URL). To stop it: **Runtime → Restart session**.
+
+## Image to Video (Wan 2.2)
+
+Two notebooks, same website tab (**Image to Video**). Run cells **1–3**; cell 3 prints the URL.
+
+| Notebook | Model | GPU | Clip length | Notes |
+|---|---|---|---|---|
+| [IMG2VID-WAN22-A14B](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-A14B.ipynb) | Wan 2.2 I2V A14B (GGUF Q4_K_M on L4, Q8_0 on A100) + 4-step Lightning LoRAs | L4 / A100 | up to ~7.5 s, 16 fps | best quality |
+| [IMG2VID-WAN22-5B-FREE](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb) | Wan 2.2 TI2V 5B (GGUF Q8_0) + 4-step Turbo LoRA | free T4 | up to 5 s, 24 fps | slower, lower quality |
+
+On the tab: add a **start image** (paste, drag & drop, file or image address), describe the **motion** ("she turns
+toward the camera and smiles, slow push-in"), pick a preset (*Default*, *Quick preview*, *Longer clip*, *HD (720p)*,
+*Best quality (slow)*) and press **Generate video**. *Fast* mode uses the 4-step LoRAs; *Quality* uses 20 steps (about 5×
+slower). Finished videos play on the page, are kept in your browser's gallery, and can be downloaded as MP4. Models
+come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
+encoder). The videos have no sound.
 
 ## SDXL LoRA training
 
