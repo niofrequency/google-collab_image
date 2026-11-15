@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 
 // Face reference (BigLust): 1–3 pictures of a character's face; every image keeps that face
@@ -27,13 +27,18 @@ export function shrinkImage(src, maxSide = 768) {
   })
 }
 
-function loadCharacters() {
+export function loadCharacters() {
   try { return JSON.parse(localStorage.getItem(CHAR_KEY)) || [] } catch { return [] }
 }
 
 export default function FaceRef({ images, setImages, on, setOn, strength, setStrength, supported, say, character, setCharacter }) {
   const [characters, setCharacters] = useState(loadCharacters)
   const fileRef = useRef(null)
+  useEffect(() => {  // characters saved on another device arrive with the cloud backup
+    const reload = () => setCharacters(loadCharacters())
+    window.addEventListener('cloud-settings', reload)
+    return () => window.removeEventListener('cloud-settings', reload)
+  }, [])
 
   function saveCharacters(list) {
     try {

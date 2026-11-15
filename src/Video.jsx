@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { VIDEO_PRESETS } from './presets.js'
-import { ZoomIcon } from './icons'
+import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
+import { queueSync, cloudForget } from './cloud.js'
+import CharacterShot from './CharacterShot.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -125,7 +127,12 @@ export default function Video({ active }) {
       return items.map(v => ({ ...v, src: URL.createObjectURL(v.blob) }))
     })
   }
-  useEffect(() => { refreshGallery() }, [])
+  useEffect(() => {
+    refreshGallery()
+    const onSynced = e => { if (e.detail?.kind === 'videos') refreshGallery() }
+    window.addEventListener('cloud-synced', onSynced)
+    return () => window.removeEventListener('cloud-synced', onSynced)
+  }, [])
 
   async function connect() {
     if (!backend) return
@@ -281,6 +288,7 @@ export default function Video({ active }) {
       }
       await dbAdd(item)
       await refreshGallery()
+      queueSync('videos')
       setResult({ ...item, src: URL.createObjectURL(blob) })
       const took = data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'
       say(`Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
@@ -294,6 +302,7 @@ export default function Video({ active }) {
 
   async function removeVideo(v) {
     if (!confirm('Delete this video from the gallery?')) return
+    await cloudForget('videos', [v.id])
     await dbDelete(v.id)
     setViewIndex(-1)
     setSelectedIds(prev => { const n = new Set(prev); n.delete(v.id); return n })
@@ -302,6 +311,7 @@ export default function Video({ active }) {
 
   async function deleteSelected() {
     if (!selectedIds.size || !confirm(`Delete ${selectedIds.size} video(s) from the gallery?`)) return
+    await cloudForget('videos', [...selectedIds])
     for (const id of selectedIds) await dbDelete(id)
     setSelectedIds(new Set())
     setViewIndex(-1)
@@ -349,6 +359,9 @@ export default function Video({ active }) {
           {info.family === '5b' && ' · free-tier model: for better quality use the A14B notebook on an L4/A100'}
         </div>
       )}
+
+      <CharacterShot startImage={image} supportsEnd={!!info?.supports_end_frame} active={active} say={say}
+        onImage={(slot, src) => setSlot(slot, src)} />
 
       <label ref={topRef} style={{ marginTop: 16 }}>Start image <Info text="The first frame of the video. Its shape (portrait/landscape) is kept. Clear images with one main subject animate best. Paste (Ctrl+V), drag & drop, choose a file, or paste an image address." /></label>
       <div className="train-drop" onDragOver={e => e.preventDefault()} onDrop={onDrop} onClick={() => !image && fileRef.current?.click()}>
@@ -510,10 +523,10 @@ export default function Video({ active }) {
       {viewing && (
         <div className="lightbox" onClick={() => setViewIndex(-1)}>
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
-            <button className="lb-btn left" onClick={() => setViewIndex(-1)}>×</button>
-            <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0}>‹</button>
+            <button className="lb-btn left" title="Close (Esc)" onClick={() => setViewIndex(-1)}><CloseIcon /></button>
+            <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0} title="Previous (←)"><ChevronLeftIcon /></button>
             <video key={viewing.id} src={viewing.src} controls autoPlay loop playsInline className="lb-video" />
-            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1}>›</button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1} title="Next (→)"><ChevronRightIcon /></button>
           </div>
           <div className="lb-bar" onClick={e => e.stopPropagation()}>
             <span className="lb-count">{viewIndex + 1} / {gallery.length}</span>

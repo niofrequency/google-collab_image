@@ -126,6 +126,46 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   strong likeness*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
 
+## Face reference: which models it works with
+
+**Face reference** keeps one character's face the same across many pictures, from 1–3 pictures of that face, with no
+training. Under the hood it's **IP-Adapter FaceID Plus v2 (SDXL)**:
+
+1. **InsightFace** (a face recogniser, on the CPU) finds the face in each reference picture and turns it into an
+   *identity* — a list of numbers describing who it is (face shape, eyes, nose, mouth), not the lighting or pose.
+2. A **CLIP image encoder** looks at the aligned face crop for finer detail (skin, eyebrows, expression style).
+3. The **adapter** feeds both into SDXL's attention layers while every picture is drawn, plus a small companion
+   **LoRA** (strength 0.6) that helps SDXL follow it. With several pictures the identities are averaged — different
+   angles give a steadier likeness.
+4. It's applied after your own LoRAs, to the main image and to **face fix** (which redraws the face at full size —
+   most important for small faces in full-body shots). A same-model **refiner** pass keeps it too.
+
+Your prompt still decides everything else: pose, clothes, hair, place, style. *Strength* 0.6 light · 0.8 default ·
+1.0–1.2 strong (closer likeness, less freedom in expression).
+
+| Model / notebook | Face reference | How to keep a face instead |
+|---|---|---|
+| **BigLust** (BIGLUST notebook) | ✅ Yes — built in (toggle under Face fix, saved characters, *Character* presets) | — |
+| **Any SDXL checkpoint** you download in BigLust: Juggernaut XL, RealVisXL, Pony, Illustrious, … | ✅ Yes — best likeness on photo-style models; anime/cartoon models work but are less exact | — |
+| **SD 1.5** checkpoints | ❌ No (the adapter is made for SDXL) — the site says so | Use an SDXL checkpoint |
+| **Qwen Image Edit Rapid AIO** / **Qwen 2511** | ❌ No adapter — it isn't needed | Qwen reads pictures itself: put the face picture in as a **reference picture** (Picture 1–3) and say what to keep, e.g. *"the woman from Picture 2, keep her face exactly the same, standing on a beach at sunset"*. Use the *Keep face* preset when editing a photo of that person |
+| **Image to Video** (Wan 2.2 A14B / 5B) | ❌ Not inside the video model | The face comes from the **start image** (and the **end image** on A14B): make them with a saved character — *Make start image* in the Video tab, or *Video start* / *Video end* in the Image Generator viewer — and use *Continue from last frame* for longer scenes |
+| **Into Realism** (older SDXL notebook) | ❌ Not in that notebook | Use the BIGLUST notebook (same model, newer server) |
+| **Krea 2**, **Wan 2.1** (older notebooks) | ❌ No | — |
+| **LoRA training** | — | For the strongest likeness from every angle, train a LoRA of the character and use it *together with* Face reference |
+
+**Workflow for comics and short films**
+
+1. In the Image Generator (BigLust), make a face you like — or upload clear face pictures — and press **Use as face** in
+   the full-size viewer (up to 3 pictures).
+2. **+ Save as character**, give it a name. Characters stay in the browser and, with ☁ cloud backup, on every device.
+3. For each panel: pick the character and the **Character (face reference)** preset, describe the scene.
+4. For video shots: **Make start image** (and *end image*) from the character in the Image to Video tab, describe the
+   motion, generate, then **Continue from last frame** for the next part.
+
+Only use pictures of real people who have agreed to it — especially for anything explicit, which without consent is
+illegal in many places. Faces you generated yourself are the safe choice for characters.
+
 ## Qwen Image Edit Rapid AIO (GGUF)
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) ·
@@ -177,6 +217,12 @@ encoder).
 
 - **Start from your character:** make each shot's first frame in the Image Generator with a saved **character**
   (Face reference), then in the full-size viewer press **Video start** — it opens here with the picture loaded.
+- **Or make it right here:** open **Make the start / end image from a character**, pick a saved character, describe
+  the picture ("Mia standing at the front door, rainy night, medium shot") and press **Make start image** (or *Make
+  end image*, with *Same shape as the start image*). It uses the BigLust server connected in the Image Generator tab
+  (its checkpoint and LoRAs, Face reference + face fix), so the **BigLust notebook must be running too** — a second
+  Colab runtime, which uses compute units twice as fast while both run. The pictures are also saved in the Image
+  Generator's gallery.
 - **End image** (A14B notebook only): also press **Video end** on a second picture of the same character (or drop one
   in *End image*). Wan fills in the motion between the two, so the face is fixed at both ends and can't drift far.
   Plan shots like "Mia at the door" → "Mia sitting at the table"; keep the place, clothes and framing similar. The end
@@ -266,6 +312,15 @@ You don't need to download anything. The LoRA is saved to your Google Drive, and
 
 You only need to download it from Drive if you want to use it in some other program.
 
+### Keeping datasets in the cloud (retrain later with more images)
+
+Your images and tags already live in Google Drive (`MyDrive/ComfyUI/training/<name>`). With ☁ **cloud backup**
+signed in, the LoRA Training tab also has **Save "name" to cloud** (full-size images, tags, trigger word, training and
+auto-tag settings) and **Restore from cloud** (puts a saved dataset back on the training server — e.g. a new Drive or
+after deleting it). To retrain with more images: restore (if needed), add the new images, tag them, then **Start
+training** to continue, or **Start fresh** to retrain from zero. Saving again later only uploads new images. See
+[Cloud backup](#cloud-backup-firebase).
+
 ### Retraining from zero (e.g. with the Person / face preset)
 
 Training again with the same name **continues** the saved run, which only works with the same settings. To retrain
@@ -347,7 +402,60 @@ npm install
 npm run dev
 ```
 
-Generated images and saved prompts are stored in your browser (IndexedDB / localStorage).
+Generated images and saved prompts are stored in your browser (IndexedDB / localStorage). With **cloud backup**
+(below) they are also copied to your own Firebase project.
+
+## Cloud backup (Firebase)
+
+Sign in with Google (**☁** at the top right of the site) and everything is backed up to your own Firebase project
+and synced between your devices:
+
+| What | How |
+|---|---|
+| Image, video and music galleries | automatically after each new item; deleting deletes the cloud copy too |
+| Saved characters, saved prompts, your presets | automatically (every ~20 s); merged by name when you sign in on another device |
+| LoRA training datasets (full-size images, tags, trigger word, settings) | **Save "name" to cloud** / **Restore from cloud** in the LoRA Training tab |
+
+Everything also stays in the browser, so the site works the same when you're signed out. Trained LoRA files stay in
+Google Drive (`MyDrive/ComfyUI/loras_sdxl`).
+
+### One-time setup (about 10 minutes)
+
+1. **Create a project** at [console.firebase.google.com](https://console.firebase.google.com) → *Add project*.
+2. **Sign-in:** *Build → Authentication → Get started → Google → Enable*. Then *Settings → Authorized domains → Add
+   domain* → `google-collabimage-one.vercel.app`.
+3. **Database:** *Build → Firestore Database → Create database* (production mode, any location). Open the **Rules**
+   tab, paste the contents of [`firestore.rules`](firestore.rules) and **Publish**.
+   **Already using this Firebase project for another app?** Don't replace your rules — add the `match` blocks from
+   these files inside your existing ones. Avoid a broad `match /users/{uid}/{document=**}` rule: Firestore allows
+   access if *any* rule allows it, so it would also open your other collections (e.g. a wallet) to writes.
+4. **File storage:** *Build → Storage → Get started*. Cloud Storage needs the pay-as-you-go **Blaze** plan (it still
+   includes a free amount each month; set a budget alert under *Usage and billing* so there are no surprises — videos
+   and training images add up). Open the **Rules** tab, paste [`storage.rules`](storage.rules) and **Publish**.
+5. **Allow the site to download files (CORS):** in the Google Cloud console for the same project, open **Cloud Shell**
+   (the `>_` icon), upload [`cors.json`](cors.json) (⋮ → Upload) and run, with your bucket name from the Storage page:
+
+   ```bash
+   gcloud storage buckets update gs://YOUR-BUCKET --cors-file=cors.json
+   ```
+
+   This **replaces** the bucket's CORS settings. If another app already uses this bucket from the browser, first
+   check its current settings with `gcloud storage buckets describe gs://YOUR-BUCKET --format="default(cors_config)"`
+   and add that app's site addresses to the `origin` list in `cors.json` before running the command.
+
+6. **Connect the website:** *Project settings (⚙) → General → Your apps → Web (`</>`)* → register an app → copy the
+   `firebaseConfig = { ... }` block. Either paste it in the **☁** panel on the site (saved in that browser), or add it
+   once for every browser as Vercel environment variables (*Vercel → Project → Settings → Environment Variables*,
+   then redeploy): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+   `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` (template: [`.env.example`](.env.example)).
+7. Press **☁ → Sign in with Google**. The first sync uploads everything already in the browser.
+
+The rules let each Google account read and write only its own folder (`users/<uid>/…`), so nobody else can see your
+files, even though the Firebase config itself is not secret. Keep it to content you have the right to store: generated
+pictures of real people only with their consent.
+
+**Problems:** *Permission denied* → the rules from steps 3–4 aren't published. *Downloads fail on a second device* →
+step 5 (CORS). *Sign-in popup error "unauthorized domain"* → step 2.
 
 ## Please note
 
