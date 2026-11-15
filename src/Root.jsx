@@ -11,7 +11,7 @@ const TABS = [
   { id: 'generate', label: 'Image Generator' },
   { id: 'gallery', label: 'Gallery Prompts' },
   { id: 'video', label: 'Image to Video' },
-  { id: 'headswap', label: 'HeadSwap },
+  { id: 'headswap', label: 'Head Swap' },
   { id: 'music', label: 'Music' },
   { id: 'train', label: 'LoRA Training' },
 ]
