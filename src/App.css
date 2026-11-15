@@ -437,3 +437,4 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   font-size: 13px; color: #f0b27a; line-height: 1.5;
   background: #2a1f12; border: 1px solid #6e4a1f; border-radius: 8px; padding: 10px 14px;
 }
+.gpu-note.good { color: #7bd88f; }

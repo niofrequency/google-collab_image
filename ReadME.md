@@ -118,6 +118,12 @@ Uses [kohya-ss sd-scripts](https://github.com/kohya-ss/sd-scripts).
    5–15 minutes are loading the model and preparing the images (step 0).
 6. The finished LoRA is saved to `MyDrive/ComfyUI/loras_sdxl/<name>.safetensors` and appears in BigLust's LoRA list.
 
+**GPU-aware training:** cell 1 detects the GPU. On a **T4** it trains in *standard* mode (fp16, image model only — what
+fits 15 GB). On an **L4 or A100** it switches to *improved* mode automatically: **bf16** precision and the **text encoder
+is trained too**, which usually ties the trigger word more strongly to the person; presets then use batch 4 with half
+the steps (same amount of training, finished 2–3× sooner). The website shows the GPU and mode under the URL. A run
+started on a T4 continues in standard mode; press *Start fresh* to retrain it in improved mode.
+
 Every setting on the website has an **ⓘ** explaining it. Images and captions are stored in
 `MyDrive/ComfyUI/training/<name>/images`; checkpoints every 250 steps in `.../<name>/output`. If Colab disconnects,
 run cells 1–2 again and press Start training with the same name — it continues from the last saved step. If you get
