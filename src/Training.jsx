@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
-import { TRAINING_PRESETS } from './presets.js'
+import { TRAINING_PRESETS, QWEN_TRAINING_PRESETS } from './presets.js'
 import { onUserChange, listCloudDatasets, saveDatasetToCloud, loadDatasetFromCloud, cloudFile, friendly } from './cloud.js'
 
 // LoRA Training tab: talks to the training server started by cell 2 of SDXL-LORA-TRAINING.ipynb.
@@ -59,6 +59,10 @@ export default function Training({ active }) {
   const [name, setName] = useState(load('name', ''))
   const [trigger, setTrigger] = useState(load('trigger', ''))
   const [settings, setSettings] = useState({ ...SETTINGS_DEFAULTS, ...load('settings', {}) })
+  const [trainer, setTrainer] = useState('sdxl')        // 'sdxl' or 'qwen_2511' (from the connected notebook)
+  const [kind, setKind] = useState('character')         // Qwen: 'character' or 'edit' (per LoRA name)
+  const isQwen = trainer === 'qwen_2511'
+  const isEdit = isQwen && kind === 'edit'
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [images, setImages] = useState([])           // [{file, caption, saved}]
   const [progressInfo, setProgressInfo] = useState({ saved_step: null, has_lora: false })  // for the current name
@@ -86,7 +90,7 @@ export default function Training({ active }) {
   useEffect(() => save('url', url), [url])
   useEffect(() => save('name', name), [name])
   useEffect(() => save('trigger', trigger), [trigger])
-  useEffect(() => save('settings', settings), [settings])
+  useEffect(() => save(trainer === 'qwen_2511' ? 'settings_qwen' : 'settings', settings), [settings])
   useEffect(() => save('tagThreshold', tagThreshold), [tagThreshold])
   useEffect(() => save('tagMode', tagMode), [tagMode])
   useEffect(() => save('excludeTags', excludeTags), [excludeTags])
@@ -135,10 +139,16 @@ export default function Training({ active }) {
       const data = await api('/training/info')
       if (data.mode !== 'lora_training') throw new Error('This URL is not the LoRA training server')
       setConnected(true)
+      const tr = data.trainer || 'sdxl'
+      if (tr !== trainer) {   // each trainer keeps its own settings (Qwen needs very different ones)
+        setSettings(tr === 'qwen_2511' ? { ...SETTINGS_DEFAULTS, ...(data.defaults || {}), ...load('settings_qwen', {}) }
+          : { ...SETTINGS_DEFAULTS, ...load('settings', {}) })
+        setTrainer(tr)
+      }
       setGpu(data.gpu || null)
       setDatasets(data.datasets || [])
       setTask(data.status)
-      say('Connected to the training server', 'ok')
+      say(tr === 'qwen_2511' ? 'Connected to the Qwen Image Edit 2511 trainer' : 'Connected to the training server', 'ok')
     } catch (e) {
       setConnected(false)
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 2 still running in Colab?' : e.message, 'error')
@@ -150,6 +160,7 @@ export default function Training({ active }) {
     try {
       const data = await api(`/training/dataset/${encodeURIComponent(n)}`)
       setImages(data.images.map(i => ({ ...i, saved: i.caption })))
+      if (data.kind) setKind(data.kind)
       setProgressInfo({ saved_step: data.saved_step ?? null, has_lora: !!data.has_lora })
       setThumbVersion(v => v + 1)
     } catch (e) { say(e.message, 'error') }
@@ -271,8 +282,14 @@ export default function Training({ active }) {
 
   async function startTraining() {
     if (!dsName) return say('Type a LoRA name first', 'error')
-    if (images.length < 5) return say('Add at least 5 images (15–40 works best)', 'error')
-    if (!trigger.trim()) return say('Set a trigger word — you will type it in prompts to use the LoRA', 'error')
+    if (isEdit) {
+      const pairs = images.filter(x => x.control)
+      if (pairs.length < 3) return say('An edit-effect LoRA needs at least 3 pictures with a Before picture (10–30 works best)', 'error')
+      if (pairs.some(x => !x.caption.trim())) return say('Write an instruction under every picture that has a Before picture (what changes)', 'error')
+    } else {
+      if (images.length < (isQwen ? 4 : 5)) return say(`Add at least ${isQwen ? 4 : 5} images (15–40 works best)`, 'error')
+      if (!trigger.trim()) return say('Set a trigger word — you will type it in prompts to use the LoRA', 'error')
+    }
     const unsaved = images.findIndex(x => x.caption !== x.saved)
     if (unsaved >= 0) await saveCaption(unsaved)
     try {
@@ -316,16 +333,21 @@ export default function Training({ active }) {
     if (unsaved >= 0) await saveCaption(unsaved)
     setCloudBusy('Saving to cloud...')
     try {
+      const BEFORE = 'before__'   // Qwen edit-effect 'Before' pictures are saved next to the others with this prefix
       const getFile = async file => {
-        const res = await fetch(`${backend}/training/dataset/${encodeURIComponent(dsName)}/file/${encodeURIComponent(file)}`, { headers: HEADERS })
+        const isBefore = file.startsWith(BEFORE)
+        const res = await fetch(`${backend}/training/dataset/${encodeURIComponent(dsName)}/${isBefore ? 'control_file' : 'file'}/${encodeURIComponent(isBefore ? file.slice(BEFORE.length) : file)}`, { headers: HEADERS })
         if (!res.ok) {
           const d = await res.json().catch(() => ({}))
           throw new Error(d.detail === 'Not Found' ? 'This training server is too old to send full images — open the training notebook fresh from GitHub and run cells 1–2 again' : (d.detail || `Server error ${res.status}`))
         }
         return res.blob()
       }
-      const r = await saveDatasetToCloud(dsName, images.map(({ file, caption }) => ({ file, caption })), getFile,
-        { settings, trigger: trigger.trim(), tag: { threshold: +tagThreshold, mode: tagMode, exclude: excludeTags } },
+      const entries = images.map(({ file, caption }) => ({ file, caption }))
+      if (isQwen) images.filter(x => x.control).forEach(x => entries.push({ file: BEFORE + x.file, caption: '' }))
+      const r = await saveDatasetToCloud(dsName, entries, getFile,
+        { settings, trigger: trigger.trim(), tag: { threshold: +tagThreshold, mode: tagMode, exclude: excludeTags },
+          trainer, kind: isQwen ? kind : null },
         (i, n) => setCloudBusy(`Saving to cloud... ${i + 1}/${n}`))
       say(`"${dsName}" saved to the cloud: ${r.total} images with their tags and settings (${r.uploaded} new${r.removed ? `, ${r.removed} removed` : ''}).`, 'ok')
     } catch (e) { say(friendly(e), 'error') }
@@ -350,9 +372,19 @@ export default function Training({ active }) {
       try { current = await api(`/training/dataset/${enc}`) } catch { /* new name */ }
       const have = new Map((current.images || []).map(i => [i.file, i.caption]))
       let added = 0, retagged = 0
-      for (let i = 0; i < data.images.length; i++) {
-        const img = data.images[i]
-        setCloudBusy(`Restoring... ${i + 1}/${data.images.length}`)
+      const cloudTrainer = data.trainer || 'sdxl'
+      if (cloudTrainer !== trainer) {
+        throw new Error(`"${cloudName}" was saved from the ${cloudTrainer === 'qwen_2511' ? 'Qwen 2511' : 'SDXL'} trainer — connect that training notebook to restore it`)
+      }
+      if (isQwen && data.kind) {
+        await api(`/training/dataset/${enc}/kind`, { method: 'POST', body: JSON.stringify({ kind: data.kind }) })
+        setKind(data.kind)
+      }
+      const befores = data.images.filter(x => x.file.startsWith('before__'))
+      const mains = data.images.filter(x => !x.file.startsWith('before__'))
+      for (let i = 0; i < mains.length; i++) {
+        const img = mains[i]
+        setCloudBusy(`Restoring... ${i + 1}/${mains.length}`)
         if (have.has(img.file)) {
           if ((have.get(img.file) || '') !== (img.caption || '')) {
             await api(`/training/dataset/${enc}/caption`, { method: 'PUT', body: JSON.stringify({ file: img.file, caption: img.caption || '' }) })
@@ -365,6 +397,14 @@ export default function Training({ active }) {
           method: 'POST', body: JSON.stringify({ filename: img.file, data: await blobToBase64(blob), caption: img.caption || '' }),
         })
         added++
+      }
+      for (const b of befores) {   // Qwen edit-effect Before pictures
+        const target = b.file.slice('before__'.length)
+        setCloudBusy(`Restoring Before pictures... ${target}`)
+        const blob = await cloudFile(b.path)
+        await api(`/training/dataset/${enc}/control`, {
+          method: 'POST', body: JSON.stringify({ file: target, filename: target, data: await blobToBase64(blob) }),
+        })
       }
       if (data.settings) setSettings(s => ({ ...s, ...data.settings }))
       if (data.trigger) setTrigger(data.trigger)
@@ -381,6 +421,38 @@ export default function Training({ active }) {
     setCloudBusy('')
   }
 
+  // ---------------- Qwen 2511: LoRA type and Before pictures (edit-effect LoRAs)
+  async function changeKind(k) {
+    if (!dsName) return say('Type a LoRA name first', 'error')
+    if (k === 'edit' && gpu && gpu.edit_ok === false) return say('Edit-effect LoRAs need an A100 — switch the Colab runtime to A100 and run cells 1–2 again', 'error')
+    try {
+      await api(`/training/dataset/${encodeURIComponent(dsName)}/kind`, { method: 'POST', body: JSON.stringify({ kind: k }) })
+      setKind(k)
+      refreshDatasets()
+    } catch (e) { say(e.message, 'error') }
+  }
+
+  async function addControl(i, file) {
+    if (!file) return
+    try {
+      const { filename, data } = await prepareFile(file)
+      const r = await api(`/training/dataset/${encodeURIComponent(dsName)}/control`, {
+        method: 'POST', body: JSON.stringify({ file: images[i].file, filename, data }),
+      })
+      const ctrl = Object.fromEntries(r.images.map(x => [x.file, x.control]))
+      setImages(prev => prev.map(x => ({ ...x, control: ctrl[x.file] ?? null })))
+      setThumbVersion(v => v + 1)
+    } catch (e) { say(e.message, 'error') }
+  }
+
+  async function removeControl(i) {
+    try {
+      const r = await api(`/training/dataset/${encodeURIComponent(dsName)}/control/${encodeURIComponent(images[i].file)}`, { method: 'DELETE' })
+      const ctrl = Object.fromEntries(r.images.map(x => [x.file, x.control]))
+      setImages(prev => prev.map(x => ({ ...x, control: ctrl[x.file] ?? null })))
+    } catch (e) { say(e.message, 'error') }
+  }
+
   async function stopTask() {
     if (!confirm('Stop the current task? Training can be resumed later from the last saved step.')) return
     try { setTask(await api('/training/stop', { method: 'POST' })) } catch (e) { say(e.message, 'error') }
@@ -389,6 +461,8 @@ export default function Training({ active }) {
   function setSetting(key, value) { setSettings(s => ({ ...s, [key]: value })) }
 
   const pct = task?.total ? Math.round((task.step / task.total) * 100) : 0
+  const controlThumbUrl = file => `${backend}/training/dataset/${encodeURIComponent(dsName)}/control_thumb/${encodeURIComponent(file)}?v=${thumbVersion}`
+  const presets = isQwen ? QWEN_TRAINING_PRESETS : TRAINING_PRESETS
   const thumbUrl = file => `${backend}/training/dataset/${encodeURIComponent(dsName)}/thumb/${encodeURIComponent(file)}?v=${thumbVersion}`
 
   return (
@@ -400,14 +474,20 @@ export default function Training({ active }) {
           2. Name your LoRA and pick a trigger word.<br />
           3. Drop in 15–40 images of the subject. They're saved to your Google Drive.<br />
           4. Check the tags under each image (Auto-tag helps), then press Start training.<br />
-          5. When it's done, the LoRA appears in the Image Generator's LoRA list next time you start BigLust.
+          5. When it's done, the LoRA appears in the Image Generator's LoRA list next time you start BigLust.<br /><br />
+          <b>Qwen Image Edit 2511 LoRAs</b>: open <b>QWEN-2511-LORA-TRAINING.ipynb</b> instead (A100, or L4 for character LoRAs) — this tab switches to Qwen mode when you paste its URL. Two kinds: <b>Character</b> (pictures of one character) and <b>Edit effect</b> (Before → After pairs with an instruction). The LoRA appears in both Qwen notebooks' LoRA lists.
         </>
       } /></h1>
       <div className="train-note">Only train on images you have the right to use, and only make a LoRA of a real person with their consent.</div>
 
       <label>Training server URL <Info text="In Colab, run cell 1 (setup) and then cell 2 — cell 2 prints a READY: URL. Paste that here. It's a different notebook from BigLust/Qwen, and it changes every time you start cell 2." /></label>
       <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="Paste the READY: URL from cell 2 of the training notebook (https://….trycloudflare.com)" />
-      {connected && gpu?.name && (
+      {connected && gpu?.name && isQwen && (
+        <div className={`gpu-note ${gpu.edit_ok ? 'good' : ''}`}>
+          Qwen Image Edit 2511 trainer · GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode_label}
+        </div>
+      )}
+      {connected && gpu?.name && !isQwen && (
         <div className={`gpu-note ${gpu.mode === 'improved' ? 'good' : ''}`}>
           GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode === 'improved' ? 'Improved training' : 'Standard training'}: {gpu.mode_label.split(': ')[1] || gpu.mode_label}
           {' '}<Info text={gpu.mode === 'improved'
@@ -463,7 +543,19 @@ export default function Training({ active }) {
         </div>
       </div>
 
-      <h3>Images {images.length > 0 && <span className="muted">— {images.length}</span>} <Info text={
+      {isQwen && (
+        <div className="row">
+          <div>
+            <label>LoRA type <Info text={<><b>Character</b>: 15–30 pictures of one character (different poses, outfits, places). Each picture is trained with another picture of the same character as Picture 1, so the LoRA learns the character and the trigger word, and keeps them when you edit. Use it with a picture of the character as Picture 1 and the trigger word in the prompt.<br /><br /><b>Edit effect</b>: 10–30 <b>pairs</b> — a <i>Before</i> picture and the <i>After</i> picture — plus an instruction (e.g. "turn this photo into a comic-book drawing"). The LoRA learns to make that change to any picture. Needs an A100.</>} /></label>
+            <select value={kind} onChange={e => changeKind(e.target.value)} disabled={!dsName}>
+              <option value="character">Character (pictures of one character)</option>
+              <option value="edit" disabled={gpu && gpu.edit_ok === false}>Edit effect (Before → After pairs){gpu && gpu.edit_ok === false ? ' — needs an A100' : ''}</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      <h3>{isEdit ? 'After pictures + Before pictures' : 'Images'} {images.length > 0 && <span className="muted">— {images.length}</span>} <Info text={isEdit ? <>Add the <b>After</b> pictures here (the result you want), then click <b>+ Before</b> on each to add its starting picture, and write the <b>instruction</b> underneath — what changes from Before to After. Use the same instruction wording for every pair (e.g. "turn this photo into a comic-book drawing"), and the same wording later when you use the LoRA. 10–30 pairs work best.</> : 
         <>15–40 images work best: the subject clearly visible, with different poses, outfits, backgrounds and lighting. Avoid blurry or tiny images and heavy filters. Big images are scaled down to 2048 px before uploading. HEIC (iPhone) photos need converting to jpg first.</>
       } /></h3>
       <div className={`train-drop ${!connected || !dsName ? 'disabled' : ''}`}
@@ -483,15 +575,15 @@ export default function Training({ active }) {
         <>
           <div className="tag-tools">
             <div className="tag-tool">
-              <label>Tag for all images <Info text="Adds a tag to the start of every caption, or removes it from every caption. Useful for the trigger word, or to delete a wrong auto-tag everywhere." /></label>
+              <label>{isEdit ? 'Instruction for all pictures' : 'Tag for all images'} <Info text={isEdit ? 'Puts this text at the start of every caption (or removes it). Handy to give every pair the same instruction, e.g. "turn this photo into a comic-book drawing".' : 'Adds a tag to the start of every caption, or removes it from every caption. Useful for the trigger word, or to delete a wrong auto-tag everywhere.'} /></label>
               <div className="inline">
-                <input value={bulkTag} onChange={e => setBulkTag(e.target.value)} placeholder="e.g. red hair" onKeyDown={e => e.key === 'Enter' && bulk('add')} />
+                <input value={bulkTag} onChange={e => setBulkTag(e.target.value)} placeholder={isEdit ? 'e.g. turn this photo into a comic-book drawing' : 'e.g. red hair'} onKeyDown={e => e.key === 'Enter' && bulk('add')} />
                 <button className="secondary" onClick={() => bulk('add')}>Add to all</button>
                 <button className="secondary" onClick={() => bulk('remove')}>Remove from all</button>
               </div>
             </div>
-            <div className="tag-tool">
-              <label>Auto-tag <Info text={
+            {!isEdit && <div className="tag-tool">
+              <label>{isQwen ? 'Auto-caption' : 'Auto-tag'} <Info text={isQwen ? <>Writes a short sentence for each picture with Qwen2.5-VL (the model's own text encoder): pose, clothes, place, framing — not the face, so the trigger word learns the face. "Replace" overwrites captions, "Add to existing" keeps yours. The first run loads the model (about a minute).</> : 
                 <>Describes each image with tags using the WD14 tagger (e.g. "1girl, long hair, smile, outdoors"). Lower sensitivity = more tags. "Add to existing" keeps your tags; "Replace" overwrites them. The trigger word is put first. Tip: tag what <i>changes</i> between images (clothes, background); things that are always the same are learned as part of the trigger word.</>
               } /></label>
               <div className="inline">
@@ -499,23 +591,37 @@ export default function Training({ active }) {
                   <option value="append">Add to existing</option>
                   <option value="replace">Replace existing</option>
                 </select>
-                <input type="number" step="0.05" min="0.1" max="0.9" value={tagThreshold} onChange={e => setTagThreshold(e.target.value)} style={{ width: 90 }} title="Sensitivity threshold (0.35 is typical)" />
-                <button className="secondary" onClick={autoTag} disabled={running}>Auto-tag all</button>
+                {!isQwen && <input type="number" step="0.05" min="0.1" max="0.9" value={tagThreshold} onChange={e => setTagThreshold(e.target.value)} style={{ width: 90 }} title="Sensitivity threshold (0.35 is typical)" />}
+                <button className="secondary" onClick={autoTag} disabled={running}>{isQwen ? 'Auto-caption all' : 'Auto-tag all'}</button>
               </div>
-              <label>Leave out these tags <Info text="Comma-separated tags auto-tag never adds. For a person LoRA, list things that are always true of them (hair colour, eye colour, freckles…): left out of the captions, they're learned by the trigger word, so you don't have to type them in every prompt. The Person / face preset fills in a common list." /></label>
-              <input value={excludeTags} onChange={e => setExcludeTags(e.target.value)} placeholder="e.g. brown hair, blue eyes, freckles" />
-            </div>
+              {!isQwen && <><label>Leave out these tags <Info text="Comma-separated tags auto-tag never adds. For a person LoRA, list things that are always true of them (hair colour, eye colour, freckles…): left out of the captions, they're learned by the trigger word, so you don't have to type them in every prompt. The Person / face preset fills in a common list." /></label>
+              <input value={excludeTags} onChange={e => setExcludeTags(e.target.value)} placeholder="e.g. brown hair, blue eyes, freckles" /></>}
+            </div>}
           </div>
 
           <div className="train-grid">
             {images.map((img, i) => (
               <div key={img.file} className="train-card">
+                {isEdit && (
+                  <div className="train-before">
+                    {img.control ? (<>
+                      <img src={controlThumbUrl(img.file)} alt="Before" loading="lazy" />
+                      <span className="train-before-label">Before</span>
+                      <button className="danger train-del" title="Remove the Before picture" onClick={() => removeControl(i)}>×</button>
+                    </>) : (
+                      <label className="train-before-add">+ Before picture
+                        <input type="file" accept="image/jpeg,image/png,image/webp,image/bmp" hidden onChange={e => { addControl(i, e.target.files?.[0]); e.target.value = '' }} />
+                      </label>
+                    )}
+                  </div>
+                )}
                 <div className="train-thumb">
                   <img src={thumbUrl(img.file)} alt={img.file} loading="lazy" />
+                  {isEdit && <span className="train-before-label">After</span>}
                   <button className="danger train-del" title="Delete this image" onClick={() => removeImage(i)}>×</button>
                 </div>
                 <div className="train-file" title={img.file}>{img.file}{img.caption !== img.saved ? ' • unsaved' : ''}</div>
-                <textarea className="train-caption" value={img.caption} placeholder={`No tags — will use "${[trigger, settings.class_word].filter(Boolean).join(', ')}"`}
+                <textarea className="train-caption" value={img.caption} placeholder={isEdit ? 'Instruction: what changes from Before to After, e.g. turn this photo into a comic-book drawing' : `No ${isQwen ? 'caption' : 'tags'} — will use "${[trigger, settings.class_word].filter(Boolean).join(', ')}"`}
                   onChange={e => setImages(prev => prev.map((x, idx) => idx === i ? { ...x, caption: e.target.value } : x))}
                   onBlur={() => saveCaption(i)} />
               </div>
@@ -524,22 +630,22 @@ export default function Training({ active }) {
         </>
       )}
 
-      <h3>Training settings <Info text="The defaults are tuned for a free Colab T4 and 15–40 images. Pick a preset for your kind of LoRA, or change the steps." /></h3>
-      <PresetBar scope="training" builtins={TRAINING_PRESETS} onApply={applyTrainingPreset} getCurrent={currentTrainingSettings}
+      <h3>Training settings <Info text={isQwen ? 'Defaults are tuned for Qwen-Image-Edit-2511 on this GPU (A100: 1024 px; L4: 768 px). Pick a preset for your kind of LoRA, or change the steps.' : 'The defaults are tuned for a free Colab T4 and 15–40 images. Pick a preset for your kind of LoRA, or change the steps.'} /></h3>
+      <PresetBar key={trainer} scope={isQwen ? 'training_qwen' : 'training'} builtins={presets} onApply={applyTrainingPreset} getCurrent={currentTrainingSettings}
         help={'One click sets the training settings and the auto-tag settings (sensitivity, add/replace, tags to leave out) for that kind of LoRA. "Default" goes back to the standard settings. After changing auto-tag settings, press "Auto-tag all" again to re-tag. Save your own with "+ Save current as preset".'} />
       <div className="row">
         <div>
           <label>Steps <Info text="How long to train. ~1500 for 15–40 images; more images → more steps. Too many steps makes the LoRA 'overcooked' (stiff, same face/pose everywhere). Checkpoints are saved every 250 steps so you can pick an earlier one." /></label>
           <input type="number" value={settings.max_train_steps} onChange={e => setSetting('max_train_steps', e.target.value)} />
         </div>
-        <div>
+        {!isQwen && <div>
           <label>Batch size <Info text="Images per step. 2 fits a T4 at 1024 px. Use 1 if training fails with 'CUDA out of memory'." /></label>
           <input type="number" min="1" max="4" value={settings.train_batch_size} onChange={e => setSetting('train_batch_size', e.target.value)} />
-        </div>
-        <div>
+        </div>}
+        {!isQwen && <div>
           <label>Base model <Info text={<>The SDXL checkpoint to train on — train on the one you'll generate with. "biglust" = the BigLust notebook's model. Or paste a Civitai / Hugging Face download link.</>} /></label>
           <input value={settings.base_model} onChange={e => setSetting('base_model', e.target.value)} />
-        </div>
+        </div>}
       </div>
       <button className="secondary link-btn" onClick={() => setShowAdvanced(s => !s)}>{showAdvanced ? '▾' : '▸'} Advanced</button>
       {showAdvanced && (
@@ -547,7 +653,7 @@ export default function Training({ active }) {
           <div>
             <label>Resolution <Info text="Training size. 1024 is SDXL's native size; 768 is faster and uses less memory but learns less detail." /></label>
             <select value={settings.resolution} onChange={e => setSetting('resolution', +e.target.value)}>
-              {[768, 896, 1024].map(r => <option key={r} value={r}>{r}</option>)}
+              {(isQwen ? [512, 768, 1024] : [768, 896, 1024]).map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div>
@@ -567,7 +673,7 @@ export default function Training({ active }) {
           </div>
         </div>
       )}
-      <button className="link-btn secondary" onClick={() => applyTrainingPreset(TRAINING_PRESETS[0])}>Reset settings to defaults</button>
+      <button className="link-btn secondary" onClick={() => applyTrainingPreset(presets[0])}>Reset settings to defaults</button>
 
       {connected && dsName && (progressInfo.saved_step != null || progressInfo.has_lora) && (
         <div className="muted" style={{ marginTop: 14 }}>

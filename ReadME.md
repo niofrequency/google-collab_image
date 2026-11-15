@@ -23,6 +23,7 @@ model size for it automatically** — this is what each one uses:
 | **Image to Video — Wan 2.2 5B** (Image to Video) | ✅ **TI2V 5B Q8_0** + Turbo LoRA (slow-ish; start with 480p, 2–3 s) | ✅ same model, faster | ✅ same model, faster |
 | **Music — ACE-Step 1.5** (Music) | ✅ **turbo** + 1.7B planner (runs in fp32: slower), up to 3 min | ✅ **XL turbo** + 1.7B planner, up to 4 min | ✅ **XL turbo** + **4B** planner, up to 4 min |
 | **SDXL LoRA training** (LoRA Training) | ✅ *standard* mode (fp16, image model only) | ✅ *improved* mode (bf16 + text encoder trained), 2–3× faster | ✅ *improved* mode, fastest |
+| **Qwen 2511 LoRA training** (LoRA Training) | ❌ too small | ✅ **Character** LoRAs at 768 px (slower: part of the model kept in RAM) | ✅ **Character** and **Edit effect** LoRAs at 1024 px |
 
 **Quick guide**
 - **No compute units / free tier → T4.** Everything except the A14B video notebook works; video and music are slower.
@@ -49,6 +50,7 @@ detection; they were made for the T4.
 | **Image to Video — Wan 2.2 5B** (free T4) | Same, with a smaller model that fits the **free T4** (up to 5 s, lower quality). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb) |
 | **Music — ACE-Step 1.5** | Songs with vocals and lyrics, or instrumentals, from a style description. Free T4 or better. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/MUSIC-ACESTEP.ipynb) |
 | **SDXL LoRA training** | Trains your own SDXL LoRA from 15–40 images, controlled from the website's LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) |
+| **Qwen 2511 LoRA training** | Trains LoRAs for Qwen Image Edit 2511: a **character** (L4 or A100) or an **edit effect** from Before → After pairs (A100). Same LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-LORA-TRAINING.ipynb) |
 | Into Realism (SDXL) | Older SDXL text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb) |
 | Krea 2 Realism | Older Krea 2 text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb) |
 | **Qwen Image Edit 2511** (GGUF) | The official Qwen-Image-Edit-2511 model (GGUF size picked for your GPU) with the 4-step Lightning LoRA — same website features as Rapid AIO (reference pictures, LoRAs, model sizes). Rapid AIO is a community merge tuned for speed and NSFW; 2511 is the plain official model. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb) |
@@ -61,6 +63,7 @@ Direct links:
 - Image to Video (5B, free T4): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb
 - Music (ACE-Step 1.5): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/MUSIC-ACESTEP.ipynb
 - SDXL LoRA training: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb
+- Qwen 2511 LoRA training: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-LORA-TRAINING.ipynb
 - Into Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb
 - Krea 2 Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb
 - Qwen Image Edit 2511: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb
@@ -380,6 +383,48 @@ Cell 4 alone won't restart it — cell 4 only *shows* progress. What to do depen
 **Keep these the same when resuming:** the **name** and the **number of steps** (default 1,500). Progress after the
 last save is redone. Saves happen every 250 steps, so you lose at most about 15–20 minutes at the default settings.
 
+## Qwen Image Edit 2511 LoRA training
+
+[Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-LORA-TRAINING.ipynb) ·
+Trains LoRAs for **Qwen-Image-Edit-2511** with [musubi-tuner](https://github.com/kohya-ss/musubi-tuner) (kohya's trainer
+for newer models). It uses the same **LoRA Training** tab: paste this notebook's URL and the tab switches to Qwen mode.
+Finished LoRAs go to `MyDrive/ComfyUI/loras_qwen`, so they appear in the LoRA list of **both** Qwen edit notebooks.
+
+| LoRA type | What you give it | GPU | Use it like this |
+|---|---|---|---|
+| **Character** | 15–30 pictures of one character + a trigger word | **A100** (1024 px) or **L4** (768 px, slower) | Picture 1 = a picture of the character, prompt with the trigger word: *"zxq_mia standing on a rooftop at night, wind in her hair"* |
+| **Edit effect** | 10–30 **pairs**: a *Before* picture, the *After* picture, and an instruction | **A100** | Picture 1 = any picture, prompt with the same instruction: *"turn this photo into a comic-book drawing"* |
+
+**Steps**
+1. **Runtime → Change runtime type → A100** (or **L4** for character LoRAs). Run **cell 1** — it downloads the full
+   training model (~58 GB, about 10–15 minutes) — then **cell 2**, and paste its `READY:` URL into the LoRA Training tab.
+2. Type a LoRA name and pick the **LoRA type**.
+3. **Character:** set a trigger word and class word, drop in the pictures, press **Auto-caption all** (Qwen2.5-VL writes a
+   sentence per picture — pose, clothes, place — but not the face, so the trigger word learns the face), check the captions.
+   **Edit effect:** drop in the *After* pictures, click **+ Before picture** on each card to add its starting picture,
+   and write the instruction under each (or use *Instruction for all pictures*).
+4. Pick a preset — **Default** (character, 1,200 steps), **Character – strong likeness** (dim 32, 1,800 steps),
+   **Edit effect** (dim 32, 1,500 steps) or **Quick test** — and press **Start training**.
+
+**How long:** roughly 1–2 hours on an A100 for the Default preset; an L4 takes noticeably longer (part of the model is
+swapped to RAM each step). Progress is saved every 200 steps: if Colab disconnects, run cells 1–2 again and press
+Start training with the same name to continue. *Start fresh* retrains from zero (the old run is kept as `_vN`).
+
+**How it trains:** the model is loaded in fp8 (musubi converts the bf16 file), pictures and captions are cached first,
+then the LoRA trains at batch 1 with 8-bit AdamW. *Character* LoRAs pair every picture with a **different** picture of
+the same character as Picture 1, and each caption becomes *"&lt;trigger&gt; &lt;class&gt; from Picture 1, &lt;description&gt;"* — so the
+LoRA learns the character, the trigger word, and to carry the character over from a reference picture. *Edit effect*
+LoRAs learn your Before → After change with your instruction.
+
+**Tips**
+- Character: varied pictures (angles, outfits, places, lighting), the face clearly visible; 15–30 is plenty. For your
+  own made-up characters, make the pictures with BigLust + Face reference first, then train on them.
+- Edit effect: consistent pairs (same framing and subject in Before and After), the **same instruction** every time.
+- Using the LoRA: strength 0.8–1.0 in the Qwen notebook (with its 4-step speed-up: 4 steps, CFG 1).
+- Datasets live in `MyDrive/ComfyUI/training_qwen/<name>/` (`images` + captions, `control` = Before pictures), and
+  ☁ *Save to cloud* backs them up too (Before pictures included).
+- Only train on pictures you have the rights to use, and only make a LoRA of a real person with that person's consent.
+
 ## Why generation no longer crashes the notebook
 
 In the BigLust and Qwen notebooks, **cell 2 saves the generation server as its own program and cell 3 runs it
@@ -393,9 +438,11 @@ To lower the chance of crashes: smaller Width/Height, fewer reference pictures, 
 | Folder | Contents |
 |---|---|
 | `MyDrive/ComfyUI/loras_sdxl` | SDXL LoRAs (downloaded in BigLust, or trained) |
-| `MyDrive/ComfyUI/loras_qwen` | Qwen-Image-Edit LoRAs |
-| `MyDrive/ComfyUI/training/<name>/images` | Training images and their `.txt` captions |
-| `MyDrive/ComfyUI/training/<name>/output` | Training checkpoints and resumable state |
+| `MyDrive/ComfyUI/loras_qwen` | Qwen-Image-Edit LoRAs (downloaded, or trained with the Qwen 2511 trainer) |
+| `MyDrive/ComfyUI/loras_wan22_a14b` / `loras_wan22_5b` | Image to Video LoRAs |
+| `MyDrive/ComfyUI/training/<name>/images` | SDXL training images and their `.txt` captions |
+| `MyDrive/ComfyUI/training/<name>/output` | SDXL training checkpoints and resumable state |
+| `MyDrive/ComfyUI/training_qwen/<name>/images` · `control` · `output` | Qwen 2511 training pictures + captions, Before pictures, checkpoints |
 
 You can add files to these folders yourself with the Google Drive website or app.
 
