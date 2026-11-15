@@ -158,7 +158,25 @@ toward the camera and smiles, slow push-in"), pick a preset (*Default*, *Quick p
 *Best quality (slow)*) and press **Generate video**. *Fast* mode uses the 4-step LoRAs; *Quality* uses 20 steps (about 5×
 slower). Finished videos play on the page, are kept in your browser's gallery, and can be downloaded as MP4. Models
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
-encoder). The videos have no sound.
+encoder).
+
+### Sound (MMAudio)
+
+Turn on **🔇 Add sound** (under Size / Length / Mode) to give the video matching sound effects and ambience —
+footsteps, waves, wind, rain, engines, animals, crowds — timed to what happens on screen. It uses
+[MMAudio](https://github.com/hkchengrex/MMAudio) (large 44.1 kHz model) after the video is made, and adds about a
+minute per clip (more on a T4). It doesn't make speech or music; for music use the **Music** tab.
+
+- **Sound description** (optional): what it should sound like, e.g. *"ocean waves crashing, seagulls"*. Empty = the
+  motion prompt is used.
+- Cell 1 installs it (~8 GB extra download). Set `ADD_SOUND = False` at the sound section of cell 1 to skip it.
+- If adding sound fails (e.g. out of memory), you still get the silent video and the website says why.
+- Videos with sound show 🔊 in the gallery and play with sound in the viewer.
+- MMAudio's model weights are licensed **CC BY-NC 4.0** — non-commercial use only.
+
+The video gallery works like the image gallery: hover to play, click to select (delete several at once), magnifier
+or double-click for the full-size viewer (← → to browse, Esc to close, Download / Use prompt / Info / Delete), a
+**Size** slider, and **Full videos** to show whole videos instead of cropped tiles.
 
 ## Music (ACE-Step 1.5)
 
@@ -285,6 +303,10 @@ You can add files to these folders yourself with the Google Drive website or app
   session. The website then says *"The generation server ran out of memory…"*; use a smaller size or fewer pictures.
 - **A LoRA does nothing or errors:** it must match the model (SDXL LoRAs for BigLust, Qwen LoRAs for Qwen). The
   notebooks report LoRAs that don't fit.
+- **Gallery ← → keys or a website change don't show up:** the site updates when Vercel redeploys after a merge. Reload
+  the page with **Ctrl+Shift+R** (Cmd+Shift+R on a Mac) to skip the old cached version.
+- **"Sound is turned off" in cell 1 / *Add sound* greyed out:** MMAudio couldn't be installed or downloaded. Re-run
+  cell 1 (downloads resume), then cells 2 and 3. Videos still work without sound.
 - Free Colab sessions disconnect after a while and have daily GPU limits.
 
 ## Website (frontend)

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { VIDEO_PRESETS } from './presets.js'
+import { ZoomIcon } from './icons'
+import { useLightboxKeys } from './useLightboxKeys'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -75,13 +77,21 @@ export default function Video({ active }) {
   const [seconds, setSeconds] = useState(load('seconds', 3))
   const [mode, setMode] = useState(load('mode', 'fast'))
   const [seed, setSeed] = useState(-1)
+  const [sound, setSound] = useState(load('sound', false))
+  const [soundPrompt, setSoundPrompt] = useState(load('sound_prompt', ''))
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [job, setJob] = useState(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)          // { url, ... } of the latest video
   const [gallery, setGallery] = useState([])
-  const [viewing, setViewing] = useState(null)
+  const [viewIndex, setViewIndex] = useState(-1)      // full-screen viewer (index into gallery)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('video_thumb') || 220))
+  const [fitVideos, setFitVideos] = useState(() => localStorage.getItem('video_fit') === '1')
+  const [infoItem, setInfoItem] = useState(null)
+  const galleryRef = useRef(null)
+  const [galleryWidth, setGalleryWidth] = useState(1000)
   const fileRef = useRef(null)
   const activeRef = useRef(active)
   activeRef.current = active
@@ -93,6 +103,14 @@ export default function Video({ active }) {
   useEffect(() => save('size', size), [size])
   useEffect(() => save('seconds', seconds), [seconds])
   useEffect(() => save('mode', mode), [mode])
+  useEffect(() => save('sound', sound), [sound])
+  useEffect(() => save('sound_prompt', soundPrompt), [soundPrompt])
+  useEffect(() => {  // gallery width, for the "Full videos" columns
+    if (!galleryRef.current) return
+    const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))
+    ro.observe(galleryRef.current)
+    return () => ro.disconnect()
+  }, [])
 
   function say(text, type = '') { setMsg({ text, type }) }
 
@@ -173,6 +191,7 @@ export default function Video({ active }) {
   async function generate() {
     if (!info) return say('Paste the READY: URL from cell 3 of an IMG2VID notebook first', 'error')
     if (!image) return say('Add a start image first', 'error')
+    const soundOn = sound && info.supports_sound !== false
     setBusy(true)
     setResult(null)
     const started = Date.now()
@@ -180,7 +199,7 @@ export default function Video({ active }) {
     try {
       const res = await fetch(backend + '/generate_video', {
         method: 'POST', headers: HEADERS,
-        body: JSON.stringify({ image, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1 }),
+        body: JSON.stringify({ image, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1, sound: soundOn, sound_prompt: soundPrompt }),
       })
       let data = await res.json()
       let downSince = null
@@ -205,11 +224,14 @@ export default function Video({ active }) {
       const item = {
         blob, created: Date.now(), prompt, width: data.width, height: data.height, seconds: data.seconds,
         fps: data.fps, frames: data.frames, mode: data.mode, seed: data.seed, model: info.label,
+        sound: !!data.sound, soundPrompt: data.sound ? (soundPrompt.trim() || prompt) : '',
       }
       await dbAdd(item)
       await refreshGallery()
       setResult({ ...item, src: URL.createObjectURL(blob) })
-      say(`Done — ${data.seconds} s at ${data.width}×${data.height} in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the gallery below.`, 'ok')
+      const took = data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'
+      say(`Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
+        (data.warning ? ` ${data.warning}` : ''), data.warning ? 'error' : 'ok')
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
     }
@@ -220,9 +242,36 @@ export default function Video({ active }) {
   async function removeVideo(v) {
     if (!confirm('Delete this video from the gallery?')) return
     await dbDelete(v.id)
-    if (viewing?.id === v.id) setViewing(null)
+    setViewIndex(-1)
+    setSelectedIds(prev => { const n = new Set(prev); n.delete(v.id); return n })
     refreshGallery()
   }
+
+  async function deleteSelected() {
+    if (!selectedIds.size || !confirm(`Delete ${selectedIds.size} video(s) from the gallery?`)) return
+    for (const id of selectedIds) await dbDelete(id)
+    setSelectedIds(new Set())
+    setViewIndex(-1)
+    refreshGallery()
+  }
+
+  function toggleSelect(id) {
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function selectAll() {
+    setSelectedIds(selectedIds.size === gallery.length ? new Set() : new Set(gallery.map(v => v.id)))
+  }
+
+  function usePrompt(v) {
+    setPrompt(v.prompt || '')
+    if (v.soundPrompt && v.soundPrompt !== v.prompt) setSoundPrompt(v.soundPrompt)
+    say('Prompt loaded', 'ok')
+  }
+
+  const viewing = viewIndex >= 0 ? gallery[viewIndex] : null
+  const goPrev = () => setViewIndex(i => Math.max(0, i - 1))
+  const goNext = () => setViewIndex(i => Math.min(gallery.length - 1, i + 1))
+  useLightboxKeys(viewIndex >= 0, { prev: goPrev, next: goNext, close: () => setViewIndex(-1), enabled: active && !infoItem })
 
   const fps = info?.fps || 16
   const pct = job?.total_steps ? Math.round(job.step / job.total_steps * 100) : (busy ? 5 : 0)
@@ -292,6 +341,17 @@ export default function Video({ active }) {
         </div>
       </div>
 
+      <div className="sound-box">
+        <div className="inline" style={{ alignItems: 'center' }}>
+          <button className={`toggle ${sound && info?.supports_sound !== false ? 'on' : ''}`} disabled={info?.supports_sound === false}
+            onClick={() => setSound(v => !v)}>{sound && info?.supports_sound !== false ? '🔊 Sound on' : '🔇 Add sound'}</button>
+          <Info text={<>After the video is made, <b>MMAudio</b> watches it and creates matching sound: footsteps, waves, wind, rain, engines, animals, crowds, ambience… timed to what happens on screen. It does <b>not</b> make speech or music. Adds about a minute per clip (more on a T4).<br /><br /><b>Sound description</b> (optional): what it should sound like, e.g. <i>"ocean waves crashing, seagulls"</i>. Leave it empty to use the motion prompt.<br /><br />If adding sound fails (e.g. out of memory), you still get the silent video.</>} />
+        </div>
+        {info?.supports_sound === false
+          ? <span className="muted small-note">This notebook was set up without sound — open the IMG2VID notebook fresh from GitHub (ADD_SOUND = True in cell 1).</span>
+          : sound && <input value={soundPrompt} onChange={e => setSoundPrompt(e.target.value)} placeholder="Sound description (optional), e.g. ocean waves crashing, seagulls, wind" />}
+      </div>
+
       <button className="secondary link-btn" onClick={() => setShowAdvanced(s => !s)}>{showAdvanced ? '▾' : '▸'} Advanced</button>
       {showAdvanced && (
         <div className="row">
@@ -314,34 +374,102 @@ export default function Video({ active }) {
 
       {result && (
         <div className="video-result">
-          <video src={result.src} controls autoPlay loop muted playsInline />
+          <video src={result.src} controls autoPlay loop muted={!result.sound} playsInline />
           <a className="secondary video-download" href={result.src} download={`video-${result.created}.mp4`}>Download MP4</a>
         </div>
       )}
 
-      <div className="gallery-header"><h3>Videos</h3></div>
-      {gallery.length === 0 && <div className="empty-msg">No videos yet.</div>}
-      <div className="video-grid">
-        {gallery.map(v => (
-          <div key={v.id} className="video-card">
-            <video src={v.src + "#t=0.1"} muted loop playsInline preload="metadata"
-              onMouseEnter={e => e.currentTarget.play()} onMouseLeave={e => e.currentTarget.pause()}
-              onClick={() => setViewing(v)} />
-            <div className="video-meta" title={v.prompt}>{v.seconds} s · {v.width}×{v.height} · {v.mode}<br />{v.prompt || '(no prompt)'}</div>
-            <div className="inline">
-              <a className="secondary video-download small" href={v.src} download={`video-${v.created}.mp4`}>Download</a>
-              <button className="danger" onClick={() => removeVideo(v)}>Delete</button>
-              <button className="secondary" onClick={() => { setPrompt(v.prompt || ''); say('Prompt loaded', 'ok') }}>Use prompt</button>
+      <div className="gallery-header">
+        <h3>Videos {gallery.length > 0 && <span className="muted">· {gallery.length} video{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <div className="gallery-actions">
+          {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+          {gallery.length > 0 && (<>
+            <label className="gallery-control" title="Thumbnail size">
+              <span>Size</span>
+              <input type="range" min="150" max="420" step="10" value={thumbSize}
+                onChange={e => { setThumbSize(+e.target.value); localStorage.setItem('video_thumb', e.target.value) }} />
+            </label>
+            <button className={`toggle small ${fitVideos ? 'on' : ''}`} title="Show whole videos instead of cropped tiles"
+              onClick={() => setFitVideos(f => { localStorage.setItem('video_fit', f ? '0' : '1'); return !f })}>Full videos</button>
+            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={selectAll} title="Select all videos" />
+          </>)}
+        </div>
+      </div>
+      {gallery.length === 0
+        ? <div className="empty-msg">No videos yet.</div>
+        : <div className="gallery-hint">Hover to play · click to select · magnifier or double-click to watch full size · ← → to browse</div>}
+
+      <div ref={galleryRef}>
+        {(() => {
+          const tile = (v, i) => (
+            <div key={v.id} className={`gallery-item video-tile ${selectedIds.has(v.id) ? 'selected' : ''}`}
+              onClick={() => toggleSelect(v.id)} onDoubleClick={() => setViewIndex(i)}
+              onMouseEnter={e => e.currentTarget.querySelector('video')?.play().catch(() => {})}
+              onMouseLeave={e => e.currentTarget.querySelector('video')?.pause()}>
+              <video src={v.src + '#t=0.1'} muted loop playsInline preload="metadata"
+                style={fitVideos ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              {selectedIds.has(v.id) && <span className="selected-badge">✓</span>}
+              <span className="video-badge">{v.seconds} s{v.sound ? ' · 🔊' : ''}</span>
+              <div className="gallery-overlay">
+                <button className="magnify-btn" title="Watch full size" onClick={e => { e.stopPropagation(); setViewIndex(i) }}><ZoomIcon /></button>
+              </div>
+              <button className="info-btn" onClick={e => { e.stopPropagation(); setInfoItem(v) }}>i</button>
             </div>
-          </div>
-        ))}
+          )
+          if (!fitVideos) {
+            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+          }
+          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          return (
+            <div className="gallery-masonry">
+              {Array.from({ length: cols }, (_, c) => (
+                <div key={c} className="gallery-col">{gallery.map((v, i) => i % cols === c ? tile(v, i) : null)}</div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {viewing && (
-        <div className="lightbox" onClick={() => setViewing(null)}>
+        <div className="lightbox" onClick={() => setViewIndex(-1)}>
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
-            <button className="lb-btn left" onClick={() => setViewing(null)}>×</button>
-            <video src={viewing.src} controls autoPlay loop playsInline style={{ maxWidth: '85vw', maxHeight: '85vh', borderRadius: 8 }} />
+            <button className="lb-btn left" onClick={() => setViewIndex(-1)}>×</button>
+            <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0}>‹</button>
+            <video key={viewing.id} src={viewing.src} controls autoPlay loop playsInline className="lb-video" />
+            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1}>›</button>
+          </div>
+          <div className="lb-bar" onClick={e => e.stopPropagation()}>
+            <span className="lb-count">{viewIndex + 1} / {gallery.length}</span>
+            <span className="lb-caption" title={viewing.prompt}>{viewing.prompt || '(no prompt)'}</span>
+            <span className="lb-meta">{viewing.seconds} s · {viewing.width}×{viewing.height}{viewing.sound ? ' · 🔊 sound' : ''}</span>
+            <button className="secondary" onClick={() => setInfoItem(viewing)}>Info</button>
+            <button className="secondary" onClick={() => usePrompt(viewing)}>Use prompt</button>
+            <a className="secondary video-download small" href={viewing.src} download={`video-${viewing.created}.mp4`}>Download</a>
+            <button className="danger" onClick={() => removeVideo(viewing)}>Delete</button>
+          </div>
+          <div className="lb-help">← → browse · Esc to close</div>
+        </div>
+      )}
+
+      {infoItem && (
+        <div className="prompt-popup-overlay" onClick={() => setInfoItem(null)}>
+          <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+            <h3>Video info</h3>
+            <div className="video-info-grid">
+              <b>Motion prompt</b><span>{infoItem.prompt || '(none)'}</span>
+              <b>Sound</b><span>{infoItem.sound ? (infoItem.soundPrompt || 'yes') : 'none'}</span>
+              <b>Length</b><span>{infoItem.seconds} s ({infoItem.frames} frames @ {infoItem.fps} fps)</span>
+              <b>Size</b><span>{infoItem.width}×{infoItem.height}</span>
+              <b>Mode</b><span>{infoItem.mode}</span>
+              <b>Seed</b><span>{infoItem.seed}</span>
+              <b>Model</b><span>{infoItem.model}</span>
+              <b>Made</b><span>{new Date(infoItem.created).toLocaleString()}</span>
+            </div>
+            <div className="inline" style={{ marginTop: 12 }}>
+              <button className="secondary" onClick={() => { usePrompt(infoItem); setInfoItem(null) }}>Use prompt</button>
+              <button className="secondary" onClick={() => { setSeed(infoItem.seed); setInfoItem(null); say('Seed loaded (Advanced)', 'ok') }}>Use seed</button>
+              <button className="secondary" onClick={() => setInfoItem(null)}>Close</button>
+            </div>
           </div>
         </div>
       )}
