@@ -7,8 +7,8 @@ export const GENERATOR_PRESETS = {
   sdxl: [
     {
       name: 'Default',
-      info: 'The standard BigLust settings: 832×1216, 25 steps, CFG 4.5, no face fix.',
-      s: { width: 832, height: 1216, steps: 25, cfg: 4.5, sampler: 'dpmpp_2m', scheduler: 'karras', denoise: 1, batch: 1, faceFix: false, faceStrength: 0.4, loraStrength: 0.8 },
+      info: 'The standard BigLust settings: 832×1216, 25 steps, CFG 4.5, no face fix, no face reference.',
+      s: { width: 832, height: 1216, steps: 25, cfg: 4.5, sampler: 'dpmpp_2m', scheduler: 'karras', denoise: 1, batch: 1, faceFix: false, faceStrength: 0.4, faceRef: false, loraStrength: 0.8 },
     },
     {
       name: 'Portrait (best likeness)',
@@ -29,6 +29,16 @@ export const GENERATOR_PRESETS = {
       name: 'Landscape',
       info: 'Wide image (scenes, lying poses, groups), face fix on.',
       s: { width: 1216, height: 832, steps: 30, cfg: 4.5, sampler: 'dpmpp_2m', scheduler: 'karras', denoise: 1, batch: 1, faceFix: true, faceStrength: 0.4, loraStrength: 0.9 },
+    },
+    {
+      name: 'Character (face reference)',
+      info: 'For comics and films: keeps the face from your Face reference pictures / saved character (strength 0.8), with face fix on. Pick a character under Face reference first.',
+      s: { width: 896, height: 1152, steps: 30, cfg: 4.5, sampler: 'dpmpp_2m', scheduler: 'karras', denoise: 1, batch: 1, faceFix: true, faceStrength: 0.35, faceRef: true, faceRefStrength: 0.8 },
+    },
+    {
+      name: 'Character – strong likeness',
+      info: 'Like "Character" but the face reference is stronger (1.0): closest to the reference face, with a little less freedom for expression and style.',
+      s: { width: 896, height: 1152, steps: 30, cfg: 4.5, sampler: 'dpmpp_2m', scheduler: 'karras', denoise: 1, batch: 1, faceFix: true, faceStrength: 0.35, faceRef: true, faceRefStrength: 1.0 },
     },
     {
       name: 'Fast draft',

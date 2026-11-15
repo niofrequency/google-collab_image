@@ -518,3 +518,15 @@ audio, video { color-scheme: dark; }
 .video-info-grid span { word-break: break-word; color: #ddd; }
 .sound-box { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
 .small-note { font-size: 12px; }
+
+/* Face reference (BigLust) */
+.face-ref-box { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+.face-ref-thumbs { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.face-ref-thumb { position: relative; }
+.face-ref-thumb img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
+.face-ref-add { width: 84px; height: 84px; border-radius: 8px; border: 1px dashed var(--border); font-size: 12px; padding: 4px; }
+.face-ref-chars { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.char-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 3px; cursor: pointer; }
+.char-chip img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.char-x { background: none; border: none; color: var(--muted); padding: 0 2px; width: auto; font-size: 14px; line-height: 1; cursor: pointer; }
+.char-x:hover { color: #e74c3c; background: none; }

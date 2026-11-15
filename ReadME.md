@@ -109,8 +109,19 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   best likeness, put a full-body LoRA (e.g. `Stephanie_v1`) on *Main image only* and a LoRA trained only on face
   close-ups (e.g. `Stephanie_face`) on *Face fix only*, with Face fix on and the same trigger word in the prompt:
   the body comes from the first LoRA, the face from the second.
-- **Presets:** one click sets size, steps, CFG, sampler, face fix and LoRA strength — *Default*, *Portrait (best
-  likeness)*, *Upper body*, *Full body*, *Landscape*, *Fast draft*. Save your own with *+ Save current as preset*
+- **Face reference** (toggle under Face fix): keeps **the same face** in every image from 1–3 pictures — no training
+  (IP-Adapter FaceID Plus v2, used in the main image and in face fix). Made for **comics and short films**:
+  1. Generate a character you like (or upload clear, front-facing face pictures — head-and-shoulders works best).
+  2. In the full-size viewer press **Use as face** (up to 3 pictures; different angles help).
+  3. Press **+ Save as character** and give it a name. Saved characters stay in your browser — click one to use it
+     for each panel or shot. For a film, make each shot's start frame this way, then animate it in **Image to Video**.
+
+  *Strength* 0.6 light · **0.8 default** · 1.0–1.2 strong likeness (can look stiff). It copies the face only —
+  describe hair, body and clothes in the prompt, or combine it with a LoRA. Only use pictures of real people who have
+  agreed to it.
+- **Presets:** one click sets size, steps, CFG, sampler, face fix, face reference and LoRA strength — *Default*,
+  *Portrait (best likeness)*, *Upper body*, *Full body*, *Landscape*, *Character (face reference)*, *Character –
+  strong likeness*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
 
 ## Qwen Image Edit Rapid AIO (GGUF)
