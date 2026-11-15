@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
+import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import './App.css'
  
@@ -53,6 +53,10 @@ export default function HeadSwap({ active = true }) {
   const bodyInputRef = useRef(null)
   const headInputRef = useRef(null)
   const galleryRef = useRef([])
+  const galleryWrapRef = useRef(null)
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('headswap_gallery_thumb') || 200))
+  const [fitImages, setFitImages] = useState(() => localStorage.getItem('headswap_gallery_fit') === '1')
+  const [galleryWidth, setGalleryWidth] = useState(1000)
 
   const setStatusMsg = useCallback((message, type = '') => {
     setStatus(message)
@@ -84,6 +88,13 @@ export default function HeadSwap({ active = true }) {
     loadGallery().catch(error => setStatusMsg(`Could not load Head Swap gallery: ${error.message}`, 'error'))
     return () => galleryRef.current.forEach(item => URL.revokeObjectURL(item.url))
   }, [loadGallery, setStatusMsg])
+
+  useEffect(() => {  // track the gallery's width for the "Full images" columns
+    if (!galleryWrapRef.current) return undefined
+    const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))
+    ro.observe(galleryWrapRef.current)
+    return () => ro.disconnect()
+  }, [active])
 
   useEffect(() => {
     localStorage.setItem('headswap_backend_url', backendUrl)
@@ -253,27 +264,57 @@ export default function HeadSwap({ active = true }) {
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />
       <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : 'Generate Head Swap'}</button>
 
-      {status && <div className={`status ${statusType} headswap-status`} role="status">{status}</div>}
-
-      {loading && <div className="progress headswap-progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>}
+      {loading && <div className="progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>}
+      {status && <div className={`status ${statusType}`} role="status">{status}</div>}
 
       {result && <div className="headswap-latest-result"><h3>Latest result</h3><img src={result} alt="Latest Head Swap result" /></div>}
 
       <div className="gallery-header headswap-gallery-header">
-        <h3>Head Swap Gallery <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span></h3>
+        <h3>Head Swap Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
-          {gallery.length > 0 && <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={toggleAll} title="Select all Head Swap images" />}
+          {gallery.length > 0 && (<>
+            <label className="gallery-control" title="Thumbnail size">
+              <span>Size</span>
+              <input type="range" min="130" max="360" step="10" value={thumbSize}
+                onChange={event => { setThumbSize(+event.target.value); localStorage.setItem('headswap_gallery_thumb', event.target.value) }} />
+            </label>
+            <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
+              onClick={() => setFitImages(fit => { localStorage.setItem('headswap_gallery_fit', fit ? '0' : '1'); return !fit })}>Full images</button>
+            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={toggleAll} title="Select all images" />
+          </>)}
         </div>
       </div>
-      {gallery.length > 0 ? <div className="gallery headswap-gallery">
-        {gallery.map((item, index) => <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} onClick={() => toggleSelected(item.id)}>
-          <img src={item.url} alt="Head Swap output" loading="lazy" />
-          {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
-          <div className="gallery-overlay"><button className="magnify-btn" title="View full size" onClick={event => { event.stopPropagation(); setLightboxIndex(index) }}>⌕</button></div>
-          <button className="info-btn" title="Download image" onClick={event => { event.stopPropagation(); download(item) }}>↓</button>
-        </div>)}
-      </div> : <div className="empty-msg">Head Swap results will be saved here, separately from the Image Generator gallery.</div>}
+      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · magnifier or double-click to view full size · ← → to browse</div>}
+
+      <div ref={galleryWrapRef}>
+        {gallery.length === 0 ? <div className="empty-msg">Head Swap results will be saved here, separately from the Image Generator gallery.</div> : (() => {
+          const tile = (item, index) => (
+            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+              onClick={() => toggleSelected(item.id)} onDoubleClick={() => setLightboxIndex(index)}>
+              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
+              <div className="gallery-overlay">
+                <button className="magnify-btn" title="View full size" onClick={event => { event.stopPropagation(); setLightboxIndex(index) }}><ZoomIcon /></button>
+              </div>
+              <button className="info-btn" title="Download image" onClick={event => { event.stopPropagation(); download(item) }}>↓</button>
+            </div>
+          )
+          if (!fitImages) {
+            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+          }
+          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          return (
+            <div className="gallery-masonry">
+              {Array.from({ length: cols }, (_, c) => (
+                <div key={c} className="gallery-col">
+                  {gallery.map((item, index) => index % cols === c ? tile(item, index) : null)}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+      </div>
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
         <div className="lb-image-wrap" onClick={event => event.stopPropagation()}>
