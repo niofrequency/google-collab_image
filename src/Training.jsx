@@ -19,7 +19,7 @@ const QWEN_DEFAULTS = {
 }
 const TRAINERS = {
   sdxl: { label: 'SDXL (BigLust)', notebook: 'SDXL-LORA-TRAINING.ipynb', gpu: 'T4, L4 or A100', urlKey: 'url' },
-  qwen_2511: { label: 'Qwen Image Edit 2511', notebook: 'QWEN-2511-LORA-TRAINING.ipynb', gpu: 'A100, or L4 for character LoRAs', urlKey: 'url_qwen' },
+  qwen_2511: { label: 'Qwen Image Edit 2511', notebook: 'QWEN-2511-LORA-TRAINING.ipynb', gpu: 'A100, or L4 (slower)', urlKey: 'url_qwen' },
 }
 const SETTINGS_DEFAULTS = {
   class_word: 'woman', base_model: 'biglust', max_train_steps: 1500, train_batch_size: 2,
@@ -463,7 +463,8 @@ export default function Training({ active }) {
   // ---------------- Qwen 2511: LoRA type and Before pictures (edit-effect LoRAs)
   async function changeKind(k) {
     if (!dsName) return say('Type a LoRA name first', 'error')
-    if (k === 'edit' && gpu && gpu.edit_ok === false) return say('Edit-effect LoRAs need an A100 — switch the Colab runtime to A100 and run cells 1–2 again', 'error')
+    if (k === 'edit' && gpu && gpu.edit_ok === false) return say('This training notebook is an older version without edit-effect training on this GPU — open QWEN-2511-LORA-TRAINING fresh from GitHub and run cells 1–2 again', 'error')
+    if (k === 'edit' && gpu?.edit_slow) say('Edit-effect training on an L4 works at 768 px but is slow — start with the Quick test preset', 'ok')
     try {
       await api(`/training/dataset/${encodeURIComponent(dsName)}/kind`, { method: 'POST', body: JSON.stringify({ kind: k }) })
       setKind(k)
@@ -514,7 +515,7 @@ export default function Training({ active }) {
           3. Drop in 15–40 images of the subject. They're saved to your Google Drive.<br />
           4. Check the tags under each image (Auto-tag helps), then press Start training.<br />
           5. When it's done, the LoRA appears in the Image Generator's LoRA list next time you start BigLust.<br /><br />
-          <b>Qwen Image Edit 2511 LoRAs</b>: open <b>QWEN-2511-LORA-TRAINING.ipynb</b> instead (A100, or L4 for character LoRAs) — this tab switches to Qwen mode when you paste its URL. Two kinds: <b>Character</b> (pictures of one character) and <b>Edit effect</b> (Before → After pairs with an instruction). The LoRA appears in both Qwen notebooks' LoRA lists.
+          <b>Qwen Image Edit 2511 LoRAs</b>: open <b>QWEN-2511-LORA-TRAINING.ipynb</b> instead (A100, or L4 for character LoRAs) — this tab switches to Qwen mode when you paste its URL. Two kinds: <b>Character</b> (pictures of one character) and <b>Edit effect</b> (Before → After pairs with an instruction). A100 recommended; an L4 works for both at 768 px, slower. The LoRA appears in both Qwen notebooks' LoRA lists.
         </>
       } /></h1>
       <div className="train-note">Only train on images you have the right to use, and only make a LoRA of a real person with their consent.</div>
@@ -524,7 +525,7 @@ export default function Training({ active }) {
         {Object.entries(TRAINERS).map(([id, t]) => (
           <button key={id} className={`chip ${trainer === id ? 'active' : ''}`} onClick={() => switchTrainer(id)}>{t.label}</button>
         ))}
-        <Info text={<><b>SDXL (BigLust)</b>: LoRAs for the Image Generator's BigLust / SDXL models (characters, styles). Notebook <i>SDXL-LORA-TRAINING</i>, free T4 or better.<br /><br /><b>Qwen Image Edit 2511</b>: LoRAs for both Qwen edit notebooks — a <b>Character</b> (A100, or L4 at 768 px) or an <b>Edit effect</b> from Before → After pairs (A100). Notebook <i>QWEN-2511-LORA-TRAINING</i>.<br /><br />Each trainer remembers its own server link and settings. Pasting the other trainer's link switches automatically.</>} />
+        <Info text={<><b>SDXL (BigLust)</b>: LoRAs for the Image Generator's BigLust / SDXL models (characters, styles). Notebook <i>SDXL-LORA-TRAINING</i>, free T4 or better.<br /><br /><b>Qwen Image Edit 2511</b>: LoRAs for both Qwen edit notebooks — a <b>Character</b> or an <b>Edit effect</b> from Before → After pairs. A100 (1024 px), or L4 (768 px, slower). Notebook <i>QWEN-2511-LORA-TRAINING</i>.<br /><br />Each trainer remembers its own server link and settings. Pasting the other trainer's link switches automatically.</>} />
         <a className="muted small-note" target="_blank" rel="noreferrer"
           href={`https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/${TRAINERS[trainer].notebook}`}>
           Open {TRAINERS[trainer].notebook} in Colab ({TRAINERS[trainer].gpu}) ↗</a>
@@ -596,10 +597,10 @@ export default function Training({ active }) {
       {isQwen && (
         <div className="row">
           <div>
-            <label>LoRA type <Info text={<><b>Character</b>: 15–30 pictures of one character (different poses, outfits, places). Each picture is trained with another picture of the same character as Picture 1, so the LoRA learns the character and the trigger word, and keeps them when you edit. Use it with a picture of the character as Picture 1 and the trigger word in the prompt.<br /><br /><b>Edit effect</b>: 10–30 <b>pairs</b> — a <i>Before</i> picture and the <i>After</i> picture — plus an instruction (e.g. "turn this photo into a comic-book drawing"). The LoRA learns to make that change to any picture. Needs an A100.</>} /></label>
+            <label>LoRA type <Info text={<><b>Character</b>: 15–30 pictures of one character (different poses, outfits, places). Each picture is trained with another picture of the same character as Picture 1, so the LoRA learns the character and the trigger word, and keeps them when you edit. Use it with a picture of the character as Picture 1 and the trigger word in the prompt.<br /><br /><b>Edit effect</b>: 10–30 <b>pairs</b> — a <i>Before</i> picture and the <i>After</i> picture — plus an instruction (e.g. "turn this photo into a comic-book drawing"). The LoRA learns to make that change to any picture. A100: 1024 px; L4: 768 px and much slower.</>} /></label>
             <select value={kind} onChange={e => changeKind(e.target.value)} disabled={!dsName}>
               <option value="character">Character (pictures of one character)</option>
-              <option value="edit" disabled={gpu && gpu.edit_ok === false}>Edit effect (Before → After pairs){gpu && gpu.edit_ok === false ? ' — needs an A100' : ''}</option>
+              <option value="edit" disabled={gpu && gpu.edit_ok === false}>Edit effect (Before → After pairs){gpu && gpu.edit_ok === false ? ' — needs a newer notebook (open it fresh from GitHub)' : gpu?.edit_slow ? ' — slow on this L4 (768 px)' : ''}</option>
             </select>
           </div>
         </div>

@@ -124,7 +124,7 @@ export const QWEN_TRAINING_PRESETS = [
   },
   {
     name: 'Edit effect',
-    info: 'For Before → After pairs (set LoRA type to Edit effect; A100): dim 32, 1,500 steps. Write the same instruction under every pair, e.g. "turn this photo into a comic-book drawing".',
+    info: 'For Before → After pairs (set LoRA type to Edit effect): dim 32, 1,500 steps. On an L4 it\'s slow — try Quick test first, and consider 1,000 steps. Write the same instruction under every pair, e.g. "turn this photo into a comic-book drawing".',
     s: { max_train_steps: 1500, network_dim: 32, network_alpha: 32, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 250 },
   },
   {
