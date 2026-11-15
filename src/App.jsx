@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { ZoomIcon } from './icons'
+import { useLightboxKeys } from './useLightboxKeys'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
@@ -711,16 +713,8 @@ export default function App({ active = true }) {
   }
 
   // Keyboard in the full-screen view: ← / → to move, Esc to close
-  useEffect(() => {
-    if (lightboxIndex < 0) return
-    function onKey(e) {
-      if (!activeRef.current || infoItem) return
-      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev() }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext() }
-      else if (e.key === 'Escape') setLightboxIndex(-1)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+  useLightboxKeys(lightboxIndex >= 0, {
+    prev: goPrev, next: goNext, close: () => setLightboxIndex(-1), enabled: active && !infoItem,
   })
 
   function downloadImage(item) {
@@ -1187,7 +1181,7 @@ export default function App({ active = true }) {
           </>)}
         </div>
       </div>
-      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · 🔍 or double-click to view · ← → to browse</div>}
+      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · magnifier or double-click to view full size · ← → to browse</div>}
 
       <div ref={galleryRef}>
         {(() => {
@@ -1197,8 +1191,7 @@ export default function App({ active = true }) {
               <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
               {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
               <div className="gallery-overlay">
-                <button className="magnify-btn" title="View" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
-                <button className="magnify-btn small" title="Download" onClick={(e) => { e.stopPropagation(); downloadImage(item) }}>⬇</button>
+                <button className="magnify-btn" title="View full size" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}><ZoomIcon /></button>
               </div>
               <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
             </div>
