@@ -26,6 +26,26 @@ function openGalleryDb() {
   })
 }
 
+function extractImgSrc(html) {
+  const m = (html || '').match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i)
+  return m ? m[1].replace(/&amp;/g, '&') : ''
+}
+
+function isImageAddress(text) {
+  return /^data:image\//i.test(text) || /^https?:\/\/\S+$/i.test(text)
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+const SLOT_LABEL = { body: 'Body', head: 'Head' }
+
 function imageBlob(dataUrl) {
   const [header, encoded] = dataUrl.split(',', 2)
   const binary = atob(encoded || header)
@@ -50,6 +70,8 @@ export default function HeadSwap({ active = true }) {
   const [gallery, setGallery] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lightboxIndex, setLightboxIndex] = useState(-1)
+  const [pasteTarget, setPasteTarget] = useState('body')  // which box Ctrl+V fills
+  const [urlInputs, setUrlInputs] = useState({ body: '', head: '' })
   const bodyInputRef = useRef(null)
   const headInputRef = useRef(null)
   const galleryRef = useRef([])
@@ -114,16 +136,82 @@ export default function HeadSwap({ active = true }) {
     await loadGallery()
   }, [loadGallery, prompt])
 
-  function readFile(file, type) {
+  const setSlotImage = useCallback((type, dataUrl) => {
+    if (type === 'body') setBodyImage(dataUrl)
+    else setHeadImage(dataUrl)
+    setStatusMsg(`${SLOT_LABEL[type]} image loaded`, 'ok')
+    // After filling Body, the next paste goes to Head
+    if (type === 'body') setPasteTarget('head')
+  }, [setStatusMsg])
+
+  const readFile = useCallback(async (file, type) => {
     if (!file || !file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = () => type === 'body' ? setBodyImage(reader.result) : setHeadImage(reader.result)
-    reader.readAsDataURL(file)
-  }
+    try { setSlotImage(type, await blobToDataUrl(file)) }
+    catch { setStatusMsg(`Could not read the ${SLOT_LABEL[type]} image`, 'error') }
+  }, [setSlotImage, setStatusMsg])
+
+  const loadImageFromUrl = useCallback(async (rawUrl, type) => {
+    const url = (rawUrl || '').trim()
+    if (!url) return setStatusMsg('Paste an image URL first', 'error')
+    if (url.startsWith('data:image/')) {
+      setUrlInputs(previous => ({ ...previous, [type]: '' }))
+      return setSlotImage(type, url)
+    }
+    if (!/^https?:\/\//i.test(url)) return setStatusMsg('That does not look like an image address (must start with http)', 'error')
+    setStatusMsg(`Loading ${SLOT_LABEL[type]} image from URL...`)
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('HTTP ' + response.status)
+      const blob = await response.blob()
+      if (!blob.type.startsWith('image/')) throw new Error('Not an image')
+      setSlotImage(type, await blobToDataUrl(blob))
+      setUrlInputs(previous => ({ ...previous, [type]: '' }))
+    } catch {
+      // The Head Swap backend needs the image data itself, so a site that blocks downloads can't be used by address
+      setStatusMsg('That site blocks loading its images by address — right-click the image, choose "Copy image", then paste it here (Ctrl+V)', 'error')
+    }
+  }, [setSlotImage, setStatusMsg])
+
+  // Paste (Ctrl+V) anywhere on this tab, the same as the Image Generator
+  const pasteRef = useRef({})
+  pasteRef.current = { active, pasteTarget, bodyImage, headImage, readFile, loadImageFromUrl }
+  useEffect(() => {
+    function handlePaste(event) {
+      const { active: isActive, pasteTarget: target, readFile: read, loadImageFromUrl: loadUrl } = pasteRef.current
+      if (!isActive) return
+      const clipboard = event.clipboardData
+      if (!clipboard) return
+      const t = event.target
+      const slot = t?.dataset?.slot || target
+      // 1) An actual image on the clipboard ("Copy image", screenshots)
+      for (const item of clipboard.items || []) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const blob = item.getAsFile()
+          if (blob) { event.preventDefault(); read(blob, slot); return }
+        }
+      }
+      // Don't hijack normal text pastes into the prompt / backend URL boxes
+      const inTextField = t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !t.dataset.slot))
+      if (inTextField) return
+      // 2) Copied image that arrives as HTML, 3) a copied image address
+      const htmlSrc = extractImgSrc(clipboard.getData('text/html'))
+      const text = (clipboard.getData('text/plain') || '').trim()
+      const url = htmlSrc || (isImageAddress(text) ? text : '')
+      if (url) { event.preventDefault(); loadUrl(url, slot) }
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [])
 
   function handleDrop(event, type) {
     event.preventDefault()
-    readFile(event.dataTransfer.files?.[0], type)
+    setPasteTarget(type)
+    const file = event.dataTransfer.files?.[0]
+    if (file) return readFile(file, type)
+    const htmlSrc = extractImgSrc(event.dataTransfer.getData('text/html'))
+    const text = (event.dataTransfer.getData('text/uri-list') || event.dataTransfer.getData('text/plain') || '').trim()
+    const url = htmlSrc || (isImageAddress(text) ? text : '')
+    if (url) loadImageFromUrl(url, type)
   }
 
   async function pollJob(backend, jobId) {
@@ -242,22 +330,39 @@ export default function HeadSwap({ active = true }) {
       <input type="text" placeholder="https://xxxx.trycloudflare.com" value={backendUrl} onChange={event => setBackendUrl(event.target.value)} />
 
       <div className="row headswap-upload-row">
-        <div>
-          <label>Body Image (pose + body to keep)</label>
-          <div className="train-drop headswap-drop" onClick={() => bodyInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, 'body')}>
-            {bodyImage ? <img src={bodyImage} alt="Body" /> : <div><div className="headswap-upload-icon">📷</div>Drop or click to upload Body</div>}
+        {[
+          { type: 'body', label: 'Body Image (pose + body to keep)', image: bodyImage, setImage: setBodyImage, inputRef: bodyInputRef, icon: '📷' },
+          { type: 'head', label: 'Head Image (face + hair to paste)', image: headImage, setImage: setHeadImage, inputRef: headInputRef, icon: '🧑' }
+        ].map(slot => <div key={slot.type}>
+          <label>{slot.label}</label>
+          <div className={`headswap-drop ${pasteTarget === slot.type ? 'paste-target' : ''} ${slot.image ? 'has-image' : ''}`}
+            tabIndex={0}
+            title="Click to choose where Ctrl+V pastes · double-click to browse files"
+            onClick={() => setPasteTarget(slot.type)}
+            onFocus={() => setPasteTarget(slot.type)}
+            onDoubleClick={() => slot.inputRef.current?.click()}
+            onDragOver={event => event.preventDefault()}
+            onDrop={event => handleDrop(event, slot.type)}>
+            {slot.image ? <div className="headswap-preview">
+              <img src={slot.image} alt={SLOT_LABEL[slot.type]} />
+              <button className="danger headswap-remove-x" title={`Remove ${SLOT_LABEL[slot.type]} image`} onClick={event => { event.stopPropagation(); slot.setImage(null); setPasteTarget(slot.type) }}>×</button>
+            </div> : <div>
+              <div className="headswap-upload-icon">{slot.icon}</div>
+              Paste an image or image address here (Ctrl+V), drag &amp; drop, or upload below
+              {pasteTarget === slot.type && <div className="headswap-paste-hint">Ctrl+V pastes here</div>}
+            </div>}
           </div>
-          <input ref={bodyInputRef} type="file" accept="image/*" className="headswap-file-input" onChange={event => readFile(event.target.files?.[0], 'body')} />
-          {bodyImage && <button className="secondary headswap-remove" onClick={() => setBodyImage(null)}>Remove</button>}
-        </div>
-        <div>
-          <label>Head Image (face + hair to paste)</label>
-          <div className="train-drop headswap-drop" onClick={() => headInputRef.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, 'head')}>
-            {headImage ? <img src={headImage} alt="Head" /> : <div><div className="headswap-upload-icon">🧑</div>Drop or click to upload Head</div>}
+          <div className="headswap-upload-controls">
+            <input ref={slot.inputRef} type="file" accept="image/*" onChange={event => { readFile(event.target.files?.[0], slot.type); event.target.value = '' }} />
+            <div className="headswap-url-row">
+              <input type="text" data-slot={slot.type} value={urlInputs[slot.type]} placeholder="Or paste image URL"
+                onFocus={() => setPasteTarget(slot.type)}
+                onChange={event => setUrlInputs(previous => ({ ...previous, [slot.type]: event.target.value }))}
+                onKeyDown={event => event.key === 'Enter' && loadImageFromUrl(urlInputs[slot.type], slot.type)} />
+              <button className="secondary" onClick={() => loadImageFromUrl(urlInputs[slot.type], slot.type)}>Load URL</button>
+            </div>
           </div>
-          <input ref={headInputRef} type="file" accept="image/*" className="headswap-file-input" onChange={event => readFile(event.target.files?.[0], 'head')} />
-          {headImage && <button className="secondary headswap-remove" onClick={() => setHeadImage(null)}>Remove</button>}
-        </div>
+        </div>)}
       </div>
 
       <label className="headswap-prompt-label">Prompt</label>

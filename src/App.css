@@ -652,17 +652,35 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .headswap-intro { margin-top: -12px; margin-bottom: 20px; }
 .headswap-upload-row { margin-top: 20px; }
 .headswap-drop {
-  min-height: 180px;
+  min-height: 200px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
+  border: 2px dashed #555;
+  border-radius: 8px;
+  padding: 16px;
+  color: #888;
+  background: #1a1a1a;
+  transition: border-color 0.15s ease;
 }
-.headswap-drop img { max-width: 100%; max-height: 200px; border-radius: 6px; display: block; }
+.headswap-drop.has-image { background: transparent; }
+.headswap-drop:focus { outline: none; }
+.headswap-drop.paste-target { border-color: var(--accent); }
+.headswap-preview { position: relative; display: inline-block; }
+.headswap-preview img { max-width: 100%; max-height: 220px; border-radius: 8px; display: block; }
+.headswap-remove-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 24px; height: 24px; padding: 0;
+  border-radius: 12px; line-height: 22px;
+}
 .headswap-upload-icon { font-size: 28px; margin-bottom: 8px; }
-.headswap-file-input { display: none; }
-.headswap-remove { margin-top: 8px; width: auto; }
+.headswap-paste-hint { font-size: 12px; margin-top: 8px; color: var(--accent); }
+.headswap-upload-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.headswap-url-row { display: flex; gap: 8px; }
+.headswap-url-row input { flex: 1; min-width: 0; }
+.headswap-url-row button { width: auto; }
 .headswap-prompt-label { margin-top: 20px; }
 .headswap-generate { margin-top: 16px; padding: 14px 24px; font-size: 15px; }
 .headswap-latest-result { margin-top: 28px; }
