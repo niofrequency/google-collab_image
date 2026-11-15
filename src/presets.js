@@ -126,3 +126,32 @@ export const VIDEO_PRESETS = [
     s: { size: 'default', seconds: 'default', mode: 'quality' },
   },
 ]
+
+// Music tab (ACE-Step 1.5). s: duration (seconds), bpm, instrumental, planner (song-structure LM on/off).
+export const MUSIC_PRESETS = [
+  {
+    name: 'Default',
+    info: 'A 1-minute song with vocals at 120 BPM, with the song planner on (better structure).',
+    s: { duration: 60, bpm: 120, instrumental: false, planner: true },
+  },
+  {
+    name: 'Short jingle',
+    info: '20 seconds — quick to make; good for trying a style or an intro/outro.',
+    s: { duration: 20, instrumental: false, planner: true },
+  },
+  {
+    name: 'Full song',
+    info: '3 minutes with vocals — write lyrics with [verse], [chorus] and [bridge] sections. Takes longest.',
+    s: { duration: 180, instrumental: false, planner: true },
+  },
+  {
+    name: 'Instrumental',
+    info: 'No vocals, 90 seconds. The lyrics box is ignored; describe the instruments and mood in the style.',
+    s: { duration: 90, instrumental: true, planner: true },
+  },
+  {
+    name: 'Fast draft',
+    info: '30 seconds with the song planner off — quickest way to hear a style; structure is less polished.',
+    s: { duration: 30, planner: false },
+  },
+]

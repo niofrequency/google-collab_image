@@ -2,10 +2,12 @@ import { useState } from 'react'
 import App from './App.jsx'
 import Training from './Training.jsx'
 import Video from './Video.jsx'
+import Music from './Music.jsx'
 
 const TABS = [
   { id: 'generate', label: 'Image Generator' },
   { id: 'video', label: 'Image to Video' },
+  { id: 'music', label: 'Music' },
   { id: 'train', label: 'LoRA Training' },
 ]
 
@@ -22,6 +24,7 @@ export default function Root() {
       </nav>
       <div style={{ display: tab === 'generate' ? 'block' : 'none' }}><App active={tab === 'generate'} /></div>
       <div style={{ display: tab === 'video' ? 'block' : 'none' }}><Video active={tab === 'video'} /></div>
+      <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>
     </>
   )
