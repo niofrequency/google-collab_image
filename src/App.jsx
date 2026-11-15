@@ -68,6 +68,19 @@ export default function App({ active = true }) {
   const [faceStrength, setFaceStrength] = useState(0.4)
   const [supportsFaceFix, setSupportsFaceFix] = useState(false)
   const [supportsLoraTargets, setSupportsLoraTargets] = useState(false)  // BigLust: LoRA for main image / face fix only
+  // Refiner (BigLust): enlarge + lightly redraw for more detail; optional separate checkpoint
+  const savedRefiner = (() => { try { return JSON.parse(localStorage.getItem('refiner')) || {} } catch { return {} } })()
+  const [refinerOn, setRefinerOn] = useState(!!savedRefiner.on)
+  const [refinerCkpt, setRefinerCkpt] = useState(savedRefiner.ckpt || '')
+  const [refinerStrength, setRefinerStrength] = useState(savedRefiner.strength ?? 0.3)
+  const [refinerUpscale, setRefinerUpscale] = useState(savedRefiner.upscale ?? 1.5)
+  const [refinerSteps, setRefinerSteps] = useState(savedRefiner.steps ?? 20)
+  const [supportsRefiner, setSupportsRefiner] = useState(false)
+  const [showAddRefiner, setShowAddRefiner] = useState(false)
+  const [newRefinerUrl, setNewRefinerUrl] = useState('')
+  useEffect(() => {
+    localStorage.setItem('refiner', JSON.stringify({ on: refinerOn, ckpt: refinerCkpt, strength: refinerStrength, upscale: refinerUpscale, steps: refinerSteps }))
+  }, [refinerOn, refinerCkpt, refinerStrength, refinerUpscale, refinerSteps])
   const [qwenModels, setQwenModels] = useState([])   // Qwen: every model size, with installed / fits / current
   const [gpuInfo, setGpuInfo] = useState(null)       // { name, vram_gib } of the Colab GPU
   const [switching, setSwitching] = useState(false)
@@ -189,7 +202,8 @@ export default function App({ active = true }) {
       height: item.height || 0,
       loras: item.loras || [],
       faceFix: !!item.faceFix,
-      faceStrength: item.faceStrength || 0
+      faceStrength: item.faceStrength || 0,
+      refiner: item.refiner || null
     })))
     setSelectedIds(new Set())
   }
@@ -220,7 +234,7 @@ export default function App({ active = true }) {
         scheduler: meta.scheduler || '', steps: meta.steps || 0,
         cfg: meta.cfg || 0, width: meta.width || 0,
         height: meta.height || 0, loras: meta.loras || [],
-        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0
+        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
@@ -340,6 +354,7 @@ export default function App({ active = true }) {
       backendTypeRef.current = data.model_type || ''
       setSupportsFaceFix(!!data.supports_face_fix)
       setSupportsLoraTargets(!!data.supports_lora_targets)
+      setSupportsRefiner(!!data.supports_refiner)
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -384,7 +399,7 @@ export default function App({ active = true }) {
     } catch {}
   }
 
-  async function addModel(type, url) {
+  async function addModel(type, url, target = 'main') {  // target 'refiner': use the new checkpoint as the refiner
     url = (url || '').trim()
     if (!url) return setStatusMsg('Paste a URL', 'error')
     let finalUrl = url
@@ -437,12 +452,17 @@ export default function App({ active = true }) {
           setLoras(prev => prev.some(l => l.name === data.filename) ? prev : [...prev, { name: data.filename, strength: 0.8 }])
           setShowAddLora(false)
           setNewLoraUrl('')
+        } else if (target === 'refiner') {
+          setRefinerCkpt(data.filename)
+          setRefinerOn(true)
+          setShowAddRefiner(false)
+          setNewRefinerUrl('')
         } else {
           setCheckpoint(data.filename)
           setShowAddCheckpoint(false)
           setNewCheckpointUrl('')
         }
-        setStatusMsg(`Added ${label}: ${data.filename}` + (type === 'lora' ? ' (enabled at 0.8)' : ' (selected)'), 'ok')
+        setStatusMsg(`Added ${label}: ${data.filename}` + (type === 'lora' ? ' (enabled at 0.8)' : target === 'refiner' ? ' (selected as the refiner)' : ' (selected)'), 'ok')
       } else {
         setStatusMsg(data.error || 'Download failed', 'error')
       }
@@ -486,6 +506,11 @@ export default function App({ active = true }) {
       reference_images: refImages.slice(1),         // Pictures 2 and 3
       face_fix: backendType === 'sdxl' && faceFix,
       face_fix_strength: +faceStrength,
+      refiner: backendType === 'sdxl' && supportsRefiner && refinerOn,
+      refiner_checkpoint: refinerCkpt || null,
+      refiner_strength: +refinerStrength,
+      refiner_upscale: +refinerUpscale,
+      refiner_steps: +refinerSteps,
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -533,7 +558,8 @@ export default function App({ active = true }) {
         steps: +steps, cfg: +cfg,
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
-        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength
+        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
+        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null
       }
 
       // Prefer the images array if present, fall back to single image
@@ -550,7 +576,7 @@ export default function App({ active = true }) {
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
         const faces = data.faces_fixed == null ? ''
           : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
-        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}`
+        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}${data.refined ? ' · refined' : ''}`
         if (Array.isArray(data.warnings) && data.warnings.length) {
           setStatusMsg(`${done}. Warning: ${data.warnings.join(' ')}`, 'error')
         } else {
@@ -982,6 +1008,46 @@ export default function App({ active = true }) {
         </div>
       )}
 
+      {backendType === 'sdxl' && (
+        <div className="refiner-box">
+          <div className="inline">
+            <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
+              title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
+            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br /><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /><b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.{!supportsRefiner && <><br /><br />Not available: open the BigLust notebook fresh from GitHub.</>}</>} />
+          </div>
+          {refinerOn && (<>
+            <div className="row">
+              <div style={{ flex: 2 }}>
+                <label>Refiner model</label>
+                <select value={refinerCkpt} onChange={e => setRefinerCkpt(e.target.value)}>
+                  <option value="">Same as main model (fastest, keeps LoRAs)</option>
+                  {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+              <div><label>Strength</label><input type="number" step="0.05" min="0.05" max="0.8" value={refinerStrength} onChange={e => setRefinerStrength(e.target.value)} /></div>
+              <div>
+                <label>Enlarge</label>
+                <select value={refinerUpscale} onChange={e => setRefinerUpscale(+e.target.value)}>
+                  {[1, 1.25, 1.5, 1.75, 2].map(f => <option key={f} value={f}>{f === 1 ? '1× (same size)' : f + '×'}</option>)}
+                </select>
+              </div>
+              <div><label>Steps</label><input type="number" min="4" max="60" value={refinerSteps} onChange={e => setRefinerSteps(e.target.value)} /></div>
+            </div>
+            {showAddRefiner ? (
+              <div className="add-box" style={{ marginTop: 10 }}>
+                <input value={newRefinerUrl} onChange={e => setNewRefinerUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link to use as the refiner (page or download link)" />
+                <div className="row">
+                  <button className="secondary" onClick={() => addModel('checkpoint', newRefinerUrl, 'refiner')}>Download & use as refiner</button>
+                  <button className="secondary" onClick={() => setShowAddRefiner(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button className="secondary link-btn" onClick={() => setShowAddRefiner(true)}>+ Download refiner</button>
+            )}
+          </>)}
+        </div>
+      )}
+
       {!supportsLoras && (<>
         <label>LoRAs</label>
         <div className="empty-msg">
@@ -1196,6 +1262,7 @@ export default function App({ active = true }) {
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
+              {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}</>}
             </div>
             <div className="row" style={{marginTop:16}}>
               <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>

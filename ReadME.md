@@ -70,6 +70,11 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
 - **Face fix** (toggle under the settings): after the image is made, each face is found, redrawn at full resolution
   with your LoRAs and prompt, and blended back in (like ADetailer). Faces — especially small ones in full-body shots —
   get much more detail and look more like a person LoRA. *Strength* 0.3 = subtle, 0.4 = default, 0.5–0.6 = stronger.
+- **Refiner** (toggle under the settings): a second pass for better quality ("hires fix") — the finished image is
+  enlarged (1.5× by default, max 2048 px) and lightly redrawn (strength 0.3), adding sharper detail and cleaner skin
+  and textures. *Refiner model*: **Same as main model** (fastest, keeps your LoRAs) or any SDXL checkpoint — paste a
+  Civitai / Hugging Face link under **+ Download refiner**. A different refiner is loaded in place of the main model, so
+  it's slower and its pass doesn't use your LoRAs.
 - **Where each LoRA is used** (dropdown on each LoRA): *Whole image*, *Main image only* or *Face fix only*. For the
   best likeness, put a full-body LoRA (e.g. `Stephanie_v1`) on *Main image only* and a LoRA trained only on face
   close-ups (e.g. `Stephanie_face`) on *Face fix only*, with Face fix on and the same trigger word in the prompt:

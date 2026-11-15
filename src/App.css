@@ -499,3 +499,4 @@ audio, video { color-scheme: dark; }
 .lb-meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .lb-help { font-size: 11px; color: #777; }
 .prompt-item { user-select: none; }
+.refiner-box { margin-top: 14px; }
