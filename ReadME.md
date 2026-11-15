@@ -16,6 +16,7 @@ Each notebook runs on a free **T4 GPU** in Colab and prints a `READY:` URL. Past
 | **Qwen Image Edit Rapid AIO** (GGUF) | Edits photos from a text instruction, up to 3 reference images, with Qwen LoRAs. Also text-to-image. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb) |
 | **Image to Video — Wan 2.2 A14B** (best) | Animates a still image into a short video (up to ~7.5 s). Needs an **L4 or A100**. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-A14B.ipynb) |
 | **Image to Video — Wan 2.2 5B** (free T4) | Same, with a smaller model that fits the **free T4** (up to 5 s, lower quality). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb) |
+| **Music — ACE-Step 1.5** | Songs with vocals and lyrics, or instrumentals, from a style description. Free T4 or better. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/MUSIC-ACESTEP.ipynb) |
 | **SDXL LoRA training** | Trains your own SDXL LoRA from 15–40 images, controlled from the website's LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) |
 | Into Realism (SDXL) | Older SDXL text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb) |
 | Krea 2 Realism | Older Krea 2 text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb) |
@@ -27,6 +28,7 @@ Direct links:
 - Qwen Image Edit Rapid AIO: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-AIO-NSFW-EDIT.ipynb
 - Image to Video (A14B, L4/A100): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-A14B.ipynb
 - Image to Video (5B, free T4): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/IMG2VID-WAN22-5B-FREE.ipynb
+- Music (ACE-Step 1.5): https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/MUSIC-ACESTEP.ipynb
 - SDXL LoRA training: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb
 - Into Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb
 - Krea 2 Realism: https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb
@@ -43,6 +45,7 @@ Direct links:
 5. Open the [website](https://google-collabimage-one.vercel.app) and paste the URL:
    - **Image Generator** tab → *Backend URL* (BigLust, Qwen, Into Realism, Krea 2)
    - **Image to Video** tab → *Video server URL* (IMG2VID notebooks)
+   - **Music** tab → *Music server URL* (MUSIC-ACESTEP)
    - **LoRA Training** tab → *Training server URL* (SDXL LoRA training)
 
 Run **one GPU notebook at a time** — on the free tier they share one GPU.
@@ -67,6 +70,11 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
 - **Face fix** (toggle under the settings): after the image is made, each face is found, redrawn at full resolution
   with your LoRAs and prompt, and blended back in (like ADetailer). Faces — especially small ones in full-body shots —
   get much more detail and look more like a person LoRA. *Strength* 0.3 = subtle, 0.4 = default, 0.5–0.6 = stronger.
+- **Refiner** (toggle under the settings): a second pass for better quality ("hires fix") — the finished image is
+  enlarged (1.5× by default, max 2048 px) and lightly redrawn (strength 0.3), adding sharper detail and cleaner skin
+  and textures. *Refiner model*: **Same as main model** (fastest, keeps your LoRAs) or any SDXL checkpoint — paste a
+  Civitai / Hugging Face link under **+ Download refiner**. A different refiner is loaded in place of the main model, so
+  it's slower and its pass doesn't use your LoRAs.
 - **Where each LoRA is used** (dropdown on each LoRA): *Whole image*, *Main image only* or *Face fix only*. For the
   best likeness, put a full-body LoRA (e.g. `Stephanie_v1`) on *Main image only* and a LoRA trained only on face
   close-ups (e.g. `Stephanie_face`) on *Face fix only*, with Face fix on and the same trigger word in the prompt:
@@ -121,6 +129,23 @@ toward the camera and smiles, slow push-in"), pick a preset (*Default*, *Quick p
 slower). Finished videos play on the page, are kept in your browser's gallery, and can be downloaded as MP4. Models
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
 encoder). The videos have no sound.
+
+## Music (ACE-Step 1.5)
+
+[Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/MUSIC-ACESTEP.ipynb) ·
+Run cells **1–3**; cell 3 prints the URL for the website's **Music** tab. Models from
+[Comfy-Org/ACE-Step-1.5](https://huggingface.co/Comfy-Org/ACE-Step-1.5) (MIT license), picked for the GPU:
+
+| GPU | Model | Song planner | Max length |
+|---|---|---|---|
+| T4 (free) | ACE-Step 1.5 turbo | 1.7B | 3 min (runs in fp32 on a T4: slower) |
+| L4 | ACE-Step 1.5 **XL** turbo | 1.7B | 4 min |
+| A100 | ACE-Step 1.5 **XL** turbo | 4B | 4 min |
+
+On the tab: describe the **style** (genre, instruments, mood, voice), write **lyrics** with `[verse]` / `[chorus]` /
+`[bridge]` sections (or turn on **Instrumental**), set length, BPM, key and language, pick a preset (*Default*, *Short
+jingle*, *Full song*, *Instrumental*, *Fast draft*) and press **Generate song**. Songs play on the page, are kept in
+your browser, and can be downloaded as MP3.
 
 ## SDXL LoRA training
 

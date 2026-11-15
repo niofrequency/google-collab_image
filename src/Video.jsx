@@ -209,7 +209,7 @@ export default function Video({ active }) {
       await dbAdd(item)
       await refreshGallery()
       setResult({ ...item, src: URL.createObjectURL(blob) })
-      say(`Done — ${data.seconds} s at ${data.width}×${data.height} in ${Math.round(data.took / 60 * 10) / 10} min. Saved in the gallery below.`, 'ok')
+      say(`Done — ${data.seconds} s at ${data.width}×${data.height} in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the gallery below.`, 'ok')
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
     }

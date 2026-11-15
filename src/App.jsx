@@ -68,6 +68,19 @@ export default function App({ active = true }) {
   const [faceStrength, setFaceStrength] = useState(0.4)
   const [supportsFaceFix, setSupportsFaceFix] = useState(false)
   const [supportsLoraTargets, setSupportsLoraTargets] = useState(false)  // BigLust: LoRA for main image / face fix only
+  // Refiner (BigLust): enlarge + lightly redraw for more detail; optional separate checkpoint
+  const savedRefiner = (() => { try { return JSON.parse(localStorage.getItem('refiner')) || {} } catch { return {} } })()
+  const [refinerOn, setRefinerOn] = useState(!!savedRefiner.on)
+  const [refinerCkpt, setRefinerCkpt] = useState(savedRefiner.ckpt || '')
+  const [refinerStrength, setRefinerStrength] = useState(savedRefiner.strength ?? 0.3)
+  const [refinerUpscale, setRefinerUpscale] = useState(savedRefiner.upscale ?? 1.5)
+  const [refinerSteps, setRefinerSteps] = useState(savedRefiner.steps ?? 20)
+  const [supportsRefiner, setSupportsRefiner] = useState(false)
+  const [showAddRefiner, setShowAddRefiner] = useState(false)
+  const [newRefinerUrl, setNewRefinerUrl] = useState('')
+  useEffect(() => {
+    localStorage.setItem('refiner', JSON.stringify({ on: refinerOn, ckpt: refinerCkpt, strength: refinerStrength, upscale: refinerUpscale, steps: refinerSteps }))
+  }, [refinerOn, refinerCkpt, refinerStrength, refinerUpscale, refinerSteps])
   const [qwenModels, setQwenModels] = useState([])   // Qwen: every model size, with installed / fits / current
   const [gpuInfo, setGpuInfo] = useState(null)       // { name, vram_gib } of the Colab GPU
   const [switching, setSwitching] = useState(false)
@@ -105,7 +118,6 @@ export default function App({ active = true }) {
 
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
-  const [promptClickCounts, setPromptClickCounts] = useState({})
   const [editingNameIndex, setEditingNameIndex] = useState(null)
   const [editingNameValue, setEditingNameValue] = useState('')
   const [editingPrompt, setEditingPrompt] = useState(null)
@@ -114,6 +126,17 @@ export default function App({ active = true }) {
   const [editNegative, setEditNegative] = useState('')
 
   const [infoItem, setInfoItem] = useState(null)
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('gallery_thumb') || 200))  // px
+  const [fitImages, setFitImages] = useState(() => localStorage.getItem('gallery_fit') === '1')       // whole images, no crop
+  const promptClickTimer = useRef(null)
+  const galleryRef = useRef(null)
+  const [galleryWidth, setGalleryWidth] = useState(1000)
+  useEffect(() => {  // track the gallery's width for the "Full images" columns
+    if (!galleryRef.current) return
+    const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))
+    ro.observe(galleryRef.current)
+    return () => ro.disconnect()
+  }, [])
   const imageRef = useRef(null)
   const usedBackendDefaults = useRef(false)
   const backendTypeRef = useRef('')
@@ -179,7 +202,8 @@ export default function App({ active = true }) {
       height: item.height || 0,
       loras: item.loras || [],
       faceFix: !!item.faceFix,
-      faceStrength: item.faceStrength || 0
+      faceStrength: item.faceStrength || 0,
+      refiner: item.refiner || null
     })))
     setSelectedIds(new Set())
   }
@@ -210,7 +234,7 @@ export default function App({ active = true }) {
         scheduler: meta.scheduler || '', steps: meta.steps || 0,
         cfg: meta.cfg || 0, width: meta.width || 0,
         height: meta.height || 0, loras: meta.loras || [],
-        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0
+        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
@@ -330,6 +354,7 @@ export default function App({ active = true }) {
       backendTypeRef.current = data.model_type || ''
       setSupportsFaceFix(!!data.supports_face_fix)
       setSupportsLoraTargets(!!data.supports_lora_targets)
+      setSupportsRefiner(!!data.supports_refiner)
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -374,7 +399,7 @@ export default function App({ active = true }) {
     } catch {}
   }
 
-  async function addModel(type, url) {
+  async function addModel(type, url, target = 'main') {  // target 'refiner': use the new checkpoint as the refiner
     url = (url || '').trim()
     if (!url) return setStatusMsg('Paste a URL', 'error')
     let finalUrl = url
@@ -427,12 +452,17 @@ export default function App({ active = true }) {
           setLoras(prev => prev.some(l => l.name === data.filename) ? prev : [...prev, { name: data.filename, strength: 0.8 }])
           setShowAddLora(false)
           setNewLoraUrl('')
+        } else if (target === 'refiner') {
+          setRefinerCkpt(data.filename)
+          setRefinerOn(true)
+          setShowAddRefiner(false)
+          setNewRefinerUrl('')
         } else {
           setCheckpoint(data.filename)
           setShowAddCheckpoint(false)
           setNewCheckpointUrl('')
         }
-        setStatusMsg(`Added ${label}: ${data.filename}` + (type === 'lora' ? ' (enabled at 0.8)' : ' (selected)'), 'ok')
+        setStatusMsg(`Added ${label}: ${data.filename}` + (type === 'lora' ? ' (enabled at 0.8)' : target === 'refiner' ? ' (selected as the refiner)' : ' (selected)'), 'ok')
       } else {
         setStatusMsg(data.error || 'Download failed', 'error')
       }
@@ -476,6 +506,11 @@ export default function App({ active = true }) {
       reference_images: refImages.slice(1),         // Pictures 2 and 3
       face_fix: backendType === 'sdxl' && faceFix,
       face_fix_strength: +faceStrength,
+      refiner: backendType === 'sdxl' && supportsRefiner && refinerOn,
+      refiner_checkpoint: refinerCkpt || null,
+      refiner_strength: +refinerStrength,
+      refiner_upscale: +refinerUpscale,
+      refiner_steps: +refinerSteps,
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -523,7 +558,8 @@ export default function App({ active = true }) {
         steps: +steps, cfg: +cfg,
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
-        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength
+        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
+        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null
       }
 
       // Prefer the images array if present, fall back to single image
@@ -540,7 +576,7 @@ export default function App({ active = true }) {
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
         const faces = data.faces_fixed == null ? ''
           : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
-        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}`
+        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}${data.refined ? ' · refined' : ''}`
         if (Array.isArray(data.warnings) && data.warnings.length) {
           setStatusMsg(`${done}. Warning: ${data.warnings.join(' ')}`, 'error')
         } else {
@@ -612,19 +648,13 @@ export default function App({ active = true }) {
     })
   }
 
-  function handlePromptClick(i) {
-    const now = Date.now()
-    setPromptClickCounts(prev => {
-      const entry = prev[i] || { count: 0, last: 0 }
-      const isRapid = now - entry.last < 500
-      const newCount = isRapid ? entry.count + 1 : 1
-      if (newCount >= 3) {
-        openPromptEditor(i)
-        return { ...prev, [i]: { count: 0, last: 0 } }
-      }
-      if (newCount === 1) togglePromptSelect(i)
-      return { ...prev, [i]: { count: newCount, last: now } }
-    })
+  // Saved prompts: 1 click = select, 2 clicks = open the edit popup, 3 clicks = rename the title.
+  // e.detail is the browser's click count; wait briefly so a double click doesn't also act as a single one.
+  function handlePromptClick(e, i, name) {
+    clearTimeout(promptClickTimer.current)
+    if (e.detail >= 3) return startRename(i, name)
+    const action = e.detail === 2 ? () => openPromptEditor(i) : () => togglePromptSelect(i)
+    promptClickTimer.current = setTimeout(action, 260)
   }
 
   function selectAllPrompts() {
@@ -678,6 +708,26 @@ export default function App({ active = true }) {
     setLightboxIndex(i)
     setIsZoomed(false)
     setPan({ x: 0, y: 0 })
+  }
+
+  // Keyboard in the full-screen view: ← / → to move, Esc to close
+  useEffect(() => {
+    if (lightboxIndex < 0) return
+    function onKey(e) {
+      if (!activeRef.current || infoItem) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext() }
+      else if (e.key === 'Escape') setLightboxIndex(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  function downloadImage(item) {
+    const a = document.createElement('a')
+    a.href = item.url
+    a.download = `image-${item.id}.png`
+    a.click()
   }
 
   function goPrev() {
@@ -958,6 +1008,46 @@ export default function App({ active = true }) {
         </div>
       )}
 
+      {backendType === 'sdxl' && (
+        <div className="refiner-box">
+          <div className="inline">
+            <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
+              title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
+            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br /><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /><b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.{!supportsRefiner && <><br /><br />Not available: open the BigLust notebook fresh from GitHub.</>}</>} />
+          </div>
+          {refinerOn && (<>
+            <div className="row">
+              <div style={{ flex: 2 }}>
+                <label>Refiner model</label>
+                <select value={refinerCkpt} onChange={e => setRefinerCkpt(e.target.value)}>
+                  <option value="">Same as main model (fastest, keeps LoRAs)</option>
+                  {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+              <div><label>Strength</label><input type="number" step="0.05" min="0.05" max="0.8" value={refinerStrength} onChange={e => setRefinerStrength(e.target.value)} /></div>
+              <div>
+                <label>Enlarge</label>
+                <select value={refinerUpscale} onChange={e => setRefinerUpscale(+e.target.value)}>
+                  {[1, 1.25, 1.5, 1.75, 2].map(f => <option key={f} value={f}>{f === 1 ? '1× (same size)' : f + '×'}</option>)}
+                </select>
+              </div>
+              <div><label>Steps</label><input type="number" min="4" max="60" value={refinerSteps} onChange={e => setRefinerSteps(e.target.value)} /></div>
+            </div>
+            {showAddRefiner ? (
+              <div className="add-box" style={{ marginTop: 10 }}>
+                <input value={newRefinerUrl} onChange={e => setNewRefinerUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link to use as the refiner (page or download link)" />
+                <div className="row">
+                  <button className="secondary" onClick={() => addModel('checkpoint', newRefinerUrl, 'refiner')}>Download & use as refiner</button>
+                  <button className="secondary" onClick={() => setShowAddRefiner(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button className="secondary link-btn" onClick={() => setShowAddRefiner(true)}>+ Download refiner</button>
+            )}
+          </>)}
+        </div>
+      )}
+
       {!supportsLoras && (<>
         <label>LoRAs</label>
         <div className="empty-msg">
@@ -1052,7 +1142,7 @@ export default function App({ active = true }) {
       )}
       <div className="prompts-list">
         {savedPrompts.map((p, i) => (
-          <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={() => handlePromptClick(i)} onDoubleClick={() => startRename(i, p.name)}>
+          <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={e => editingNameIndex !== i && handlePromptClick(e, i, p.name)} title="Click: select · Double-click: edit · Triple-click: rename">
             {editingNameIndex === i ? (
               <input className="inline-rename" value={editingNameValue} onChange={e => setEditingNameValue(e.target.value)} onBlur={() => commitRename(i)} onKeyDown={e => e.key === 'Enter' && commitRename(i)} autoFocus />
             ) : (
@@ -1082,25 +1172,52 @@ export default function App({ active = true }) {
       )}
 
       <div className="gallery-header">
-        <h3>Gallery</h3>
-        {selectedIds.size > 0 && (
-          <div className="gallery-actions">
-            <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>
-            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
-          </div>
-        )}
+        <h3>Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <div className="gallery-actions">
+          {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+          {gallery.length > 0 && (<>
+            <label className="gallery-control" title="Thumbnail size">
+              <span>Size</span>
+              <input type="range" min="130" max="360" step="10" value={thumbSize}
+                onChange={e => { setThumbSize(+e.target.value); localStorage.setItem('gallery_thumb', e.target.value) }} />
+            </label>
+            <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
+              onClick={() => { setFitImages(f => { localStorage.setItem('gallery_fit', f ? '0' : '1'); return !f }) }}>Full images</button>
+            <div className={`select-all-box ${selectedIds.size === gallery.length && gallery.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
+          </>)}
+        </div>
       </div>
+      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · 🔍 or double-click to view · ← → to browse</div>}
 
-      <div className="gallery">
-        {gallery.map((item, i) => (
-          <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} onClick={() => toggleSelect(item.id)}>
-            <img src={item.url} alt="" />
-            <div className="gallery-overlay">
-              <button className="magnify-btn" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
+      <div ref={galleryRef}>
+        {(() => {
+          const tile = (item, i) => (
+            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+              onClick={() => toggleSelect(item.id)} onDoubleClick={() => openLightbox(i)}>
+              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
+              <div className="gallery-overlay">
+                <button className="magnify-btn" title="View" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
+                <button className="magnify-btn small" title="Download" onClick={(e) => { e.stopPropagation(); downloadImage(item) }}>⬇</button>
+              </div>
+              <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
             </div>
-            <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
-          </div>
-        ))}
+          )
+          if (!fitImages) {
+            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+          }
+          // Whole images in columns, filled row by row so the newest stay at the top
+          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          return (
+            <div className="gallery-masonry">
+              {Array.from({ length: cols }, (_, c) => (
+                <div key={c} className="gallery-col">
+                  {gallery.map((item, i) => i % cols === c ? tile(item, i) : null)}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && (
@@ -1122,6 +1239,16 @@ export default function App({ active = true }) {
             />
             <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
           </div>
+          <div className="lb-bar" onClick={e => e.stopPropagation()}>
+            <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
+            <span className="lb-caption" title={gallery[lightboxIndex].positive}>{gallery[lightboxIndex].positive || '(no prompt)'}</span>
+            <span className="lb-meta">{gallery[lightboxIndex].width}×{gallery[lightboxIndex].height}</span>
+            <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
+            <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
+            <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
+          </div>
+          <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
+          {[gallery[lightboxIndex - 1], gallery[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}
         </div>
       )}
 
@@ -1135,6 +1262,7 @@ export default function App({ active = true }) {
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
+              {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}</>}
             </div>
             <div className="row" style={{marginTop:16}}>
               <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>
