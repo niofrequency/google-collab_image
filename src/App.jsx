@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
+import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
@@ -78,6 +79,18 @@ export default function App({ active = true }) {
   const [refinerUpscale, setRefinerUpscale] = useState(savedRefiner.upscale ?? 1.5)
   const [refinerSteps, setRefinerSteps] = useState(savedRefiner.steps ?? 20)
   const [supportsRefiner, setSupportsRefiner] = useState(false)
+  // Face reference (BigLust): keep a character's face from 1-3 pictures (kept in this browser)
+  const savedFaceRef = (() => { try { return JSON.parse(localStorage.getItem('face_ref')) || {} } catch { return {} } })()
+  const [faceRefOn, setFaceRefOn] = useState(!!savedFaceRef.on)
+  const [faceRefImages, setFaceRefImages] = useState(savedFaceRef.images || [])
+  const [faceRefStrength, setFaceRefStrength] = useState(savedFaceRef.strength ?? 0.8)
+  const [faceRefCharacter, setFaceRefCharacter] = useState(savedFaceRef.character || '')
+  const [supportsFaceRef, setSupportsFaceRef] = useState(false)
+  useEffect(() => {
+    try {
+      localStorage.setItem('face_ref', JSON.stringify({ on: faceRefOn, images: faceRefImages, strength: +faceRefStrength, character: faceRefCharacter }))
+    } catch { /* storage full: the pictures still work until the page is reloaded */ }
+  }, [faceRefOn, faceRefImages, faceRefStrength, faceRefCharacter])
   const [showAddRefiner, setShowAddRefiner] = useState(false)
   const [newRefinerUrl, setNewRefinerUrl] = useState('')
   useEffect(() => {
@@ -205,7 +218,8 @@ export default function App({ active = true }) {
       loras: item.loras || [],
       faceFix: !!item.faceFix,
       faceStrength: item.faceStrength || 0,
-      refiner: item.refiner || null
+      refiner: item.refiner || null,
+      faceRef: item.faceRef || null
     })))
     setSelectedIds(new Set())
   }
@@ -236,7 +250,8 @@ export default function App({ active = true }) {
         scheduler: meta.scheduler || '', steps: meta.steps || 0,
         cfg: meta.cfg || 0, width: meta.width || 0,
         height: meta.height || 0, loras: meta.loras || [],
-        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null
+        faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
+        faceRef: meta.faceRef || null
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
@@ -357,6 +372,7 @@ export default function App({ active = true }) {
       setSupportsFaceFix(!!data.supports_face_fix)
       setSupportsLoraTargets(!!data.supports_lora_targets)
       setSupportsRefiner(!!data.supports_refiner)
+      setSupportsFaceRef(!!data.supports_face_ref)
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -499,6 +515,7 @@ export default function App({ active = true }) {
     setShowProgress(true)
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
+    const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
@@ -513,6 +530,8 @@ export default function App({ active = true }) {
       refiner_strength: +refinerStrength,
       refiner_upscale: +refinerUpscale,
       refiner_steps: +refinerSteps,
+      face_ref_images: faceRefActive ? faceRefImages : [],
+      face_ref_strength: +faceRefStrength,
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -561,7 +580,8 @@ export default function App({ active = true }) {
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
-        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null
+        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
+        faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, character: faceRefCharacter } : null,
       }
 
       // Prefer the images array if present, fall back to single image
@@ -717,6 +737,17 @@ export default function App({ active = true }) {
     prev: goPrev, next: goNext, close: () => setLightboxIndex(-1), enabled: active && !infoItem,
   })
 
+  async function useAsFace(item) {
+    if (faceRefImages.length >= MAX_FACE_REFS) return setStatusMsg(`Face reference already has ${MAX_FACE_REFS} pictures — remove one first`, 'error')
+    try {
+      setFaceRefImages([...faceRefImages, await shrinkImage(item.url, 1024)])
+      setFaceRefOn(true)
+      setFaceRefCharacter('')
+      setStatusMsg(`Added to Face reference (${faceRefImages.length + 1}/${MAX_FACE_REFS})` +
+        (supportsFaceRef ? '' : ' — it works with the updated BigLust notebook'), 'ok')
+    } catch (e) { setStatusMsg(e.message, 'error') }
+  }
+
   function downloadImage(item) {
     const a = document.createElement('a')
     a.href = item.url
@@ -808,8 +839,12 @@ export default function App({ active = true }) {
     }
     if (s.faceFix != null) setFaceFix(s.faceFix && supportsFaceFix)
     if (s.faceStrength != null) setFaceStrength(s.faceStrength)
+    if (s.faceRef != null) setFaceRefOn(s.faceRef && supportsFaceRef)
+    if (s.faceRefStrength != null) setFaceRefStrength(s.faceRefStrength)
     if (s.loraStrength != null && loras.length) setLoras(prev => prev.map(l => ({ ...l, strength: s.loraStrength })))
-    const note = s.faceFix && !supportsFaceFix ? ' (face fix needs the updated BigLust notebook — open it fresh from GitHub)' : ''
+    const note = s.faceFix && !supportsFaceFix ? ' (face fix needs the updated BigLust notebook — open it fresh from GitHub)'
+      : s.faceRef && !supportsFaceRef ? ' (face reference needs the updated BigLust notebook — open it fresh from GitHub)'
+      : s.faceRef && !faceRefImages.length ? ' — now add face pictures or pick a character under Face reference' : ''
     setStatusMsg(`Preset "${p.name}" applied${note}`, note ? 'error' : 'ok')
   }
 
@@ -818,6 +853,7 @@ export default function App({ active = true }) {
       steps: +steps, cfg: +cfg, sampler, scheduler, denoise: +denoise, batch: +batchSize,
       ...(backendType === 'qwen_image_edit' ? {} : { width: +width, height: +height }),
       faceFix, faceStrength: +faceStrength,
+      ...(supportsFaceRef ? { faceRef: faceRefOn, faceRefStrength: +faceRefStrength } : {}),
       ...(loras.length ? { loraStrength: loras[0].strength } : {}),
     } }
   }
@@ -1000,6 +1036,12 @@ export default function App({ active = true }) {
           )}
           <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (it installs the face detector in cell 1).</>}</>} />
         </div>
+      )}
+
+      {backendType === 'sdxl' && (
+        <FaceRef images={faceRefImages} setImages={setFaceRefImages} on={faceRefOn} setOn={setFaceRefOn}
+          strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
+          character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg} />
       )}
 
       {backendType === 'sdxl' && (
@@ -1238,6 +1280,7 @@ export default function App({ active = true }) {
             <span className="lb-meta">{gallery[lightboxIndex].width}×{gallery[lightboxIndex].height}</span>
             <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
             <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
+            <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(gallery[lightboxIndex])}>Use as face</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
@@ -1255,6 +1298,7 @@ export default function App({ active = true }) {
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
+              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, strength {infoItem.faceRef.strength}</>}
               {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}</>}
             </div>
             <div className="row" style={{marginTop:16}}>
