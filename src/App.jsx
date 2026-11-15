@@ -105,7 +105,6 @@ export default function App({ active = true }) {
 
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
-  const [promptClickCounts, setPromptClickCounts] = useState({})
   const [editingNameIndex, setEditingNameIndex] = useState(null)
   const [editingNameValue, setEditingNameValue] = useState('')
   const [editingPrompt, setEditingPrompt] = useState(null)
@@ -114,6 +113,17 @@ export default function App({ active = true }) {
   const [editNegative, setEditNegative] = useState('')
 
   const [infoItem, setInfoItem] = useState(null)
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('gallery_thumb') || 200))  // px
+  const [fitImages, setFitImages] = useState(() => localStorage.getItem('gallery_fit') === '1')       // whole images, no crop
+  const promptClickTimer = useRef(null)
+  const galleryRef = useRef(null)
+  const [galleryWidth, setGalleryWidth] = useState(1000)
+  useEffect(() => {  // track the gallery's width for the "Full images" columns
+    if (!galleryRef.current) return
+    const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))
+    ro.observe(galleryRef.current)
+    return () => ro.disconnect()
+  }, [])
   const imageRef = useRef(null)
   const usedBackendDefaults = useRef(false)
   const backendTypeRef = useRef('')
@@ -612,19 +622,13 @@ export default function App({ active = true }) {
     })
   }
 
-  function handlePromptClick(i) {
-    const now = Date.now()
-    setPromptClickCounts(prev => {
-      const entry = prev[i] || { count: 0, last: 0 }
-      const isRapid = now - entry.last < 500
-      const newCount = isRapid ? entry.count + 1 : 1
-      if (newCount >= 3) {
-        openPromptEditor(i)
-        return { ...prev, [i]: { count: 0, last: 0 } }
-      }
-      if (newCount === 1) togglePromptSelect(i)
-      return { ...prev, [i]: { count: newCount, last: now } }
-    })
+  // Saved prompts: 1 click = select, 2 clicks = open the edit popup, 3 clicks = rename the title.
+  // e.detail is the browser's click count; wait briefly so a double click doesn't also act as a single one.
+  function handlePromptClick(e, i, name) {
+    clearTimeout(promptClickTimer.current)
+    if (e.detail >= 3) return startRename(i, name)
+    const action = e.detail === 2 ? () => openPromptEditor(i) : () => togglePromptSelect(i)
+    promptClickTimer.current = setTimeout(action, 260)
   }
 
   function selectAllPrompts() {
@@ -678,6 +682,26 @@ export default function App({ active = true }) {
     setLightboxIndex(i)
     setIsZoomed(false)
     setPan({ x: 0, y: 0 })
+  }
+
+  // Keyboard in the full-screen view: ← / → to move, Esc to close
+  useEffect(() => {
+    if (lightboxIndex < 0) return
+    function onKey(e) {
+      if (!activeRef.current || infoItem) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); goNext() }
+      else if (e.key === 'Escape') setLightboxIndex(-1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  function downloadImage(item) {
+    const a = document.createElement('a')
+    a.href = item.url
+    a.download = `image-${item.id}.png`
+    a.click()
   }
 
   function goPrev() {
@@ -1052,7 +1076,7 @@ export default function App({ active = true }) {
       )}
       <div className="prompts-list">
         {savedPrompts.map((p, i) => (
-          <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={() => handlePromptClick(i)} onDoubleClick={() => startRename(i, p.name)}>
+          <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={e => editingNameIndex !== i && handlePromptClick(e, i, p.name)} title="Click: select · Double-click: edit · Triple-click: rename">
             {editingNameIndex === i ? (
               <input className="inline-rename" value={editingNameValue} onChange={e => setEditingNameValue(e.target.value)} onBlur={() => commitRename(i)} onKeyDown={e => e.key === 'Enter' && commitRename(i)} autoFocus />
             ) : (
@@ -1082,25 +1106,52 @@ export default function App({ active = true }) {
       )}
 
       <div className="gallery-header">
-        <h3>Gallery</h3>
-        {selectedIds.size > 0 && (
-          <div className="gallery-actions">
-            <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>
-            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
-          </div>
-        )}
+        <h3>Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <div className="gallery-actions">
+          {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+          {gallery.length > 0 && (<>
+            <label className="gallery-control" title="Thumbnail size">
+              <span>Size</span>
+              <input type="range" min="130" max="360" step="10" value={thumbSize}
+                onChange={e => { setThumbSize(+e.target.value); localStorage.setItem('gallery_thumb', e.target.value) }} />
+            </label>
+            <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
+              onClick={() => { setFitImages(f => { localStorage.setItem('gallery_fit', f ? '0' : '1'); return !f }) }}>Full images</button>
+            <div className={`select-all-box ${selectedIds.size === gallery.length && gallery.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
+          </>)}
+        </div>
       </div>
+      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · 🔍 or double-click to view · ← → to browse</div>}
 
-      <div className="gallery">
-        {gallery.map((item, i) => (
-          <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} onClick={() => toggleSelect(item.id)}>
-            <img src={item.url} alt="" />
-            <div className="gallery-overlay">
-              <button className="magnify-btn" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
+      <div ref={galleryRef}>
+        {(() => {
+          const tile = (item, i) => (
+            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+              onClick={() => toggleSelect(item.id)} onDoubleClick={() => openLightbox(i)}>
+              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
+              <div className="gallery-overlay">
+                <button className="magnify-btn" title="View" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}>🔍</button>
+                <button className="magnify-btn small" title="Download" onClick={(e) => { e.stopPropagation(); downloadImage(item) }}>⬇</button>
+              </div>
+              <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
             </div>
-            <button className="info-btn" onClick={(e) => { e.stopPropagation(); setInfoItem(item) }}>i</button>
-          </div>
-        ))}
+          )
+          if (!fitImages) {
+            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+          }
+          // Whole images in columns, filled row by row so the newest stay at the top
+          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          return (
+            <div className="gallery-masonry">
+              {Array.from({ length: cols }, (_, c) => (
+                <div key={c} className="gallery-col">
+                  {gallery.map((item, i) => i % cols === c ? tile(item, i) : null)}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && (
@@ -1122,6 +1173,16 @@ export default function App({ active = true }) {
             />
             <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1}>›</button>
           </div>
+          <div className="lb-bar" onClick={e => e.stopPropagation()}>
+            <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
+            <span className="lb-caption" title={gallery[lightboxIndex].positive}>{gallery[lightboxIndex].positive || '(no prompt)'}</span>
+            <span className="lb-meta">{gallery[lightboxIndex].width}×{gallery[lightboxIndex].height}</span>
+            <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
+            <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
+            <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
+          </div>
+          <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
+          {[gallery[lightboxIndex - 1], gallery[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}
         </div>
       )}
 
