@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+eimport { useCallback, useEffect, useRef, useState } from 'react'
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import './App.css'
 import './HeadSwap.css'
-
+ 
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
   'ngrok-skip-browser-warning': 'true'
