@@ -174,7 +174,8 @@ export async function syncKind(kind) {
       setStatus({ state: 'busy', text: `Backing up ${k.label}... ${up + 1}` })
       const id = newId()
       const path = `users/${uid}/${kind}/${id}.${k.ext}`
-      await st.uploadBytes(st.ref(storage, path), rec.blob, { contentType: rec.blob.type || k.type })
+      const type = (rec.blob.type || '').split('/')[0] === k.type.split('/')[0] ? rec.blob.type : k.type  // the rules check the type
+      await st.uploadBytes(st.ref(storage, path), rec.blob, { contentType: type })
       await fs.setDoc(fs.doc(col, id), { ...metaOf(rec), path, size: rec.blob.size, created: rec.created || Date.now() })
       await idb(local, k.store, 'readwrite', s => s.put({ ...rec, cloudId: id, cloudUid: uid }))
       known.add(id)
@@ -269,7 +270,7 @@ export async function syncSettings({ merge = false } = {}) {
   }
   const json = JSON.stringify(settings)
   if (json === lastSettingsJson) return
-  await st.uploadBytes(ref, new Blob([json], { type: 'application/json' }))
+  await st.uploadBytes(ref, new Blob([json], { type: 'application/json' }), { contentType: 'application/json' })
   lastSettingsJson = json
 }
 // Settings changes are picked up every 20 s while signed in
@@ -328,7 +329,7 @@ export async function saveDatasetToCloud(name, images, getFile, extra, onProgres
     if (!entry) {
       const blob = await getFile(file)
       const path = `users/${uid}/training/${name}/${file}`
-      await st.uploadBytes(st.ref(storage, path), blob, { contentType: blob.type || 'image/jpeg' })
+      await st.uploadBytes(st.ref(storage, path), blob, { contentType: (blob.type || '').startsWith('image/') ? blob.type : 'image/jpeg' })
       entry = { file, path, size: blob.size }
       uploaded++
     }

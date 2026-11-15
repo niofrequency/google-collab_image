@@ -1,9 +1,22 @@
 rules_version = '2';
-// Cloud backup: each signed-in user can only read and write their own folder (users/<their uid>/...).
+// Cloud backup for the ARX website: each signed-in user can read/write only these collections of their own.
+// (Kept narrow on purpose: a broad users/{uid}/{document=**} rule would also open every other collection
+// under users/{uid}, e.g. a wallet, because Firestore allows access if ANY rule allows it.)
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    match /users/{userId} {
+      match /images/{itemId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /videos/{itemId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /songs/{itemId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+      match /training/{datasetName} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }

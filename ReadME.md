@@ -377,6 +377,9 @@ Google Drive (`MyDrive/ComfyUI/loras_sdxl`).
    domain* → `google-collabimage-one.vercel.app`.
 3. **Database:** *Build → Firestore Database → Create database* (production mode, any location). Open the **Rules**
    tab, paste the contents of [`firestore.rules`](firestore.rules) and **Publish**.
+   **Already using this Firebase project for another app?** Don't replace your rules — add the `match` blocks from
+   these files inside your existing ones. Avoid a broad `match /users/{uid}/{document=**}` rule: Firestore allows
+   access if *any* rule allows it, so it would also open your other collections (e.g. a wallet) to writes.
 4. **File storage:** *Build → Storage → Get started*. Cloud Storage needs the pay-as-you-go **Blaze** plan (it still
    includes a free amount each month; set a budget alert under *Usage and billing* so there are no surprises — videos
    and training images add up). Open the **Rules** tab, paste [`storage.rules`](storage.rules) and **Publish**.
@@ -386,6 +389,10 @@ Google Drive (`MyDrive/ComfyUI/loras_sdxl`).
    ```bash
    gcloud storage buckets update gs://YOUR-BUCKET --cors-file=cors.json
    ```
+
+   This **replaces** the bucket's CORS settings. If another app already uses this bucket from the browser, first
+   check its current settings with `gcloud storage buckets describe gs://YOUR-BUCKET --format="default(cors_config)"`
+   and add that app's site addresses to the `origin` list in `cors.json` before running the command.
 
 6. **Connect the website:** *Project settings (⚙) → General → Your apps → Web (`</>`)* → register an app → copy the
    `firebaseConfig = { ... }` block. Either paste it in the **☁** panel on the site (saved in that browser), or add it
