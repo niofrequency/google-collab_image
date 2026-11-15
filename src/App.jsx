@@ -3,12 +3,12 @@ import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
+import { CIVITAI_TOKEN } from './civitai.js'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { GENERATOR_PRESETS } from './presets.js'
  
-const CIVITAI_TOKEN = "777a5632707c15ecf54e13eb3b1b862b"
 
 // Header to bypass ngrok free tier browser warning
 const NGROK_HEADERS = {

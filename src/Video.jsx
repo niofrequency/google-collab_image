@@ -6,6 +6,7 @@ import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
+import VideoLoras from './VideoLoras.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -83,6 +84,7 @@ export default function Video({ active }) {
   const [seconds, setSeconds] = useState(load('seconds', 3))
   const [mode, setMode] = useState(load('mode', 'fast'))
   const [seed, setSeed] = useState(-1)
+  const [loras, setLoras] = useState(load('loras', []))   // [{ name, strength, target }]
   const [sound, setSound] = useState(load('sound', false))
   const [soundPrompt, setSoundPrompt] = useState(load('sound_prompt', ''))
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -110,6 +112,7 @@ export default function Video({ active }) {
   useEffect(() => save('seconds', seconds), [seconds])
   useEffect(() => save('mode', mode), [mode])
   useEffect(() => save('sound', sound), [sound])
+  useEffect(() => save('loras', loras), [loras])
   useEffect(() => save('sound_prompt', soundPrompt), [soundPrompt])
   useEffect(() => {  // gallery width, for the "Full videos" columns
     if (!galleryRef.current) return
@@ -258,7 +261,7 @@ export default function Video({ active }) {
     try {
       const res = await fetch(backend + '/generate_video', {
         method: 'POST', headers: HEADERS,
-        body: JSON.stringify({ image, end_image: info.supports_end_frame && endImage ? endImage : null, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1, sound: soundOn, sound_prompt: soundPrompt }),
+        body: JSON.stringify({ image, end_image: info.supports_end_frame && endImage ? endImage : null, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1, loras: info.supports_loras ? loras : [], sound: soundOn, sound_prompt: soundPrompt }),
       })
       let data = await res.json()
       let downSince = null
@@ -285,6 +288,7 @@ export default function Video({ active }) {
         fps: data.fps, frames: data.frames, mode: data.mode, seed: data.seed, model: info.label,
         sound: !!data.sound, soundPrompt: data.sound ? (soundPrompt.trim() || prompt) : '',
         endFrame: !!data.end_frame, lastFrame: data.last_frame || null,
+        loras: info.supports_loras ? loras.map(l => ({ ...l })) : [],
       }
       await dbAdd(item)
       await refreshGallery()
@@ -292,7 +296,8 @@ export default function Video({ active }) {
       setResult({ ...item, src: URL.createObjectURL(blob) })
       const took = data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'
       say(`Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
-        (data.warning ? ` ${data.warning}` : ''), data.warning ? 'error' : 'ok')
+        (data.warning ? ` ${data.warning}` : '') + (data.warnings?.length ? ` ${data.warnings.join(' ')}` : ''),
+        data.warning || data.warnings?.length ? 'error' : 'ok')
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
     }
@@ -428,6 +433,8 @@ export default function Video({ active }) {
         </div>
       </div>
 
+      <VideoLoras backend={backend} info={info} loras={loras} setLoras={setLoras} onDownloaded={connect} say={say} />
+
       <div className="sound-box">
         <div className="inline" style={{ alignItems: 'center' }}>
           <button className={`toggle ${sound && info?.supports_sound !== false ? 'on' : ''}`} disabled={info?.supports_sound === false}
@@ -552,6 +559,7 @@ export default function Video({ active }) {
               <b>Length</b><span>{infoItem.seconds} s ({infoItem.frames} frames @ {infoItem.fps} fps)</span>
               <b>Size</b><span>{infoItem.width}×{infoItem.height}</span>
               <b>Mode</b><span>{infoItem.mode}{infoItem.endFrame ? ' · with end image' : ''}</span>
+              {infoItem.loras?.length > 0 && <><b>LoRAs</b><span>{infoItem.loras.map(l => `${l.name} @ ${l.strength}${l.target && l.target !== 'auto' ? ` (${l.target})` : ''}`).join(', ')}</span></>}
               <b>Seed</b><span>{infoItem.seed}</span>
               <b>Model</b><span>{infoItem.model}</span>
               <b>Made</b><span>{new Date(infoItem.created).toLocaleString()}</span>

@@ -213,6 +213,20 @@ slower). Finished videos play on the page, are kept in your browser's gallery, a
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
 encoder).
 
+### LoRAs for video
+
+Same as in the Image Generator: **+ Download LoRA** in the Image to Video tab, paste a Civitai or Hugging Face link,
+then pick it from the list and set the strength (1.0 is usual for video LoRAs; lower if the motion looks overdone).
+They're kept in Google Drive (`MyDrive/ComfyUI/loras_wan22_a14b` or `loras_wan22_5b`; cell 1 asks to connect Drive —
+set `USE_GOOGLE_DRIVE = False` to skip).
+
+- **A14B notebook:** Wan 2.2 A14B **I2V** LoRAs and most Wan 2.1 14B I2V LoRAs. Wan 2.2 runs two models — high-noise
+  (motion/layout) then low-noise (details) — and Wan 2.2 LoRAs often come as a **pair** (`…_high_noise` /
+  `…_low_noise`): add both, and *Auto* puts each on its model from the file name. Other LoRAs go on *Both models*.
+- **Free 5B notebook:** only Wan 2.2 **5B** LoRAs.
+- Image LoRAs (SDXL, Qwen…) don't work on video; a LoRA that doesn't fit the model is refused with a message, and
+  one that only partly fits shows a warning.
+
 ### Keeping a character consistent (short films)
 
 - **Start from your character:** make each shot's first frame in the Image Generator with a saved **character**
