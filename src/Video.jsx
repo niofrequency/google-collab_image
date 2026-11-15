@@ -225,18 +225,19 @@ export default function Video({ active }) {
       const t = e.target
       if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !t.dataset.imageUrl))) return
       const address = extractImgSrc(cd?.getData('text/html')) || (cd?.getData('text/plain') || '').trim()
-      if (/^https?:\/\/\S+$/i.test(address)) { e.preventDefault(); useAddress(address, slot) }
+      if (/^(https?:\/\/\S+|data:image\/)/i.test(address)) { e.preventDefault(); useAddress(address, slot) }
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
   })
 
-  function onDrop(e) {
+  function onDrop(e, slot = 'start') {
     e.preventDefault()
+    e.stopPropagation()
     const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'))
-    if (file) return useFile(file)
-    const address = extractImgSrc(e.dataTransfer?.getData('text/html')) || (e.dataTransfer?.getData('text/uri-list') || '').split('\n')[0]
-    if (address) useAddress(address)
+    if (file) return useFile(file, slot)
+    const address = extractImgSrc(e.dataTransfer?.getData('text/html')) || (e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '').split('\n')[0].trim()
+    if (address) useAddress(address, slot)
   }
 
   function applyPreset(p) {
@@ -369,7 +370,7 @@ export default function Video({ active }) {
 
       <label ref={topRef} style={{ marginTop: 16 }}>Start image <Info text="The first frame of the video. Its shape (portrait/landscape) is kept. Clear images with one main subject animate best. Paste (Ctrl+V), drag & drop, choose a file, or paste an image address." /></label>
       <div className="train-drop" title="Tap to choose from your photos · hover and press Ctrl+V to paste"
-        onMouseEnter={() => { pasteSlotRef.current = 'start' }} onDragOver={e => e.preventDefault()} onDrop={onDrop} onClick={() => fileRef.current?.click()}>
+        onMouseEnter={() => { pasteSlotRef.current = 'start' }} onDragOver={e => e.preventDefault()} onDrop={e => onDrop(e)} onClick={() => fileRef.current?.click()}>
         {image ? (
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <img src={image} alt="Start" style={{ maxWidth: '100%', maxHeight: 260, borderRadius: 8, display: 'block' }}
@@ -383,7 +384,7 @@ export default function Video({ active }) {
       {info?.supports_end_frame && (<>
         <label>End image <span className="muted">(optional)</span> <Info text={<>The picture the video <b>ends</b> on — Wan fills in the motion from the start image to this one. Make both with the same <b>character</b> (Face reference in the Image Generator) and the face stays the same all the way through.<br /><br />Good for planning film shots: e.g. start "Mia at the door", end "Mia sitting at the table". Keep start and end similar enough to get there in a few seconds (same place, same clothes, same framing works best). It is cropped to the start image's shape.<br /><br />Only on the A14B notebook. Tip: in the Image Generator's full-size viewer, <i>Video start</i> / <i>Video end</i> send an image straight here.</>} /></label>
         <div className="train-drop end-drop" onDragOver={e => e.preventDefault()}
-          onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/')); if (f) useFile(f, 'end') }}
+          onDrop={e => onDrop(e, 'end')}
           title="Tap to choose from your photos · hover and press Ctrl+V to paste"
           onMouseEnter={() => { pasteSlotRef.current = 'end' }} onMouseLeave={() => { pasteSlotRef.current = 'start' }}
           onClick={() => endFileRef.current?.click()}>
