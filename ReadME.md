@@ -1,12 +1,42 @@
 # Google Colab Image Generator
 
-Free Google Colab notebooks for generating, editing and training images with ComfyUI, plus a website
-(**ARX Image Generator**) that controls them.
+Google Colab notebooks for generating and editing images, making videos and music, and training LoRAs with
+ComfyUI, plus a website (**ARX Image Generator**) that controls them.
 
 - **Website:** https://google-collabimage-one.vercel.app
 - **Repository:** https://github.com/niofrequency/google-collab_image
 
-Each notebook runs on a free **T4 GPU** in Colab and prints a `READY:` URL. Paste that URL into the website to use it.
+Each notebook prints a `READY:` URL; paste it into the matching tab on the website. Most run on Colab's **free T4**;
+some need (or get much better on) a paid **L4** or **A100** — see the table below.
+
+## Which GPU should I use?
+
+Pick the GPU in Colab under **Runtime → Change runtime type**. The notebooks detect the GPU and **choose the best
+model size for it automatically** — this is what each one uses:
+
+| Notebook (website tab) | **T4** — free / cheapest, 15 GB | **L4** — paid, 24 GB ⭐ best value | **A100** — paid, 40 GB |
+|---|---|---|---|
+| **BigLust** (Image Generator) | ✅ BigLust SDXL | ✅ same model, ~2–3× faster; refiner at 2× runs comfortably | ✅ fastest |
+| **Qwen Image Edit Rapid AIO** (Image Generator) | ✅ **Q2_K** (7.4 GB) | ✅ **Q4_K** (13.3 GB) — better quality | ✅ **Q8_0** (21.8 GB) — best quality |
+| **Image to Video — Wan 2.2 A14B** (Image to Video) | ❌ too big — use the 5B notebook | ✅ **A14B Q4_K_M**, 480p default | ✅ **A14B Q8_0**, 720p default |
+| **Image to Video — Wan 2.2 5B** (Image to Video) | ✅ **TI2V 5B Q8_0** + Turbo LoRA (slow-ish; start with 480p, 2–3 s) | ✅ same model, faster | ✅ same model, faster |
+| **Music — ACE-Step 1.5** (Music) | ✅ **turbo** + 1.7B planner (runs in fp32: slower), up to 3 min | ✅ **XL turbo** + 1.7B planner, up to 4 min | ✅ **XL turbo** + **4B** planner, up to 4 min |
+| **SDXL LoRA training** (LoRA Training) | ✅ *standard* mode (fp16, image model only) | ✅ *improved* mode (bf16 + text encoder trained), 2–3× faster | ✅ *improved* mode, fastest |
+
+**Quick guide**
+- **No compute units / free tier → T4.** Everything except the A14B video notebook works; video and music are slower.
+- **You have compute units → L4** for almost everything: much faster, and the Qwen, video and music notebooks switch
+  to bigger, better-quality models by themselves.
+- **A100** only for heavy jobs (720p video, the biggest models, long training) — it uses compute units several times
+  faster than an L4.
+- **Don't pick** CPU, TPU (v5e / v6e) or the G4 GPU — the notebooks need an NVIDIA GPU and haven't been tested on G4.
+- Run **one GPU notebook at a time**, and use **Runtime → Disconnect and delete runtime** when you're done so idle time
+  doesn't use units.
+- On the Qwen notebook you can also switch the model size from the website (**Model size** dropdown); sizes too big
+  for your GPU are marked, with a note on how to switch to a bigger GPU.
+
+The older notebooks at the bottom of the notebook list (Into Realism, Krea 2, Qwen Image Edit 2511, Wan 2.1) haven't
+been updated with GPU detection; they were made for the T4 (Qwen 2511 fp8 is likely too big for it).
 
 ## Notebooks
 
