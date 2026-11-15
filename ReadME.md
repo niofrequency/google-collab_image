@@ -18,6 +18,7 @@ model size for it automatically** — this is what each one uses:
 |---|---|---|---|
 | **BigLust** (Image Generator) | ✅ BigLust SDXL | ✅ same model, ~2–3× faster; refiner at 2× runs comfortably | ✅ fastest |
 | **Qwen Image Edit Rapid AIO** (Image Generator) | ✅ **Q2_K** (7.4 GB) | ✅ **Q4_K** (13.3 GB) — better quality | ✅ **Q8_0** (21.8 GB) — best quality |
+| **Qwen Image Edit 2511** — official model (Image Generator) | ✅ **Q2_K** (7.7 GB) + 4-step Lightning | ✅ **Q4_K_M** (12.8 GB) + 4-step Lightning | ✅ **Q8_0** (22.4 GB) + 4-step Lightning |
 | **Image to Video — Wan 2.2 A14B** (Image to Video) | ❌ too big — use the 5B notebook | ✅ **A14B Q4_K_M**, 480p default | ✅ **A14B Q8_0**, 720p default |
 | **Image to Video — Wan 2.2 5B** (Image to Video) | ✅ **TI2V 5B Q8_0** + Turbo LoRA (slow-ish; start with 480p, 2–3 s) | ✅ same model, faster | ✅ same model, faster |
 | **Music — ACE-Step 1.5** (Music) | ✅ **turbo** + 1.7B planner (runs in fp32: slower), up to 3 min | ✅ **XL turbo** + 1.7B planner, up to 4 min | ✅ **XL turbo** + **4B** planner, up to 4 min |
@@ -35,8 +36,8 @@ model size for it automatically** — this is what each one uses:
 - On the Qwen notebook you can also switch the model size from the website (**Model size** dropdown); sizes too big
   for your GPU are marked, with a note on how to switch to a bigger GPU.
 
-The older notebooks at the bottom of the notebook list (Into Realism, Krea 2, Qwen Image Edit 2511, Wan 2.1) haven't
-been updated with GPU detection; they were made for the T4 (Qwen 2511 fp8 is likely too big for it).
+The older notebooks at the bottom of the notebook list (Into Realism, Krea 2, Wan 2.1) haven't been updated with GPU
+detection; they were made for the T4.
 
 ## Notebooks
 
@@ -50,7 +51,7 @@ been updated with GPU detection; they were made for the T4 (Qwen 2511 fp8 is lik
 | **SDXL LoRA training** | Trains your own SDXL LoRA from 15–40 images, controlled from the website's LoRA Training tab. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/SDXL-LORA-TRAINING.ipynb) |
 | Into Realism (SDXL) | Older SDXL text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/INTO-REALISM.ipynb) |
 | Krea 2 Realism | Older Krea 2 text-to-image notebook with a website server. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/KREA2.ipynb) |
-| Qwen Image Edit 2511 (fp8) | Older notebook with the official Qwen-Image-Edit-2511 fp8 model (~20 GB, likely too big for a free T4; uses ngrok). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb) |
+| **Qwen Image Edit 2511** (GGUF) | The official Qwen-Image-Edit-2511 model (GGUF size picked for your GPU) with the 4-step Lightning LoRA — same website features as Rapid AIO (reference pictures, LoRAs, model sizes). Rapid AIO is a community merge tuned for speed and NSFW; 2511 is the plain official model. | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-IMAGE-EDIT.ipynb) |
 | Wan 2.1 (GGUF) | Text-to-image with Wan 2.1 14B inside the notebook (no website server). | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/Wan2.1_T2I_jupyter.ipynb) |
 
 Direct links:
@@ -212,6 +213,20 @@ toward the camera and smiles, slow push-in"), pick a preset (*Default*, *Quick p
 slower). Finished videos play on the page, are kept in your browser's gallery, and can be downloaded as MP4. Models
 come from Hugging Face: QuantStack (Wan 2.2 GGUF), Comfy-Org (Lightning LoRAs, VAE), Kijai (5B Turbo LoRA), city96 (text
 encoder).
+
+### LoRAs for video
+
+Same as in the Image Generator: **+ Download LoRA** in the Image to Video tab, paste a Civitai or Hugging Face link,
+then pick it from the list and set the strength (1.0 is usual for video LoRAs; lower if the motion looks overdone).
+They're kept in Google Drive (`MyDrive/ComfyUI/loras_wan22_a14b` or `loras_wan22_5b`; cell 1 asks to connect Drive —
+set `USE_GOOGLE_DRIVE = False` to skip).
+
+- **A14B notebook:** Wan 2.2 A14B **I2V** LoRAs and most Wan 2.1 14B I2V LoRAs. Wan 2.2 runs two models — high-noise
+  (motion/layout) then low-noise (details) — and Wan 2.2 LoRAs often come as a **pair** (`…_high_noise` /
+  `…_low_noise`): add both, and *Auto* puts each on its model from the file name. Other LoRAs go on *Both models*.
+- **Free 5B notebook:** only Wan 2.2 **5B** LoRAs.
+- Image LoRAs (SDXL, Qwen…) don't work on video; a LoRA that doesn't fit the model is refused with a message, and
+  one that only partly fits shows a warning.
 
 ### Keeping a character consistent (short films)
 
