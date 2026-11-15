@@ -96,3 +96,33 @@ export const TRAINING_PRESETS = [
     tag: { threshold: 0.35, mode: 'append', exclude: '' },
   },
 ]
+
+// Image to Video tab — the same presets work with both video notebooks (A14B and the free 5B).
+// s: size ("480p"/"720p"), seconds, mode ("fast" = 4-step LoRA, "quality" = more steps, much slower).
+export const VIDEO_PRESETS = [
+  {
+    name: 'Default',
+    info: 'The notebook\'s standard settings: 480p, Fast mode (4 steps). 5 seconds on the A14B notebook, 3 seconds on the free T4 notebook.',
+    s: { size: 'default', seconds: 'default', mode: 'fast' },
+  },
+  {
+    name: 'Quick preview',
+    info: '480p, 2 seconds, Fast — to try a prompt quickly before making the full clip.',
+    s: { size: '480p', seconds: 2, mode: 'fast' },
+  },
+  {
+    name: 'Longer clip',
+    info: 'As long as the model allows (about 7.5 s on the A14B notebook, 5 s on the free one), 480p, Fast. Takes proportionally longer.',
+    s: { size: '480p', seconds: 'max', mode: 'fast' },
+  },
+  {
+    name: 'HD (720p)',
+    info: '720p, Fast. Sharper but about twice as slow as 480p; best on an L4 or A100.',
+    s: { size: '720p', seconds: 'default', mode: 'fast' },
+  },
+  {
+    name: 'Best quality (slow)',
+    info: 'Quality mode: the plain model with 20 steps instead of the 4-step LoRA. Smoother motion and detail, but roughly 5× slower — use for final clips on an L4/A100.',
+    s: { size: 'default', seconds: 'default', mode: 'quality' },
+  },
+]
