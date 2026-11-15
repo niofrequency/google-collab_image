@@ -107,6 +107,33 @@ export const TRAINING_PRESETS = [
   },
 ]
 
+// LoRA Training tab when connected to QWEN-2511-LORA-TRAINING.ipynb (Qwen Image Edit 2511, batch size is always 1).
+// Resolution isn't set by presets: the notebook picks it for the GPU (A100 1024 px, L4 768 px).
+export const QWEN_TRAINING_PRESETS = [
+  {
+    name: 'Default',
+    info: 'Character LoRA: 1,200 steps, dim 16, learning rate 0.0001 — a good start for 15–30 pictures. Roughly 1–2 hours on an A100, longer on an L4. Auto-caption replaces captions.',
+    s: { max_train_steps: 1200, network_dim: 16, network_alpha: 16, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 200 },
+    tag: { mode: 'replace' },
+  },
+  {
+    name: 'Character – strong likeness',
+    info: 'More capacity and steps (dim 32, 1,800 steps) for a character that must look exactly the same in every edit. About 50% longer; can get stiff if you have fewer than ~15 pictures. Use a new LoRA name if this name already has saved progress.',
+    s: { max_train_steps: 1800, network_dim: 32, network_alpha: 32, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 200 },
+    tag: { mode: 'replace' },
+  },
+  {
+    name: 'Edit effect',
+    info: 'For Before → After pairs (set LoRA type to Edit effect; A100): dim 32, 1,500 steps. Write the same instruction under every pair, e.g. "turn this photo into a comic-book drawing".',
+    s: { max_train_steps: 1500, network_dim: 32, network_alpha: 32, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 250 },
+  },
+  {
+    name: 'Quick test',
+    info: 'Short run (300 steps) to check your pictures and captions before a full training — about 20–30 minutes on an A100. Use a different name from your real LoRA.',
+    s: { max_train_steps: 300, network_dim: 16, network_alpha: 16, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 100 },
+  },
+]
+
 // Image to Video tab — the same presets work with both video notebooks (A14B and the free 5B).
 // s: size ("480p"/"720p"), seconds, mode ("fast" = 4-step LoRA, "quality" = more steps, much slower).
 export const VIDEO_PRESETS = [
