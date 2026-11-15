@@ -70,6 +70,10 @@ export default function Video({ active }) {
   const [url, setUrl] = useState(load('url', ''))
   const [info, setInfo] = useState(null)              // /video_info from the notebook
   const [image, setImage] = useState('')              // data URL or http(s) address
+  const [endImage, setEndImage] = useState('')        // optional end frame (A14B): the clip ends on this picture
+  const [endUrlInput, setEndUrlInput] = useState('')
+  const endFileRef = useRef(null)
+  const topRef = useRef(null)
   const [imageUrlInput, setImageUrlInput] = useState('')
   const [prompt, setPrompt] = useState(load('prompt', ''))
   const [negative, setNegative] = useState(load('negative', null))  // null = the notebook's default
@@ -141,17 +145,65 @@ export default function Video({ active }) {
   useEffect(() => { if (url) connect() }, [])
 
   function setStartImage(src) { setImage(src); say('Start image loaded', 'ok') }
-
-  async function useFile(file) {
-    if (!file || !file.type.startsWith('image/')) return say('That is not an image', 'error')
-    try { setStartImage(await fileToDataUrl(file)) } catch (e) { say(e.message, 'error') }
+  function setSlot(slot, src) {
+    if (slot === 'end') { setEndImage(src); say('End image loaded', 'ok') } else setStartImage(src)
   }
 
-  function useAddress(address) {
+  async function useFile(file, slot = 'start') {
+    if (!file || !file.type.startsWith('image/')) return say('That is not an image', 'error')
+    try { setSlot(slot, await fileToDataUrl(file)) } catch (e) { say(e.message, 'error') }
+  }
+
+  function useAddress(address, slot = 'start') {
     const a = (address || '').trim()
     if (!/^(https?:\/\/|data:image\/)/i.test(a)) return say('Paste an image address that starts with http', 'error')
-    setStartImage(a)   // the notebook downloads http(s) addresses itself
-    setImageUrlInput('')
+    setSlot(slot, a)   // the notebook downloads http(s) addresses itself
+    if (slot === 'end') setEndUrlInput(''); else setImageUrlInput('')
+  }
+
+  // Pictures sent from the Image Generator's full-size viewer ("Video start" / "Video end")
+  useEffect(() => {
+    async function onSend(e) {
+      const { src, slot } = e.detail || {}
+      try {
+        const blob = await (await fetch(src)).blob()
+        await useFile(new File([blob], 'image.png', { type: blob.type || 'image/png' }), slot)
+        if (slot === 'end') say('End image set from the Image Generator', 'ok')
+        else say('Start image set from the Image Generator', 'ok')
+      } catch { say('Could not use that picture', 'error') }
+    }
+    window.addEventListener('send-to-video', onSend)
+    return () => window.removeEventListener('send-to-video', onSend)
+  })
+
+  // The exact last frame of a clip: from the notebook (newer servers), else taken from the video itself
+  function lastFrameOf(v) {
+    if (v.lastFrame) return Promise.resolve(v.lastFrame)
+    return new Promise((resolve, reject) => {
+      const el = document.createElement('video')
+      el.muted = true
+      el.preload = 'auto'
+      el.onloadedmetadata = () => { el.currentTime = Math.max(0, el.duration - 0.02) }
+      el.onseeked = () => {
+        const c = document.createElement('canvas')
+        c.width = el.videoWidth; c.height = el.videoHeight
+        c.getContext('2d').drawImage(el, 0, 0)
+        resolve(c.toDataURL('image/png'))
+      }
+      el.onerror = () => reject(new Error('Could not read the video'))
+      el.src = v.src
+    })
+  }
+
+  async function continueFrom(v) {
+    try {
+      setImage(await lastFrameOf(v))
+      setEndImage('')
+      setViewIndex(-1)
+      setInfoItem(null)
+      topRef.current?.scrollIntoView({ behavior: 'smooth' })
+      say('The last frame is now the start image — describe what happens next and press Generate', 'ok')
+    } catch (e) { say(e.message, 'error') }
   }
 
   // Paste an image (or image address) while this tab is open
@@ -199,7 +251,7 @@ export default function Video({ active }) {
     try {
       const res = await fetch(backend + '/generate_video', {
         method: 'POST', headers: HEADERS,
-        body: JSON.stringify({ image, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1, sound: soundOn, sound_prompt: soundPrompt }),
+        body: JSON.stringify({ image, end_image: info.supports_end_frame && endImage ? endImage : null, prompt, negative, size, seconds: +seconds, mode, seed: +seed || -1, sound: soundOn, sound_prompt: soundPrompt }),
       })
       let data = await res.json()
       let downSince = null
@@ -225,6 +277,7 @@ export default function Video({ active }) {
         blob, created: Date.now(), prompt, width: data.width, height: data.height, seconds: data.seconds,
         fps: data.fps, frames: data.frames, mode: data.mode, seed: data.seed, model: info.label,
         sound: !!data.sound, soundPrompt: data.sound ? (soundPrompt.trim() || prompt) : '',
+        endFrame: !!data.end_frame, lastFrame: data.last_frame || null,
       }
       await dbAdd(item)
       await refreshGallery()
@@ -297,7 +350,7 @@ export default function Video({ active }) {
         </div>
       )}
 
-      <label style={{ marginTop: 16 }}>Start image <Info text="The first frame of the video. Its shape (portrait/landscape) is kept. Clear images with one main subject animate best. Paste (Ctrl+V), drag & drop, choose a file, or paste an image address." /></label>
+      <label ref={topRef} style={{ marginTop: 16 }}>Start image <Info text="The first frame of the video. Its shape (portrait/landscape) is kept. Clear images with one main subject animate best. Paste (Ctrl+V), drag & drop, choose a file, or paste an image address." /></label>
       <div className="train-drop" onDragOver={e => e.preventDefault()} onDrop={onDrop} onClick={() => !image && fileRef.current?.click()}>
         {image ? (
           <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -313,6 +366,27 @@ export default function Video({ active }) {
           onKeyDown={e => e.key === 'Enter' && useAddress(imageUrlInput)} />
         <button className="secondary" onClick={() => useAddress(imageUrlInput)}>Load URL</button>
       </div>
+
+      {info?.supports_end_frame && (<>
+        <label>End image <span className="muted">(optional)</span> <Info text={<>The picture the video <b>ends</b> on — Wan fills in the motion from the start image to this one. Make both with the same <b>character</b> (Face reference in the Image Generator) and the face stays the same all the way through.<br /><br />Good for planning film shots: e.g. start "Mia at the door", end "Mia sitting at the table". Keep start and end similar enough to get there in a few seconds (same place, same clothes, same framing works best). It is cropped to the start image's shape.<br /><br />Only on the A14B notebook. Tip: in the Image Generator's full-size viewer, <i>Video start</i> / <i>Video end</i> send an image straight here.</>} /></label>
+        <div className="train-drop end-drop" onDragOver={e => e.preventDefault()}
+          onDrop={e => { e.preventDefault(); e.stopPropagation(); const f = [...(e.dataTransfer?.files || [])].find(x => x.type.startsWith('image/')); if (f) useFile(f, 'end') }}
+          onClick={() => !endImage && endFileRef.current?.click()}>
+          {endImage ? (
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <img src={endImage} alt="End" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, display: 'block' }}
+                onError={() => say('Could not display the end image — check the address', 'error')} />
+              <button className="danger train-del" title="Remove" onClick={e => { e.stopPropagation(); setEndImage('') }}>×</button>
+            </div>
+          ) : 'No end image — the model decides how the clip ends. Drag & drop or click to choose one.'}
+          <input ref={endFileRef} type="file" accept="image/*" hidden onChange={e => { useFile(e.target.files?.[0], 'end'); e.target.value = '' }} />
+        </div>
+        <div className="inline" style={{ marginTop: 8 }}>
+          <input value={endUrlInput} onChange={e => setEndUrlInput(e.target.value)} placeholder="Or paste end image URL"
+            onKeyDown={e => e.key === 'Enter' && useAddress(endUrlInput, 'end')} />
+          <button className="secondary" onClick={() => useAddress(endUrlInput, 'end')}>Load URL</button>
+        </div>
+      </>)}
 
       <label>Motion prompt <Info text={<>Describe what should <b>happen</b>, not what's already in the picture: the action, the camera and the mood. E.g. <i>"she turns her head toward the camera and smiles, hair moving in the wind, slow camera push-in"</i>. One or two clear actions work best for a few seconds of video.</>} /></label>
       <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="e.g. she turns toward the camera and smiles, hair blowing in the wind, slow camera push-in" />
@@ -375,7 +449,10 @@ export default function Video({ active }) {
       {result && (
         <div className="video-result">
           <video src={result.src} controls autoPlay loop muted={!result.sound} playsInline />
-          <a className="secondary video-download" href={result.src} download={`video-${result.created}.mp4`}>Download MP4</a>
+          <div className="inline" style={{ justifyContent: 'center' }}>
+            <a className="secondary video-download" href={result.src} download={`video-${result.created}.mp4`}>Download MP4</a>
+            <button className="secondary" style={{ width: 'auto' }} onClick={() => continueFrom(result)} title="Start the next clip from this clip's last frame">Continue from last frame</button>
+          </div>
         </div>
       )}
 
@@ -444,6 +521,7 @@ export default function Video({ active }) {
             <span className="lb-meta">{viewing.seconds} s · {viewing.width}×{viewing.height}{viewing.sound ? ' · 🔊 sound' : ''}</span>
             <button className="secondary" onClick={() => setInfoItem(viewing)}>Info</button>
             <button className="secondary" onClick={() => usePrompt(viewing)}>Use prompt</button>
+            <button className="secondary" onClick={() => continueFrom(viewing)} title="Start the next clip from this clip's last frame">Continue</button>
             <a className="secondary video-download small" href={viewing.src} download={`video-${viewing.created}.mp4`}>Download</a>
             <button className="danger" onClick={() => removeVideo(viewing)}>Delete</button>
           </div>
@@ -460,13 +538,14 @@ export default function Video({ active }) {
               <b>Sound</b><span>{infoItem.sound ? (infoItem.soundPrompt || 'yes') : 'none'}</span>
               <b>Length</b><span>{infoItem.seconds} s ({infoItem.frames} frames @ {infoItem.fps} fps)</span>
               <b>Size</b><span>{infoItem.width}×{infoItem.height}</span>
-              <b>Mode</b><span>{infoItem.mode}</span>
+              <b>Mode</b><span>{infoItem.mode}{infoItem.endFrame ? ' · with end image' : ''}</span>
               <b>Seed</b><span>{infoItem.seed}</span>
               <b>Model</b><span>{infoItem.model}</span>
               <b>Made</b><span>{new Date(infoItem.created).toLocaleString()}</span>
             </div>
             <div className="inline" style={{ marginTop: 12 }}>
               <button className="secondary" onClick={() => { usePrompt(infoItem); setInfoItem(null) }}>Use prompt</button>
+              <button className="secondary" onClick={() => continueFrom(infoItem)}>Continue from last frame</button>
               <button className="secondary" onClick={() => { setSeed(infoItem.seed); setInfoItem(null); say('Seed loaded (Advanced)', 'ok') }}>Use seed</button>
               <button className="secondary" onClick={() => setInfoItem(null)}>Close</button>
             </div>

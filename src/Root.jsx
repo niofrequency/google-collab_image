@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import App from './App.jsx'
 import Training from './Training.jsx'
 import Video from './Video.jsx'
@@ -17,6 +17,11 @@ const TABS = [
 export default function Root() {
   const [tab, setTab] = useState(localStorage.getItem('tab') || 'generate')
   function pick(id) { setTab(id); localStorage.setItem('tab', id) }
+  useEffect(() => {  // "Video start" / "Video end" in the Image Generator's viewer switch to the video tab
+    const go = () => pick('video')
+    window.addEventListener('send-to-video', go)
+    return () => window.removeEventListener('send-to-video', go)
+  }, [])
   return (
     <>
       <nav className="tabs">
