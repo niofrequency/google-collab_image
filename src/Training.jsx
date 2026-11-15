@@ -12,6 +12,15 @@ const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/bmp']
 const MAX_SIDE = 2048 // bigger images are scaled down before upload (training uses ~1024 px anyway)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+// Qwen Image Edit 2511 trainer defaults before connecting (the notebook sends its own, e.g. 768 px on an L4)
+const QWEN_DEFAULTS = {
+  max_train_steps: 1200, train_batch_size: 1, resolution: 1024, network_dim: 16, network_alpha: 16,
+  learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 200,
+}
+const TRAINERS = {
+  sdxl: { label: 'SDXL (BigLust)', notebook: 'SDXL-LORA-TRAINING.ipynb', gpu: 'T4, L4 or A100', urlKey: 'url' },
+  qwen_2511: { label: 'Qwen Image Edit 2511', notebook: 'QWEN-2511-LORA-TRAINING.ipynb', gpu: 'A100, or L4 for character LoRAs', urlKey: 'url_qwen' },
+}
 const SETTINGS_DEFAULTS = {
   class_word: 'woman', base_model: 'biglust', max_train_steps: 1500, train_batch_size: 2,
   resolution: 1024, network_dim: 8, network_alpha: 4, learning_rate: 0.0003, num_repeats: 10, save_every_n_steps: 250,
@@ -21,6 +30,12 @@ function load(key, fallback) {
   try { const v = JSON.parse(localStorage.getItem('train_' + key)); return v ?? fallback } catch { return fallback }
 }
 function save(key, value) { localStorage.setItem('train_' + key, JSON.stringify(value)) }
+
+function settingsFor(trainer, serverDefaults) {
+  return trainer === 'qwen_2511'
+    ? { ...SETTINGS_DEFAULTS, ...QWEN_DEFAULTS, ...(serverDefaults || {}), ...load('settings_qwen', {}) }
+    : { ...SETTINGS_DEFAULTS, ...load('settings', {}) }
+}
 
 function cleanName(name) {
   return (name || '').trim().replace(/[^\w-]+/g, '_').replace(/^_+|_+$/g, '')
@@ -52,14 +67,14 @@ async function prepareFile(file) {
 }
 
 export default function Training({ active }) {
-  const [url, setUrl] = useState(load('url', ''))
+  const [trainer, setTrainer] = useState(() => (load('trainer', 'sdxl') === 'qwen_2511' ? 'qwen_2511' : 'sdxl'))  // which training notebook
+  const [url, setUrl] = useState(() => load(TRAINERS[load('trainer', 'sdxl') === 'qwen_2511' ? 'qwen_2511' : 'sdxl'].urlKey, ''))
   const [connected, setConnected] = useState(false)
   const [gpu, setGpu] = useState(null)               // { name, vram_gib, mode, mode_label } from the training notebook
   const [datasets, setDatasets] = useState([])
   const [name, setName] = useState(load('name', ''))
   const [trigger, setTrigger] = useState(load('trigger', ''))
-  const [settings, setSettings] = useState({ ...SETTINGS_DEFAULTS, ...load('settings', {}) })
-  const [trainer, setTrainer] = useState('sdxl')        // 'sdxl' or 'qwen_2511' (from the connected notebook)
+  const [settings, setSettings] = useState(() => settingsFor(trainer))
   const [kind, setKind] = useState('character')         // Qwen: 'character' or 'edit' (per LoRA name)
   const isQwen = trainer === 'qwen_2511'
   const isEdit = isQwen && kind === 'edit'
@@ -87,7 +102,8 @@ export default function Training({ active }) {
   const dsName = cleanName(name)
   const running = task?.status === 'running'
 
-  useEffect(() => save('url', url), [url])
+  useEffect(() => save(TRAINERS[trainer].urlKey, url), [url, trainer])   // each trainer remembers its own server link
+  useEffect(() => save('trainer', trainer), [trainer])
   useEffect(() => save('name', name), [name])
   useEffect(() => save('trigger', trigger), [trigger])
   useEffect(() => save(trainer === 'qwen_2511' ? 'settings_qwen' : 'settings', settings), [settings])
@@ -133,22 +149,46 @@ export default function Training({ active }) {
     return data
   }
 
+  // The SDXL / Qwen 2511 switch: shows that trainer's layout, settings and server link right away
+  function switchTrainer(t) {
+    if (t === trainer) return
+    if (running) return say('A task is running on this trainer — wait for it or press Stop first', 'error')
+    setTrainer(t)
+    setSettings(settingsFor(t))
+    setUrl(load(TRAINERS[t].urlKey, ''))
+    setConnected(false)
+    setGpu(null)
+    setDatasets([])
+    setImages([])
+    setTask(null)
+    setKind('character')
+    setCloudSets(null)
+    say(`Switched to the ${TRAINERS[t].label} trainer — paste the READY: URL from cell 2 of ${TRAINERS[t].notebook}`)
+  }
+  useEffect(() => { if (url && !connected) connect() }, [trainer])  // reconnect with that trainer's saved link
+
   async function connect() {
     if (!backend) return
     try {
       const data = await api('/training/info')
       if (data.mode !== 'lora_training') throw new Error('This URL is not the LoRA training server')
       setConnected(true)
-      const tr = data.trainer || 'sdxl'
-      if (tr !== trainer) {   // each trainer keeps its own settings (Qwen needs very different ones)
-        setSettings(tr === 'qwen_2511' ? { ...SETTINGS_DEFAULTS, ...(data.defaults || {}), ...load('settings_qwen', {}) }
-          : { ...SETTINGS_DEFAULTS, ...load('settings', {}) })
+      const tr = data.trainer === 'qwen_2511' ? 'qwen_2511' : 'sdxl'
+      let switched = false
+      if (tr !== trainer) {   // the link is the other trainer's: switch to it (each trainer keeps its own settings)
+        save(TRAINERS[trainer].urlKey, '')
+        setSettings(settingsFor(tr, data.defaults))
         setTrainer(tr)
+        setKind('character')
+        switched = true
       }
+      const maxRes = tr === 'qwen_2511' ? data.defaults?.resolution : null
+      if (maxRes) setSettings(s => (s.resolution > maxRes ? { ...s, resolution: maxRes } : s))  // e.g. 768 px on an L4
       setGpu(data.gpu || null)
       setDatasets(data.datasets || [])
       setTask(data.status)
-      say(tr === 'qwen_2511' ? 'Connected to the Qwen Image Edit 2511 trainer' : 'Connected to the training server', 'ok')
+      say((tr === 'qwen_2511' ? 'Connected to the Qwen Image Edit 2511 trainer' : 'Connected to the SDXL training server') +
+        (switched ? ' — this link is that trainer\'s, so the switch above changed to it' : ''), 'ok')
     } catch (e) {
       setConnected(false)
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 2 still running in Colab?' : e.message, 'error')
@@ -170,7 +210,6 @@ export default function Training({ active }) {
     try { setDatasets((await api('/training/info')).datasets || []) } catch { /* ignore */ }
   }
 
-  useEffect(() => { if (url) connect() }, [])  // reconnect on page load
   useEffect(() => { loadDataset() }, [connected, dsName])
 
   // Poll the server while a task runs
@@ -480,8 +519,19 @@ export default function Training({ active }) {
       } /></h1>
       <div className="train-note">Only train on images you have the right to use, and only make a LoRA of a real person with their consent.</div>
 
+      <div className="trainer-switch">
+        <span className="chips-label">Trainer</span>
+        {Object.entries(TRAINERS).map(([id, t]) => (
+          <button key={id} className={`chip ${trainer === id ? 'active' : ''}`} onClick={() => switchTrainer(id)}>{t.label}</button>
+        ))}
+        <Info text={<><b>SDXL (BigLust)</b>: LoRAs for the Image Generator's BigLust / SDXL models (characters, styles). Notebook <i>SDXL-LORA-TRAINING</i>, free T4 or better.<br /><br /><b>Qwen Image Edit 2511</b>: LoRAs for both Qwen edit notebooks — a <b>Character</b> (A100, or L4 at 768 px) or an <b>Edit effect</b> from Before → After pairs (A100). Notebook <i>QWEN-2511-LORA-TRAINING</i>.<br /><br />Each trainer remembers its own server link and settings. Pasting the other trainer's link switches automatically.</>} />
+        <a className="muted small-note" target="_blank" rel="noreferrer"
+          href={`https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/${TRAINERS[trainer].notebook}`}>
+          Open {TRAINERS[trainer].notebook} in Colab ({TRAINERS[trainer].gpu}) ↗</a>
+      </div>
+
       <label>Training server URL <Info text="In Colab, run cell 1 (setup) and then cell 2 — cell 2 prints a READY: URL. Paste that here. It's a different notebook from BigLust/Qwen, and it changes every time you start cell 2." /></label>
-      <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="Paste the READY: URL from cell 2 of the training notebook (https://….trycloudflare.com)" />
+      <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder={`Paste the READY: URL from cell 2 of ${TRAINERS[trainer].notebook} (https://….trycloudflare.com)`} />
       {connected && gpu?.name && isQwen && (
         <div className={`gpu-note ${gpu.edit_ok ? 'good' : ''}`}>
           Qwen Image Edit 2511 trainer · GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode_label}
