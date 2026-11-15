@@ -4,6 +4,7 @@ import Training from './Training.jsx'
 import Video from './Video.jsx'
 import Music from './Music.jsx'
 import GalleryPrompts from './GalleryPrompts.jsx'
+import CloudBar from './CloudBar.jsx'
 
 const TABS = [
   { id: 'generate', label: 'Image Generator' },
@@ -24,6 +25,7 @@ export default function Root() {
   }, [])
   return (
     <>
+      <CloudBar />
       <nav className="tabs">
         {TABS.map(t => (
           <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => pick(t.id)}>{t.label}</button>

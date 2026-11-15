@@ -177,6 +177,12 @@ encoder).
 
 - **Start from your character:** make each shot's first frame in the Image Generator with a saved **character**
   (Face reference), then in the full-size viewer press **Video start** — it opens here with the picture loaded.
+- **Or make it right here:** open **Make the start / end image from a character**, pick a saved character, describe
+  the picture ("Mia standing at the front door, rainy night, medium shot") and press **Make start image** (or *Make
+  end image*, with *Same shape as the start image*). It uses the BigLust server connected in the Image Generator tab
+  (its checkpoint and LoRAs, Face reference + face fix), so the **BigLust notebook must be running too** — a second
+  Colab runtime, which uses compute units twice as fast while both run. The pictures are also saved in the Image
+  Generator's gallery.
 - **End image** (A14B notebook only): also press **Video end** on a second picture of the same character (or drop one
   in *End image*). Wan fills in the motion between the two, so the face is fixed at both ends and can't drift far.
   Plan shots like "Mia at the door" → "Mia sitting at the table"; keep the place, clothes and framing similar. The end
@@ -347,7 +353,53 @@ npm install
 npm run dev
 ```
 
-Generated images and saved prompts are stored in your browser (IndexedDB / localStorage).
+Generated images and saved prompts are stored in your browser (IndexedDB / localStorage). With **cloud backup**
+(below) they are also copied to your own Firebase project.
+
+## Cloud backup (Firebase)
+
+Sign in with Google (**☁** at the top right of the site) and everything is backed up to your own Firebase project
+and synced between your devices:
+
+| What | How |
+|---|---|
+| Image, video and music galleries | automatically after each new item; deleting deletes the cloud copy too |
+| Saved characters, saved prompts, your presets | automatically (every ~20 s); merged by name when you sign in on another device |
+| LoRA training datasets (full-size images, tags, trigger word, settings) | **Save "name" to cloud** / **Restore from cloud** in the LoRA Training tab |
+
+Everything also stays in the browser, so the site works the same when you're signed out. Trained LoRA files stay in
+Google Drive (`MyDrive/ComfyUI/loras_sdxl`).
+
+### One-time setup (about 10 minutes)
+
+1. **Create a project** at [console.firebase.google.com](https://console.firebase.google.com) → *Add project*.
+2. **Sign-in:** *Build → Authentication → Get started → Google → Enable*. Then *Settings → Authorized domains → Add
+   domain* → `google-collabimage-one.vercel.app`.
+3. **Database:** *Build → Firestore Database → Create database* (production mode, any location). Open the **Rules**
+   tab, paste the contents of [`firestore.rules`](firestore.rules) and **Publish**.
+4. **File storage:** *Build → Storage → Get started*. Cloud Storage needs the pay-as-you-go **Blaze** plan (it still
+   includes a free amount each month; set a budget alert under *Usage and billing* so there are no surprises — videos
+   and training images add up). Open the **Rules** tab, paste [`storage.rules`](storage.rules) and **Publish**.
+5. **Allow the site to download files (CORS):** in the Google Cloud console for the same project, open **Cloud Shell**
+   (the `>_` icon), upload [`cors.json`](cors.json) (⋮ → Upload) and run, with your bucket name from the Storage page:
+
+   ```bash
+   gcloud storage buckets update gs://YOUR-BUCKET --cors-file=cors.json
+   ```
+
+6. **Connect the website:** *Project settings (⚙) → General → Your apps → Web (`</>`)* → register an app → copy the
+   `firebaseConfig = { ... }` block. Either paste it in the **☁** panel on the site (saved in that browser), or add it
+   once for every browser as Vercel environment variables (*Vercel → Project → Settings → Environment Variables*,
+   then redeploy): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`,
+   `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` (template: [`.env.example`](.env.example)).
+7. Press **☁ → Sign in with Google**. The first sync uploads everything already in the browser.
+
+The rules let each Google account read and write only its own folder (`users/<uid>/…`), so nobody else can see your
+files, even though the Firebase config itself is not secret. Keep it to content you have the right to store: generated
+pictures of real people only with their consent.
+
+**Problems:** *Permission denied* → the rules from steps 3–4 aren't published. *Downloads fail on a second device* →
+step 5 (CORS). *Sign-in popup error "unauthorized domain"* → step 2.
 
 ## Please note
 

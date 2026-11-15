@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Info from './Info.jsx'
+import { queueSync, cloudForget } from './cloud.js'
 import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
 
@@ -94,7 +95,12 @@ export default function Music() {
       return items.map(s => ({ ...s, src: URL.createObjectURL(s.blob) }))
     })
   }
-  useEffect(() => { refreshSongs() }, [])
+  useEffect(() => {
+    refreshSongs()
+    const onSynced = e => { if (e.detail?.kind === 'songs') refreshSongs() }
+    window.addEventListener('cloud-synced', onSynced)
+    return () => window.removeEventListener('cloud-synced', onSynced)
+  }, [])
 
   async function connect() {
     if (!backend) return
@@ -159,6 +165,7 @@ export default function Music() {
       const item = { blob, created: Date.now(), tags, lyrics: instrumental ? '' : lyrics, instrumental, seconds: data.seconds,
         bpm: +bpm, key, seed: data.seed, model: info.label }
       await dbAdd(item)
+      queueSync('songs')
       await refreshSongs()
       setResult({ ...item, src: URL.createObjectURL(blob) })
       say(`Done — ${data.seconds} s in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the list below.`, 'ok')
@@ -178,6 +185,7 @@ export default function Music() {
 
   async function removeSong(s) {
     if (!confirm('Delete this song?')) return
+    await cloudForget('songs', [s.id])
     await dbDelete(s.id)
     refreshSongs()
   }

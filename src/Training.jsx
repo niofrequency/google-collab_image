@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { TRAINING_PRESETS } from './presets.js'
+import { onUserChange, listCloudDatasets, saveDatasetToCloud, loadDatasetFromCloud, cloudFile, friendly } from './cloud.js'
 
 // LoRA Training tab: talks to the training server started by cell 2 of SDXL-LORA-TRAINING.ipynb.
 // Images and captions live in Google Drive (MyDrive/ComfyUI/training/<name>/images); this page edits them there.
@@ -70,6 +71,10 @@ export default function Training({ active }) {
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [upload, setUpload] = useState(null)         // {done, total}
   const [showLog, setShowLog] = useState(false)
+  const [cloudUser, setCloudUser] = useState(null)
+  const [cloudSets, setCloudSets] = useState(null)   // null = list not shown
+  const [cloudBusy, setCloudBusy] = useState('')
+  useEffect(() => onUserChange(setCloudUser), [])
   const fileRef = useRef(null)
   const activeRef = useRef(active)
   activeRef.current = active
@@ -295,6 +300,87 @@ export default function Training({ active }) {
     } catch (e) { say(e.message, 'error') }
   }
 
+  // ---------------- cloud backup of the dataset (Firebase): images + captions + settings
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result).split(',')[1])
+      r.onerror = reject
+      r.readAsDataURL(blob)
+    })
+  }
+
+  async function saveToCloud() {
+    if (!dsName || !images.length) return say('Pick a LoRA name with images first', 'error')
+    const unsaved = images.findIndex(x => x.caption !== x.saved)
+    if (unsaved >= 0) await saveCaption(unsaved)
+    setCloudBusy('Saving to cloud...')
+    try {
+      const getFile = async file => {
+        const res = await fetch(`${backend}/training/dataset/${encodeURIComponent(dsName)}/file/${encodeURIComponent(file)}`, { headers: HEADERS })
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d.detail === 'Not Found' ? 'This training server is too old to send full images — open the training notebook fresh from GitHub and run cells 1–2 again' : (d.detail || `Server error ${res.status}`))
+        }
+        return res.blob()
+      }
+      const r = await saveDatasetToCloud(dsName, images.map(({ file, caption }) => ({ file, caption })), getFile,
+        { settings, trigger: trigger.trim(), tag: { threshold: +tagThreshold, mode: tagMode, exclude: excludeTags } },
+        (i, n) => setCloudBusy(`Saving to cloud... ${i + 1}/${n}`))
+      say(`"${dsName}" saved to the cloud: ${r.total} images with their tags and settings (${r.uploaded} new${r.removed ? `, ${r.removed} removed` : ''}).`, 'ok')
+    } catch (e) { say(friendly(e), 'error') }
+    setCloudBusy('')
+  }
+
+  async function showCloudSets() {
+    if (cloudSets) return setCloudSets(null)
+    try { setCloudSets(await listCloudDatasets()) } catch (e) { say(friendly(e), 'error') }
+  }
+
+  // Put a cloud dataset back on the training server (Drive): missing images are uploaded, tags updated,
+  // settings restored. Then add more images and train again.
+  async function restoreFromCloud(cloudName) {
+    if (!connected) return say('Connect to the training server first', 'error')
+    setCloudSets(null)
+    setCloudBusy('Restoring...')
+    try {
+      const data = await loadDatasetFromCloud(cloudName)
+      const enc = encodeURIComponent(cloudName)
+      let current = { images: [] }
+      try { current = await api(`/training/dataset/${enc}`) } catch { /* new name */ }
+      const have = new Map((current.images || []).map(i => [i.file, i.caption]))
+      let added = 0, retagged = 0
+      for (let i = 0; i < data.images.length; i++) {
+        const img = data.images[i]
+        setCloudBusy(`Restoring... ${i + 1}/${data.images.length}`)
+        if (have.has(img.file)) {
+          if ((have.get(img.file) || '') !== (img.caption || '')) {
+            await api(`/training/dataset/${enc}/caption`, { method: 'PUT', body: JSON.stringify({ file: img.file, caption: img.caption || '' }) })
+            retagged++
+          }
+          continue
+        }
+        const blob = await cloudFile(img.path)
+        await api(`/training/dataset/${enc}/upload`, {
+          method: 'POST', body: JSON.stringify({ filename: img.file, data: await blobToBase64(blob), caption: img.caption || '' }),
+        })
+        added++
+      }
+      if (data.settings) setSettings(s => ({ ...s, ...data.settings }))
+      if (data.trigger) setTrigger(data.trigger)
+      if (data.tag) {
+        if (data.tag.threshold != null) setTagThreshold(data.tag.threshold)
+        if (data.tag.mode) setTagMode(data.tag.mode)
+        if (data.tag.exclude != null) setExcludeTags(data.tag.exclude)
+      }
+      setName(cloudName)
+      await loadDataset(cloudName)
+      refreshDatasets()
+      say(`"${cloudName}" restored from the cloud: ${added} image(s) added, ${retagged} tag(s) updated, settings and trigger word loaded. Add more images and press Start training (or Start fresh to retrain from zero).`, 'ok')
+    } catch (e) { say(friendly(e), 'error') }
+    setCloudBusy('')
+  }
+
   async function stopTask() {
     if (!confirm('Stop the current task? Training can be resumed later from the last saved step.')) return
     try { setTask(await api('/training/stop', { method: 'POST' })) } catch (e) { say(e.message, 'error') }
@@ -338,6 +424,26 @@ export default function Training({ active }) {
               title={d.has_lora ? 'A finished LoRA with this name exists' : ''}>
               {d.name} ({d.images}){d.has_lora ? ' ✓' : ''}
             </button>
+          ))}
+        </div>
+      )}
+
+      {connected && (
+        <div className="chips cloud-train">
+          <span className="chips-label">☁ Cloud <Info text={<>With cloud backup (☁ at the top, signed in) you can keep a copy of a dataset — every image at full size, its tags, the trigger word and the training settings — in your Firebase project.<br /><br /><b>Save to cloud</b>: copies the current LoRA's dataset (again later to update it: only new images are uploaded, removed ones are removed).<br /><b>Restore from cloud</b>: puts a saved dataset back on the training server (Google Drive) — e.g. on a new Drive, or after deleting it. Then add more images and train again.<br /><br />The trained LoRA file itself stays in Google Drive (MyDrive/ComfyUI/loras_sdxl).</>} /></span>
+          {!cloudUser ? <span className="muted small-note">Sign in with ☁ at the top of the page to save datasets to the cloud.</span> : (<>
+            <button className="chip" onClick={saveToCloud} disabled={!!cloudBusy || !images.length}>Save "{dsName || '…'}" to cloud</button>
+            <button className="chip" onClick={showCloudSets} disabled={!!cloudBusy}>Restore from cloud {cloudSets ? '▴' : '▾'}</button>
+            {cloudBusy && <span className="muted small-note">{cloudBusy}</span>}
+          </>)}
+        </div>
+      )}
+      {cloudSets && (
+        <div className="chips">
+          {cloudSets.length === 0 && <span className="muted small-note">No datasets saved in the cloud yet.</span>}
+          {cloudSets.map(d => (
+            <button key={d.name} className="chip" onClick={() => restoreFromCloud(d.name)}
+              title={`Saved ${d.updated ? new Date(d.updated).toLocaleString() : ''}`}>{d.name} ({d.images})</button>
           ))}
         </div>
       )}

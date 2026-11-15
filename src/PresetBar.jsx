@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Info from './Info.jsx'
 
 // Row of preset buttons: built-in presets (each with an "i") plus your own saved ones (kept in this browser).
@@ -9,6 +9,11 @@ export default function PresetBar({ scope, builtins, onApply, getCurrent, help }
     try { return JSON.parse(localStorage.getItem(key)) || [] } catch { return [] }
   })
   const [active, setActive] = useState('')
+  useEffect(() => {  // presets saved on another device arrive with the cloud backup
+    const reload = () => { try { setCustom(JSON.parse(localStorage.getItem(key)) || []) } catch { /* ignore */ } }
+    window.addEventListener('cloud-settings', reload)
+    return () => window.removeEventListener('cloud-settings', reload)
+  }, [key])
 
   function store(list) { setCustom(list); localStorage.setItem(key, JSON.stringify(list)) }
 

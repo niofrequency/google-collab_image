@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
+import { queueSync, cloudForget } from './cloud.js'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
@@ -158,6 +159,34 @@ export default function App({ active = true }) {
   const activeRef = useRef(active)  // the paste handler ignores pastes while another tab is shown
   activeRef.current = active  // read by the paste handler, which is registered once
   const fileInputRef = useRef(null)
+
+  useEffect(() => {  // pictures made from the Image to Video tab (character start / end images) go in this gallery too
+    async function onMade(e) {
+      const { dataUrl, meta } = e.detail || {}
+      if (!dataUrl) return
+      try {
+        await saveImage(base64ToBlob(dataUrl), meta || {})
+        await loadGallery()
+        queueSync('images')
+      } catch { /* the picture is still in the video tab */ }
+    }
+    window.addEventListener('save-generated-image', onMade)
+    return () => window.removeEventListener('save-generated-image', onMade)
+  })
+
+  // Shared with the Image to Video tab ("Make start image" from a character uses this BigLust server)
+  useEffect(() => {
+    localStorage.setItem('gen_link', JSON.stringify({ backend: backendUrl.trim().replace(/\/$/, ''), type: backendType,
+      faceRef: supportsFaceRef, checkpoint: checkpoint || null, loras, negative }))
+  }, [backendUrl, backendType, supportsFaceRef, checkpoint, loras, negative])
+
+  useEffect(() => {  // cloud backup: refresh when images or saved prompts arrive from another device
+    const onSynced = e => { if (e.detail?.kind === 'images') loadGallery() }
+    const onSettings = () => { try { setSavedPrompts(JSON.parse(localStorage.getItem('prompts') || '[]')) } catch { /* ignore */ } }
+    window.addEventListener('cloud-synced', onSynced)
+    window.addEventListener('cloud-settings', onSettings)
+    return () => { window.removeEventListener('cloud-synced', onSynced); window.removeEventListener('cloud-settings', onSettings) }
+  }, [])
 
   useEffect(() => {
     const prompts = JSON.parse(localStorage.getItem('prompts') || '[]')
@@ -595,6 +624,7 @@ export default function App({ active = true }) {
           await saveImage(blob, meta)
         }
         await loadGallery()
+        queueSync('images')
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
         const faces = data.faces_fixed == null ? ''
           : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
@@ -714,6 +744,7 @@ export default function App({ active = true }) {
     if (selectedIds.size === 0) return
     const confirmText = prompt(`Type DELETE to confirm removal of ${selectedIds.size} image(s):`)
     if (confirmText !== 'DELETE') { setStatusMsg('Deletion cancelled', 'error'); return }
+    await cloudForget('images', [...selectedIds])
     const db = await openDB()
     const tx = db.transaction('images', 'readwrite')
     const store = tx.objectStore('images')
