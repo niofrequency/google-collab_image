@@ -708,16 +708,30 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .nav-item:active:not(:disabled) { transform: none; }
 .nav-short { display: none; }
 
+/* collapse button: at the bottom of the sidebar, desktop only */
+.sidebar-toggle, .sidebar-toggle:hover:not(:disabled) { margin-top: auto; font-size: 13px; }
+.sidebar { transition: width 0.18s ease; }
+
+/* Narrow icon column: a collapsed sidebar on desktop, and always on phones */
+.sidebar.collapsed { width: 66px; padding: 20px 5px; gap: 2px; }
+.sidebar.collapsed .nav-item, .sidebar.collapsed .nav-item:hover:not(:disabled) {
+  flex-direction: column; gap: 4px; padding: 9px 2px;
+  font-size: 10px; text-align: center; line-height: 1.15;
+}
+.sidebar.collapsed .nav-label { display: none; }
+.sidebar.collapsed .nav-short { display: block; }
+.sidebar.collapsed .sidebar-toggle { padding: 10px 2px; }
+
 /* ---------- Phones and small tablets ---------- */
 @media (max-width: 760px) {
-  /* narrow icon column on the left */
-  .sidebar { width: 66px; padding: 10px 5px; gap: 2px; }
+  .sidebar, .sidebar.collapsed { width: 66px; padding: 10px 5px; gap: 2px; }
   .nav-item, .nav-item:hover:not(:disabled) {
     flex-direction: column; gap: 4px; padding: 9px 2px;
     font-size: 10px; text-align: center; line-height: 1.15;
   }
   .nav-label { display: none; }
   .nav-short { display: block; }
+  .sidebar-toggle { display: none !important; }
 
   .container { padding: 14px 12px 40px; }
   h1 { font-size: 24px; margin-bottom: 16px; }

@@ -6,7 +6,7 @@ import Music from './Music.jsx'
 import GalleryPrompts from './GalleryPrompts.jsx'
 import CloudBar from './CloudBar.jsx'
 import HeadSwap from './HeadSwap.jsx'
-import { ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, MusicIcon, TrainingIcon } from './icons.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, MusicIcon, TrainingIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
@@ -21,6 +21,11 @@ const TABS = [
 // Both tabs stay mounted (hidden with CSS) so switching doesn't lose anything you were doing
 export default function Root() {
   const [tab, setTab] = useState(localStorage.getItem('tab') || 'generate')
+  // Desktop only: the sidebar can shrink to icons. (Phones always get the narrow icon column.)
+  const [collapsed, setCollapsed] = useState(localStorage.getItem('sidebar_collapsed') === '1')
+  function toggleSidebar() {
+    setCollapsed(c => { localStorage.setItem('sidebar_collapsed', c ? '0' : '1'); return !c })
+  }
   function pick(id) {
     setTab(id)
     localStorage.setItem('tab', id)
@@ -33,7 +38,7 @@ export default function Root() {
   }, [])
   return (
     <div className="layout">
-      <nav className="sidebar" aria-label="Tabs">
+      <nav className={`sidebar ${collapsed ? 'collapsed' : ''}`} aria-label="Tabs">
         {TABS.map(t => (
           <button key={t.id} className={`nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => pick(t.id)}
             title={t.label} aria-current={tab === t.id ? 'page' : undefined}>
@@ -42,6 +47,11 @@ export default function Root() {
             <span className="nav-short">{t.short}</span>
           </button>
         ))}
+        <button className="nav-item sidebar-toggle" onClick={toggleSidebar}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}>
+          {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+          <span className="nav-label">Collapse</span>
+        </button>
       </nav>
       <main className="main">
       <CloudBar />
