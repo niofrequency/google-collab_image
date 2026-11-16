@@ -34,6 +34,12 @@ export const SWAP_MODES = {
     loraModel: 'Qwen-Image 2.1',
     presets: [
       { name: 'Default', info: 'The official BFS head swap prompt: the whole head (face, hair, head shape) from the Head image.' },
+      { name: "Body's expression",
+        info: 'Keeps the facial expression and emotion of the person in the Body picture (smile, open mouth, eyes, eyebrows) instead of the Head picture\'s. Tip: for strong expressions, the "v1.1 alternative" head LoRA (cell 2 of HEADSWAP.ipynb) follows them better.',
+        prompt: 'head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the exact facial expression and emotion from <image1>: the mouth shape, smile or open mouth, eye openness, eyebrow position and gaze direction, plus the head rotation and micro expressions from <image1>, high quality, sharp details, 4k' },
+      { name: 'Head + hair only',
+        info: 'Takes the head but leaves out the head picture\'s background and lighting more strictly: everything outside the head stays exactly as in the Body picture.',
+        prompt: 'head_swap: start with <image1> as the base image and keep everything outside the head exactly the same: body, clothes, pose, lighting, environment and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the face, hair, eye color and nose structure from <image2>. match the skin tone and the lighting of <image1>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k' },
     ],
   },
   faceswap: {
@@ -56,6 +62,9 @@ export const SWAP_MODES = {
       { name: 'Face + hairstyle',
         info: 'Also copies the hairstyle (style, length and color) from the Face picture. The face swap LoRA was trained on face-only swaps, so the hair may not always follow — for the hair every time, use the Head Swap tab.',
         prompt: 'face swap face from Image 1 to Image 2. swap the face and the hairstyle: copy the face and the hair (hairstyle, length and hair color) from Image 1, match the skin tone, and keep the target pose, body, clothes and lighting from Image 2.' },
+      { name: "Photo's expression",
+        info: 'Swaps who the person is but keeps the expression and emotion of the person in the Photo (smile, open mouth, eyes, eyebrows), instead of the Face picture\'s.',
+        prompt: 'face swap face from Image 1 to Image 2. swap only the face identity from Image 1, but keep the exact facial expression and emotion from Image 2: the mouth shape, smile or open mouth, eye openness, eyebrow position and gaze direction. match the skin tone, and keep the target pose and lighting.' },
     ],
   },
 }
