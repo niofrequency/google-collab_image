@@ -19,7 +19,12 @@ export function shrinkImage(src, maxSide = 768) {
       const c = document.createElement('canvas')
       c.width = Math.round(img.naturalWidth * scale)
       c.height = Math.round(img.naturalHeight * scale)
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+      const ctx = c.getContext('2d')
+      // JPEG has no transparency: without this, transparent parts (e.g. rounded screenshot corners) turn black,
+      // and the model copies that black edge into the result
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, c.width, c.height)
+      ctx.drawImage(img, 0, 0, c.width, c.height)
       try { resolve(c.toDataURL('image/jpeg', 0.9)) } catch { reject(new Error('This picture can\'t be used (the site blocks it) — download it and upload the file')) }
     }
     img.onerror = () => reject(new Error('Could not read that picture'))

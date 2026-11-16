@@ -941,3 +941,6 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .headswap-generate-row .headswap-save-prompt { flex: 1 1 0; width: auto; }
 .saved-prompts-actions { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
 .saved-prompts-actions button { width: auto; }
+.headswap-quality { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.headswap-quality label { margin: 0; white-space: nowrap; }
+.headswap-quality select { flex: 1; min-width: 0; }

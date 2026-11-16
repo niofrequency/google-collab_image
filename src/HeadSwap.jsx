@@ -57,6 +57,7 @@ export const SWAP_MODES = {
     },
     baseLoraNote: 'face swap',
     loraModel: 'Qwen-Image-Edit',
+    qualityOption: true,   // Fast (~768 px) / High detail (~1024 px), see FACESWAP.ipynb
     presets: [
       { name: 'Face only', info: 'The official BFS face swap prompt: only the face changes; the photo keeps its own hair.' },
       { name: 'Face + hairstyle',
@@ -152,6 +153,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem(`${M.storage}_backend_url`) || '')
   const [prompt, setPrompt] = useState(() => localStorage.getItem(`${M.storage}_prompt`) || M.prompt)
   const [savedPrompts, storeSavedPrompts] = useSavedPrompts(`${M.storage}_prompts`)
+  const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
   const presets = M.presets.map(p => ({ ...p, prompt: p.prompt || M.prompt }))
   const [bodyImage, setBodyImage] = useState(null)
   const [headImage, setHeadImage] = useState(null)
@@ -451,7 +453,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setStatusMsg('Sending images to backend…')
       setProgress(5)
       const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
-      const payload = JSON.stringify({ body, head, prompt, loras })
+      const payload = JSON.stringify({ body, head, prompt, loras, ...(M.qualityOption && quality !== 'auto' ? { quality } : {}) })
       let response
       for (let attempt = 1; ; attempt++) {
         try {
@@ -608,6 +610,16 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       </div>
       {presets.find(p => p.prompt === prompt)?.info && <div className="muted headswap-preset-info">{presets.find(p => p.prompt === prompt).info}</div>}
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />
+      {M.qualityOption && (
+        <div className="headswap-quality">
+          <label>Detail</label>
+          <select value={quality} onChange={event => { setQuality(event.target.value); localStorage.setItem(`${M.storage}_quality`, event.target.value) }}>
+            <option value="auto">Auto (Fast on T4 / L4, High detail on A100)</option>
+            <option value="fast">Fast (~768 px)</option>
+            <option value="high">High detail (~1024 px, slower)</option>
+          </select>
+        </div>
+      )}
       <div className="row headswap-generate-row">
         <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : `Generate ${M.name}`}</button>
         <button className="secondary headswap-save-prompt" onClick={() => savePromptAs(savedPrompts, storeSavedPrompts, prompt, setStatusMsg)}>Save Prompt</button>
