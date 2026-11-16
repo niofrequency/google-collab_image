@@ -16,7 +16,7 @@ import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
-import JobProgress, { stepPct } from './JobProgress.jsx'
+import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -167,7 +167,7 @@ export default function App({ active = true }) {
   const [status, setStatus] = useState('')
   const [statusType, setStatusType] = useState('')
   const [progress, setProgress] = useState(0)
-  const [batchProg, setBatchProg] = useState(null)   // { total, done } while images are being made; progress = the current one
+  const genJobs = useJobsProgress()   // one steady bar for every generation running on this tab
   const [showProgress, setShowProgress] = useState(false)
   const [gallery, setGallery] = useState([])
   const [savedPrompts, setSavedPrompts] = useState([])
@@ -551,7 +551,6 @@ export default function App({ active = true }) {
     setDownloading(true)
     setStatusMsg(`Downloading ${label}...`)
     setShowProgress(true)
-    setBatchProg(null)
     setProgress(2)
     try {
       const res = await fetch(backend + '/download_model', {
@@ -633,16 +632,15 @@ export default function App({ active = true }) {
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
     const count = Math.max(1, Math.min(8, +batchSize || 1))
-    setStatusMsg(`Generating ${count} image(s)...`)
-    setShowProgress(true)
-    setBatchProg({ total: count, done: 0 })
-    setProgress(5)
-    const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
+    setStatusMsg('')
+    const job = genJobs.start(count)
+    // backends without a step counter: creep toward 90% so the bar keeps moving
+    const timer = setInterval(() => job.set(job.done + (count * 0.9 - job.done) * 0.03), 600)
     const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
-    if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); setShowProgress(false); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
+    if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); job.cancel(); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
-    if (inpaint && !supportsInpaint) { clearInterval(timer); setShowProgress(false); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
-    if (inpaintActive && backendType === 'sdxl' && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); setShowProgress(false); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
+    if (inpaint && !supportsInpaint) { clearInterval(timer); job.cancel(); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
+    if (inpaintActive && backendType === 'sdxl' && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); job.cancel(); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
     const refActive = backendType === 'sdxl' && refModes.length > 0 && !!refPicture
     const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
     const payload = {
@@ -703,6 +701,7 @@ export default function App({ active = true }) {
             setStatusMsg(SERVER_DOWN_MSG)
             continue
           }
+          if (downSince) setStatusMsg('')
           downSince = null
           data = next
           const total = data.batch_size || count
@@ -712,18 +711,11 @@ export default function App({ active = true }) {
           // the current image: drawing it is most of the bar, face fix the last 15%
           const share = payload.face_fix ? 85 : 100
           const pct = done >= total ? 100 : phase === 'fixing faces' ? share + (100 - share) * stepFrac : phase ? 0 : share * stepFrac
-          setBatchProg({ total, done })
-          setProgress(pct)
-          if (data.status === 'queued') setStatusMsg('Queued — waiting for GPU...')
-          else if (data.status === 'running') {
-            if (done >= total) setStatusMsg(`${phase ? phase[0].toUpperCase() + phase.slice(1) : 'Finishing'}${stepPct(data.step, data.total_steps)}`)
-            else setStatusMsg(`Generating image ${done + 1}/${total} — ${Math.round(pct)}%${phase ? ` · ${phase}` : ''}`)
-          }
+          job.set((done + pct / 100) * (count / total))
         }
       }
       clearInterval(timer)
-      setBatchProg(b => b && { ...b, done: b.total })
-      setProgress(100)
+      job.finish()
 
       const meta = {
         positive, negative,
@@ -773,7 +765,7 @@ export default function App({ active = true }) {
       setStatusMsg('Error: ' + e.message, 'error')
       finish(false)
     }
-    setTimeout(() => setShowProgress(false), 700)
+    job.finish()
   }
 
   function savePrompt() {
@@ -950,7 +942,6 @@ export default function App({ active = true }) {
       `For ${m.quant}, switch Colab to a bigger GPU first: Runtime → Change runtime type → L4 or A100.\n\nSwitch anyway?`)) return
     setSwitching(true)
     setShowProgress(true)
-    setBatchProg(null)
     setProgress(2)
     setStatusMsg(`Switching to ${m.quant}...`)
     try {
@@ -1401,7 +1392,7 @@ export default function App({ active = true }) {
         <button className="secondary" onClick={savePrompt}>Save Prompt</button>
       </div>
 
-      {showProgress && <JobProgress total={batchProg?.total || 1} done={batchProg?.done || 0} pct={progress} />}
+      {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
       <h3>Saved Prompts</h3>

@@ -11,7 +11,7 @@ import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galler
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress, { stepPct } from './JobProgress.jsx'
+import JobProgress, { stagePct } from './JobProgress.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -94,6 +94,7 @@ export default function Video({ active }) {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [job, setJob] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [pct, setPct] = useState(0)   // overall progress of the job, only moves forward
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)          // { url, ... } of the latest video
   const [gallery, setGallery] = useState([])
@@ -263,8 +264,8 @@ export default function Video({ active }) {
     const soundOn = sound && info.supports_sound !== false
     setBusy(true)
     setResult(null)
-    const started = Date.now()
-    say('Starting...')
+    say('')
+    setPct(0)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_video', {
@@ -283,13 +284,14 @@ export default function Video({ active }) {
           say('The server is not answering — it may be restarting after running out of memory. Waiting...')
           continue
         }
+        if (downSince) say('')
         downSince = null
         data = next
         setJob(data)
-        const mins = Math.floor((Date.now() - started) / 60000), secs = Math.floor((Date.now() - started) / 1000) % 60
-        say(`${data.stage || data.status}${stepPct(data.step, data.total_steps)} · ${mins}:${String(secs).padStart(2, '0')}`)
+        setPct(old => Math.max(old, stagePct(data.stage || data.status, data.step, data.total_steps)))
       }
       if (data.status === 'error') throw new Error(data.error || 'Video generation failed')
+      setPct(100)
       const blob = await (await fetch(backend + data.video, { headers: HEADERS })).blob()
       const item = {
         blob, created: Date.now(), prompt, width: data.width, height: data.height, seconds: data.seconds,
@@ -353,7 +355,6 @@ export default function Video({ active }) {
   useLightboxKeys(viewIndex >= 0, { prev: goPrev, next: goNext, close: () => setViewIndex(-1), enabled: active && !infoItem })
 
   const fps = info?.fps || 16
-  const pct = job?.total_steps ? Math.round(job.step / job.total_steps * 100) : (busy ? 5 : 0)
 
   return (
     <div className="container">

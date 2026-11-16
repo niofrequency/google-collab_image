@@ -12,7 +12,7 @@ import Info from './Info.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress, { stepPct } from './JobProgress.jsx'
+import JobProgress from './JobProgress.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -430,6 +430,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     let delay = 1500
     let lastPollError = ''
     let downSince = null
+    let lastWasDown = false
     while (Date.now() - started < MAX_JOB_WAIT_MS) {
       await sleep(delay)
       try {
@@ -446,12 +447,10 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           if (data.seed != null) setLastSeed(data.seed)
           return image
         }
-        if (data.status === 'done' || data.status === 'completed') {
-          setStatusMsg('Job finished — waiting for its image…')
-        } else {
-          setStatusMsg(`${data.message || data.status || 'Generating head swap'}${data.step != null ? stepPct(data.step, data.total_steps) : ''}`)
-        }
-        if (data.progress != null) setProgress(Math.max(5, Math.min(95, Number(data.progress))))
+        if (lastWasDown) { setStatusMsg(''); lastWasDown = false }
+        // only ever forward: the server's own percentage, else its step counter
+        const p = data.progress != null ? Number(data.progress) : data.total_steps ? 5 + 90 * (data.step || 0) / data.total_steps : null
+        if (p != null && Number.isFinite(p)) setProgress(old => Math.max(old, Math.min(95, p)))
       } catch (error) {
         if (error instanceof JobError) throw error
         lastPollError = error.message
@@ -459,6 +458,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         // The backend usually comes back within seconds; after 3 minutes it has most likely stopped
         if (Date.now() - downSince > 3 * 60 * 1000) throw new JobError(UNREACHABLE_MSG)
         setStatusMsg('Backend temporarily unavailable — still waiting for the result…')
+        lastWasDown = true
       }
       delay = Math.min(4000, delay + 250)
     }
@@ -479,7 +479,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       // 1) Is the backend there, and is the model loaded?
-      setStatusMsg('Connecting to the backend…')
+      setStatusMsg('')
       let health
       try {
         const response = await fetchWithTimeout(`${backend}/health`, { headers: BACKEND_HEADERS, cache: 'no-store' })
@@ -492,7 +492,6 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       if (health.loaded === false) throw new Error(`The backend is still loading the model. Wait until cell ${M.startCell} prints READY, then try again.`)
 
       // 2) Send smaller copies of the photos
-      setStatusMsg('Sending images to backend…')
       setProgress(5)
       const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
       const steps = Math.round(Math.min(C.steps[1], Math.max(C.steps[0], +settings.steps || C.steps[2])))
@@ -527,7 +526,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       let output = data.image || data.output || data.result
       if (!output && data.job_id) output = await pollJob(backend, data.job_id)
       if (!output) throw new Error('The backend finished without returning an image or job ID')
-      setProgress(98)
+      setProgress(p => Math.max(p, 98))
       await saveResult(output)
       setProgress(100)
       const seed = data.seed ?? seedRef.current

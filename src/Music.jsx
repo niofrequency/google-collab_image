@@ -5,7 +5,7 @@ import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress, { stepPct } from './JobProgress.jsx'
+import JobProgress, { stagePct } from './JobProgress.jsx'
 
 // Music tab: talks to MUSIC-ACESTEP.ipynb (ACE-Step 1.5). Finished songs are kept in this browser (IndexedDB "MusicGallery").
 
@@ -72,6 +72,7 @@ export default function Music() {
   const [steps, setSteps] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [pct, setPct] = useState(0)   // overall progress of the job, only moves forward
   const [job, setJob] = useState(null)
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)
@@ -137,8 +138,8 @@ export default function Music() {
     if (!instrumental && !lyrics.trim()) return say('Add lyrics, or turn on Instrumental', 'error')
     setBusy(true)
     setResult(null)
-    const started = Date.now()
-    say('Starting...')
+    say('')
+    setPct(0)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_music', {
@@ -158,13 +159,14 @@ export default function Music() {
           say('The server is not answering — it may be restarting after running out of memory. Waiting...')
           continue
         }
+        if (downSince) say('')
         downSince = null
         data = next
         setJob(data)
-        const s = Math.floor((Date.now() - started) / 1000)
-        say(`${data.stage || data.status}${stepPct(data.step, data.total_steps)} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
+        setPct(old => Math.max(old, stagePct(data.stage || data.status, data.step, data.total_steps)))
       }
       if (data.status === 'error') throw new Error(data.error || 'Music generation failed')
+      setPct(100)
       const blob = await (await fetch(backend + data.audio, { headers: HEADERS })).blob()
       const item = { blob, created: Date.now(), tags, lyrics: instrumental ? '' : lyrics, instrumental, seconds: data.seconds,
         bpm: +bpm, key, seed: data.seed, model: info.label }
@@ -196,7 +198,6 @@ export default function Music() {
     refreshSongs()
   }
 
-  const pct = job?.total_steps ? Math.round(job.step / job.total_steps * 100) : (busy ? 5 : 0)
   const fileName = s => `${(s.tags || 'song').split(',')[0].trim().replace(/[^\w-]+/g, '_').slice(0, 30) || 'song'}-${s.created}.mp3`
 
   return (

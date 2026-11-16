@@ -1079,3 +1079,5 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .jp-label, .jp-pct { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .jp-label { min-width: 28px; }
 .jp-pct { min-width: 36px; text-align: right; }
+/* steady: the bar glides between updates instead of jumping */
+.job-progress .progress-bar { transition: width 1.5s linear; }

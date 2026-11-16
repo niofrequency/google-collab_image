@@ -117,7 +117,7 @@ export default function Upscale({ active = true }) {
       const body = input.kind === 'video'
         ? { video: data, model: opts.model, target_height: +opts.height, interpolate: !!opts.smooth, face_restore: !!opts.faces, face_strength: +opts.faceStrength }
         : { image: data, model: opts.model, scale: +opts.scale, face_restore: !!opts.faces, face_strength: +opts.faceStrength }
-      say(input.kind === 'video' ? 'Sending the video…' : 'Sending the picture…')
+      say('')
       let job = await (await fetch(backend() + '/upscale', { method: 'POST', headers: HEADERS, body: JSON.stringify(body) })).json()
       let down = null
       while (job.status !== 'done' && job.status !== 'error') {
@@ -125,9 +125,9 @@ export default function Upscale({ active = true }) {
         try {
           const r = await fetch(`${backend()}/job/${job.job_id}`, { headers: HEADERS, cache: 'no-store' })
           job = { ...(await r.json()), job_id: job.job_id }
+          if (down) say('')
           down = null
-          if (job.progress) setProgress(Math.max(3, job.progress))
-          if (job.message) say(job.message)
+          if (job.progress) setProgress(p => Math.max(p, Math.min(99, job.progress)))
         } catch {
           down ??= Date.now()
           if (Date.now() - down > 180000) throw new Error('Could not reach the server — is cell 3 of UPSCALE.ipynb still running?')
