@@ -197,6 +197,22 @@ export default function App({ active = true }) {
   const [editNegative, setEditNegative] = useState('')
 
   const [infoItem, setInfoItem] = useState(null)
+
+  const [infoDims, setInfoDims] = useState(null)   // the saved picture's real size in pixels
+
+  useEffect(() => {
+
+    setInfoDims(null)
+
+    if (!infoItem?.url) return
+
+    const img = new Image()
+
+    img.onload = () => setInfoDims([img.naturalWidth, img.naturalHeight])
+
+    img.src = infoItem.url
+
+  }, [infoItem])
   const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('gallery_thumb') || 200))  // px
   const [fitImages, setFitImages] = useState(() => localStorage.getItem('gallery_fit') === '1')       // whole images, no crop
   const promptClickTimer = useRef(null)
@@ -1546,7 +1562,10 @@ export default function App({ active = true }) {
             <p><strong>Positive:</strong><br/>{infoItem.positive || '(none)'}</p>
             <p><strong>Negative:</strong><br/>{infoItem.negative || '(none)'}</p>
             <div className="meta-info">
-              Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
+              Size: {infoItem.width
+                ? `${infoItem.width} × ${infoItem.height}` + (infoDims && (infoDims[0] !== infoItem.width || infoDims[1] !== infoItem.height) ? ` → saved at ${infoDims[0]} × ${infoDims[1]}` : '')
+                : infoDims ? `${infoDims[0]} × ${infoDims[1]}` : '…'}<br/>
+              Steps: {infoItem.steps} | CFG: {infoItem.cfg}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {(infoItem.checkpoint || infoItem.faceFix) && <><br/>Checkpoint: {infoItem.checkpoint ? infoItem.checkpoint.split('/').pop() : 'default'}</>}
               {infoItem.faceFix && (() => {
