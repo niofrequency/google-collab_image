@@ -123,7 +123,8 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   close-ups (e.g. `Stephanie_face`) on *Face fix only*, with Face fix on and the same trigger word in the prompt:
   the body comes from the first LoRA, the face from the second.
 - **Face reference** (toggle under Face fix): keeps **the same face** in every image from 1–3 pictures — no training
-  (IP-Adapter FaceID Plus v2, used in the main image and in face fix). Made for **comics and short films**:
+  (used in the main image and in face fix). Two methods, picked with the **FaceID / PuLID** switch next to Strength —
+  see below. Made for **comics and short films**:
   1. Generate a character you like (or upload clear, front-facing face pictures — head-and-shoulders works best).
   2. In the full-size viewer press **Use as face** (up to 3 pictures; different angles help).
   3. Press **+ Save as character** and give it a name. Saved characters stay in your browser — click one to use it
@@ -153,8 +154,21 @@ training. Under the hood it's **IP-Adapter FaceID Plus v2 (SDXL)**:
 4. It's applied after your own LoRAs, to the main image and to **face fix** (which redraws the face at full size —
    most important for small faces in full-body shots). A same-model **refiner** pass keeps it too.
 
-Your prompt still decides everything else: pose, clothes, hair, place, style. *Strength* 0.6 light · 0.8 default ·
-1.0–1.2 strong (closer likeness, less freedom in expression).
+Your prompt still decides everything else: pose, clothes, hair, place, style. *Strength* (FaceID): 0.2–0.5 natural ·
+0.8 strong (closer likeness, can look stiff or off).
+
+### PuLID (the second method)
+
+Pick **PuLID** with the switch in Face reference. [PuLID](https://github.com/ToTheBeginning/PuLID) (ComfyUI port:
+`cubiq/PuLID_ComfyUI`) reads the face with InsightFace *antelopev2* and EVA-CLIP, then adds it to SDXL's attention in
+a way that changes the **face** but leaves the rest of the picture — lighting, colours, style, composition — mostly
+alone. So it can be turned up further than FaceID before the picture looks off, and needs no companion LoRA.
+
+- *Strength* (PuLID): 0.6 light · 0.8–1.0 default · 1.2+ very strong. Each method remembers its own strength.
+- Its models (PuLID 0.8 GB, EVA-CLIP 0.9 GB, antelopev2 0.4 GB) download **the first time you use PuLID** in a
+  session (a minute or two), not in cell 1.
+- Use a **clean, sharp** face picture — PuLID picks up more detail from it than FaceID does.
+- Works with face fix, the refiner, your LoRAs and the pose / depth / style picture, like FaceID.
 
 | Model / notebook | Face reference | How to keep a face instead |
 |---|---|---|

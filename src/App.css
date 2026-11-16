@@ -1059,3 +1059,6 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .inpaint-note { margin: 4px 0 8px; font-size: 12px; color: #e0a96d; }
 .headswap-fast { flex-wrap: wrap; margin-top: 6px; }
 .headswap-fast .toggle { width: auto; }
+
+/* Face reference method switch (FaceID / PuLID): the picked one in green, like the On toggle */
+.face-ref-box .chip.active { background: rgba(46,204,113,0.16); border-color: rgba(46,204,113,0.6); color: #2ecc71; }
