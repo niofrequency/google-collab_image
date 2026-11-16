@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import { withCivitaiToken } from './civitai.js'
+import { shrinkImage } from './FaceRef.jsx'
 import './App.css'
  
 const BACKEND_HEADERS = {
@@ -12,6 +13,26 @@ const GALLERY_DB = 'HeadSwapGallery'
 const GALLERY_STORE = 'images'
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const MAX_JOB_WAIT_MS = 15 * 60 * 1000
+
+// Images are sent at most this big: the model works at ~1024 px anyway, and huge phone photos
+// (10+ MB as text) are what most often break the upload through the Colab tunnel.
+const MAX_UPLOAD_SIDE = 2048
+
+// "Failed to fetch" (Chrome), "Load failed" (Safari), "NetworkError..." (Firefox): no answer from the backend
+function isNetworkError(error) {
+  return error instanceof TypeError || /failed to fetch|load failed|networkerror|network request failed/i.test(error?.message || '')
+}
+
+const UNREACHABLE_MSG = 'Could not reach the Colab backend. Check that cell 4 is still running in Colab ' +
+  '(and the runtime is not disconnected), and that the Backend URL is the latest READY: link. ' +
+  'If the notebook just restarted the server, wait a minute for the model to load and try again.'
+
+async function fetchWithTimeout(url, options = {}, ms = 15000) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), ms)
+  try { return await fetch(url, { ...options, signal: controller.signal }) }
+  finally { clearTimeout(timer) }
+}
 
 // An error the backend reported for the job itself: shown right away instead of retried
 class JobError extends Error {}
@@ -201,7 +222,7 @@ export default function HeadSwap({ active = true }) {
       setProgress(100)
       setStatusMsg(`Added LoRA: ${data.filename} (on at 1.0)`, 'ok')
     } catch (error) {
-      setStatusMsg('Error: ' + error.message, 'error')
+      setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : 'Error: ' + error.message, 'error')
     } finally {
       setDownloading(false)
       setLoading(false)
@@ -302,6 +323,7 @@ export default function HeadSwap({ active = true }) {
     const started = Date.now()
     let delay = 1500
     let lastPollError = ''
+    let downSince = null
     while (Date.now() - started < MAX_JOB_WAIT_MS) {
       await sleep(delay)
       try {
@@ -309,6 +331,7 @@ export default function HeadSwap({ active = true }) {
         if (!response.ok) throw new Error(`Job status request returned ${response.status}`)
         const data = await response.json()
         lastPollError = ''
+        downSince = null
         if (data.status === 'error' || data.error) throw new JobError(data.error || 'Head Swap job failed')
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) return image
@@ -322,7 +345,10 @@ export default function HeadSwap({ active = true }) {
       } catch (error) {
         if (error instanceof JobError) throw error
         lastPollError = error.message
-        setStatusMsg('Backend temporarily unavailable — retrying result fetch…')
+        downSince ??= Date.now()
+        // The backend usually comes back within seconds; after 3 minutes it has most likely stopped
+        if (Date.now() - downSince > 3 * 60 * 1000) throw new JobError(UNREACHABLE_MSG)
+        setStatusMsg('Backend temporarily unavailable — still waiting for the result…')
       }
       delay = Math.min(4000, delay + 250)
     }
@@ -336,20 +362,46 @@ export default function HeadSwap({ active = true }) {
     if (!headImage) return setStatusMsg('Upload a Head image first', 'error')
 
     setLoading(true)
-    setProgress(5)
-    setStatusMsg('Sending images to backend…')
+    setProgress(3)
     setResult(null)
     try {
-      const response = await fetch(`${backend}/headswap`, {
-        method: 'POST',
-        headers: BACKEND_HEADERS,
-        body: JSON.stringify({ body: bodyImage, head: headImage, prompt, loras })
-      })
+      // 1) Is the backend there, and is the model loaded?
+      setStatusMsg('Connecting to the backend…')
+      let health
+      try {
+        const response = await fetchWithTimeout(`${backend}/health`, { headers: BACKEND_HEADERS, cache: 'no-store' })
+        health = response.ok ? await response.json() : null
+        if (!health) throw new Error(`Backend answered ${response.status}`)
+      } catch (error) {
+        throw new Error(error.name === 'AbortError' || isNetworkError(error) || /answered/.test(error.message)
+          ? UNREACHABLE_MSG : error.message)
+      }
+      if (health.loaded === false) throw new Error('The backend is still loading the model. Wait until cell 4 prints READY, then try again.')
+
+      // 2) Send smaller copies of the photos
+      setStatusMsg('Sending images to backend…')
+      setProgress(5)
+      const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
+      const payload = JSON.stringify({ body, head, prompt, loras })
+      let response
+      for (let attempt = 1; ; attempt++) {
+        try {
+          response = await fetchWithTimeout(`${backend}/headswap`, { method: 'POST', headers: BACKEND_HEADERS, body: payload }, 90000)
+          break
+        } catch (error) {
+          if (attempt >= 3 || !(isNetworkError(error) || error.name === 'AbortError')) {
+            throw new Error(isNetworkError(error) || error.name === 'AbortError' ? UNREACHABLE_MSG : error.message)
+          }
+          setStatusMsg(`Connection dropped while sending — retrying (${attempt}/2)…`)
+          await sleep(3000)
+        }
+      }
       const raw = await response.text()
-      if (!response.ok) throw new Error(raw || `Server error ${response.status}`)
       let data
-      try { data = JSON.parse(raw) } catch { throw new Error('Backend returned an unreadable response') }
-      if (data.error) throw new Error(data.error)
+      try { data = JSON.parse(raw) } catch {
+        throw new Error(response.ok ? 'Backend returned an unreadable response' : `The backend answered with error ${response.status}. ${UNREACHABLE_MSG}`)
+      }
+      if (!response.ok || data.error) throw new Error(data.error || data.detail || `Server error ${response.status}`)
       let output = data.image || data.output || data.result
       if (!output && data.job_id) output = await pollJob(backend, data.job_id)
       if (!output) throw new Error('The backend finished without returning an image or job ID')
@@ -358,7 +410,7 @@ export default function HeadSwap({ active = true }) {
       setProgress(100)
       setStatusMsg('Done — saved to the Head Swap gallery', 'ok')
     } catch (error) {
-      setStatusMsg(error.message || 'Head Swap failed', 'error')
+      setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || 'Head Swap failed'), 'error')
     } finally {
       setLoading(false)
     }
