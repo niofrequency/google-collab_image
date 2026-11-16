@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
+import { withCivitaiToken } from './civitai.js'
 import './App.css'
  
 const BACKEND_HEADERS = {
@@ -11,6 +12,13 @@ const GALLERY_DB = 'HeadSwapGallery'
 const GALLERY_STORE = 'images'
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const MAX_JOB_WAIT_MS = 15 * 60 * 1000
+
+// An error the backend reported for the job itself: shown right away instead of retried
+class JobError extends Error {}
+
+function loadSavedLoras() {
+  try { return JSON.parse(localStorage.getItem('headswap_loras')) || [] } catch { return [] }
+}
 
 function openGalleryDb() {
   return new Promise((resolve, reject) => {
@@ -58,7 +66,7 @@ function imageBlob(dataUrl) {
 export default function HeadSwap({ active = true }) {
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem('headswap_backend_url') || '')
   const [prompt, setPrompt] = useState(
-    `head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, and nose structure from <image2>. copy the direction of the eyes, head rotation, and micro expressions from <image1>, high quality, sharp details, 4k`
+    `head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k`
   )
   const [bodyImage, setBodyImage] = useState(null)
   const [headImage, setHeadImage] = useState(null)
@@ -70,6 +78,12 @@ export default function HeadSwap({ active = true }) {
   const [gallery, setGallery] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lightboxIndex, setLightboxIndex] = useState(-1)
+  const [loraFiles, setLoraFiles] = useState([])        // extra LoRAs downloaded on the backend
+  const [loras, setLoras] = useState(loadSavedLoras)     // chosen extra LoRAs: [{ name, strength }]
+  const [baseLora, setBaseLora] = useState('')           // the head swap LoRA the notebook always uses
+  const [showAddLora, setShowAddLora] = useState(false)
+  const [newLoraUrl, setNewLoraUrl] = useState('')
+  const [downloading, setDownloading] = useState(false)
   const [pasteTarget, setPasteTarget] = useState('body')  // which box Ctrl+V fills
   const bodyInputRef = useRef(null)
   const headInputRef = useRef(null)
@@ -120,6 +134,79 @@ export default function HeadSwap({ active = true }) {
   useEffect(() => {
     localStorage.setItem('headswap_backend_url', backendUrl)
   }, [backendUrl])
+
+  useEffect(() => {
+    localStorage.setItem('headswap_loras', JSON.stringify(loras))
+  }, [loras])
+
+  const backendBase = () => backendUrl.trim().replace(/\/$/, '')
+
+  // LoRAs already downloaded on the backend (same as the Image Generator)
+  const loadUserModels = useCallback(async () => {
+    const backend = backendUrl.trim().replace(/\/$/, '')
+    if (!backend) return
+    try {
+      const response = await fetch(`${backend}/user_models`, { headers: BACKEND_HEADERS })
+      if (!response.ok) return
+      const data = await response.json()
+      const files = Array.isArray(data.lora_files) ? data.lora_files : []
+      setLoraFiles(files)
+      setBaseLora(data.base_lora || '')
+      setLoras(previous => previous.filter(lora => files.includes(lora.name)))
+    } catch { /* backend not reachable yet */ }
+  }, [backendUrl])
+
+  useEffect(() => {
+    if (active) loadUserModels()
+  }, [active]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function addLoraFromList(name) {
+    if (!name) return
+    setLoras(previous => previous.some(lora => lora.name === name) ? previous : [...previous, { name, strength: 1 }])
+  }
+
+  async function downloadLora() {
+    const url = newLoraUrl.trim()
+    if (!url) return setStatusMsg('Paste a LoRA link first', 'error')
+    const backend = backendBase()
+    if (!backend) return setStatusMsg('Paste the backend URL from the Colab notebook first', 'error')
+    setDownloading(true)
+    setLoading(true)
+    setProgress(2)
+    setStatusMsg('Downloading LoRA...')
+    try {
+      const response = await fetch(`${backend}/download_model`, {
+        method: 'POST',
+        headers: BACKEND_HEADERS,
+        body: JSON.stringify({ url: withCivitaiToken(url), type: 'lora' })
+      })
+      if (response.status === 404) {
+        throw new Error('this backend has no LoRA downloads. Open HEADSWAP.ipynb fresh from GitHub, run its cells again and paste the new URL here.')
+      }
+      let data = await response.json()
+      while (data.job_id && data.status !== 'done' && data.status !== 'error') {
+        await sleep(2000)
+        const next = await fetch(`${backend}/job/${encodeURIComponent(data.job_id)}`, { headers: BACKEND_HEADERS, cache: 'no-store' })
+        if (!next.ok) continue
+        data = { ...(await next.json()), job_id: data.job_id }
+        if (data.progress != null) setProgress(Math.max(2, data.progress))
+        const mb = data.done_mb ? ` ${data.done_mb}${data.total_mb ? ' / ' + data.total_mb : ''} MB` : ''
+        setStatusMsg(`Downloading LoRA${data.filename ? ' ' + data.filename : ''}...${mb}`)
+      }
+      if (data.status === 'error' || !data.filename) throw new Error(data.error || 'Download failed')
+      await loadUserModels()
+      setLoras(previous => previous.some(lora => lora.name === data.filename) ? previous : [...previous, { name: data.filename, strength: 1 }])
+      setShowAddLora(false)
+      setNewLoraUrl('')
+      setProgress(100)
+      setStatusMsg(`Added LoRA: ${data.filename} (on at 1.0)`, 'ok')
+    } catch (error) {
+      setStatusMsg('Error: ' + error.message, 'error')
+    } finally {
+      setDownloading(false)
+      setLoading(false)
+    }
+  }
 
   const saveResult = useCallback(async (dataUrl) => {
     const db = await openGalleryDb()
@@ -222,7 +309,7 @@ export default function HeadSwap({ active = true }) {
         if (!response.ok) throw new Error(`Job status request returned ${response.status}`)
         const data = await response.json()
         lastPollError = ''
-        if (data.status === 'error' || data.error) throw new Error(data.error || 'Head Swap job failed')
+        if (data.status === 'error' || data.error) throw new JobError(data.error || 'Head Swap job failed')
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) return image
         if (data.status === 'done' || data.status === 'completed') {
@@ -233,7 +320,7 @@ export default function HeadSwap({ active = true }) {
         }
         if (data.progress != null) setProgress(Math.max(5, Math.min(95, Number(data.progress))))
       } catch (error) {
-        if (error.message.includes('job failed') || error.message.includes('Job failed')) throw error
+        if (error instanceof JobError) throw error
         lastPollError = error.message
         setStatusMsg('Backend temporarily unavailable — retrying result fetch…')
       }
@@ -256,7 +343,7 @@ export default function HeadSwap({ active = true }) {
       const response = await fetch(`${backend}/headswap`, {
         method: 'POST',
         headers: BACKEND_HEADERS,
-        body: JSON.stringify({ body: bodyImage, head: headImage, prompt })
+        body: JSON.stringify({ body: bodyImage, head: headImage, prompt, loras })
       })
       const raw = await response.text()
       if (!response.ok) throw new Error(raw || `Server error ${response.status}`)
@@ -324,7 +411,7 @@ export default function HeadSwap({ active = true }) {
       <p className="muted headswap-intro">Upload a body image and a head image. The head will be swapped onto the body while keeping pose, lighting and background.</p>
 
       <label>Backend URL (from Colab)</label>
-      <input type="text" placeholder="https://xxxx.trycloudflare.com" value={backendUrl} onChange={event => setBackendUrl(event.target.value)} />
+      <input type="text" placeholder="https://xxxx.trycloudflare.com" value={backendUrl} onChange={event => setBackendUrl(event.target.value)} onBlur={loadUserModels} />
 
       <div className="row headswap-upload-row">
         {[
@@ -352,6 +439,39 @@ export default function HeadSwap({ active = true }) {
           <input ref={slot.inputRef} type="file" accept="image/*" hidden onChange={event => { readFile(event.target.files?.[0], slot.type); event.target.value = '' }} />
         </div>)}
       </div>
+
+      <label className="headswap-prompt-label">LoRAs</label>
+      {baseLora && <div className="muted headswap-base-lora">Always on: {baseLora} (head swap)</div>}
+      {loras.map((lora, index) => (
+        <div className="lora-item" key={lora.name}>
+          <span className="headswap-lora-name" title={lora.name}>{lora.name}</span>
+          <input type="number" step="0.05" value={lora.strength} style={{ width: 80 }} title="Strength"
+            onChange={event => setLoras(loras.map((item, i) => i === index ? { ...item, strength: parseFloat(event.target.value) } : item))} />
+          <button className="danger" onClick={() => setLoras(loras.filter((_, i) => i !== index))}>Remove</button>
+        </div>
+      ))}
+      {loras.some(lora => /body[_-]?swap/i.test(lora.name)) && (
+        <div className="muted headswap-lora-warn">A body swap LoRA is on. It is made for swapping the whole body and usually makes head swaps worse — remove it for head swaps.</div>
+      )}
+      {loraFiles.some(file => !loras.some(lora => lora.name === file)) && (
+        <div className="lora-item">
+          <select value="" onChange={event => addLoraFromList(event.target.value)}>
+            <option value="">+ Use a downloaded LoRA...</option>
+            {loraFiles.filter(file => !loras.some(lora => lora.name === file)).map(file => <option key={file} value={file}>{file}</option>)}
+          </select>
+        </div>
+      )}
+      {showAddLora && (
+        <div className="add-box">
+          <input value={newLoraUrl} onChange={event => setNewLoraUrl(event.target.value)} placeholder="Civitai or Hugging Face LoRA link (page or download link) — must be a Qwen-Image 2.1 LoRA"
+            onKeyDown={event => event.key === 'Enter' && !downloading && downloadLora()} />
+          <div className="row">
+            <button className="secondary" disabled={downloading} onClick={downloadLora}>Download & Add</button>
+            <button className="secondary" onClick={() => setShowAddLora(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {!showAddLora && <button className="secondary headswap-add-lora" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>}
 
       <label className="headswap-prompt-label">Prompt</label>
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />

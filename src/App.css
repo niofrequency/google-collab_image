@@ -699,3 +699,7 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .image-drop-icon { font-size: 28px; margin-bottom: 8px; }
 .image-drop-more { font-size: 12px; margin-top: 10px; color: #aaa; }
 .headswap-drop:hover { border-color: var(--accent); color: var(--text); }
+.headswap-base-lora { font-size: 12px; margin-bottom: 8px; }
+.headswap-lora-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.headswap-lora-warn { font-size: 12px; color: #e88; margin-bottom: 8px; }
+.headswap-add-lora { width: auto; }
