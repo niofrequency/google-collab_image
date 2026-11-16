@@ -11,7 +11,7 @@ import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galler
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress, { stagePct } from './JobProgress.jsx'
+import JobProgress, { stagePct, useJobsProgress } from './JobProgress.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -92,9 +92,8 @@ export default function Video({ active }) {
   const [sound, setSound] = useState(load('sound', false))
   const [soundPrompt, setSoundPrompt] = useState(load('sound_prompt', ''))
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [job, setJob] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [pct, setPct] = useState(0)   // overall progress of the job, only moves forward
+  const videoJobs = useJobsProgress()   // one steady bar for every video running on this tab (the server queues them)
+  const doneRef = useRef({ count: 0, last: '', type: 'ok' })   // the Done message waits until every queued video has finished
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)          // { url, ... } of the latest video
   const [gallery, setGallery] = useState([])
@@ -262,10 +261,9 @@ export default function Video({ active }) {
     if (!info) return say('Paste the READY: URL from cell 3 of an IMG2VID notebook first', 'error')
     if (!image) return say('Add a start image first', 'error')
     const soundOn = sound && info.supports_sound !== false
-    setBusy(true)
-    setResult(null)
+    if (videoJobs.idle()) { doneRef.current = { count: 0, last: '', type: 'ok' }; setResult(null) }   // a new round
+    const job = videoJobs.start(1)
     say('')
-    setPct(0)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_video', {
@@ -287,11 +285,9 @@ export default function Video({ active }) {
         if (downSince) say('')
         downSince = null
         data = next
-        setJob(data)
-        setPct(old => Math.max(old, stagePct(data.stage || data.status, data.step, data.total_steps)))
+        job.set(stagePct(data.stage || data.status, data.step, data.total_steps) / 100)
       }
       if (data.status === 'error') throw new Error(data.error || 'Video generation failed')
-      setPct(100)
       const blob = await (await fetch(backend + data.video, { headers: HEADERS })).blob()
       const item = {
         blob, created: Date.now(), prompt, width: data.width, height: data.height, seconds: data.seconds,
@@ -305,16 +301,19 @@ export default function Video({ active }) {
       queueSync('videos')
       setResult({ ...item, src: URL.createObjectURL(blob) })
       const took = data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'
-      say(`Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
-        (data.warning ? ` ${data.warning}` : '') + (data.warnings?.length ? ` ${data.warnings.join(' ')}` : ''),
-        data.warning || data.warnings?.length ? 'error' : 'ok')
+      job.finish()
+      const r = doneRef.current
+      r.count++
+      r.last = `Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
+        (data.warning ? ` ${data.warning}` : '') + (data.warnings?.length ? ` ${data.warnings.join(' ')}` : '')
+      if (data.warning || data.warnings?.length) r.type = 'error'
+      if (videoJobs.idle()) say(r.count > 1 ? `Done — ${r.count} videos saved in the gallery below.` : r.last, r.type)
       finish(true)
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
       finish(false)
     }
-    setJob(null)
-    setBusy(false)
+    job.finish()
   }
 
   async function removeVideo(v) {
@@ -471,9 +470,9 @@ export default function Video({ active }) {
       )}
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button onClick={generate} disabled={busy}>{busy ? 'Generating...' : 'Generate video'}</button>
+        <button onClick={generate} title="Press again to queue more — they run one after another">Generate video</button>
       </div>
-      {busy && <JobProgress pct={pct} />}
+      {videoJobs.pct != null && <JobProgress pct={videoJobs.pct} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (

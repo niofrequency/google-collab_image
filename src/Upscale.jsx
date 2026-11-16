@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress from './JobProgress.jsx'
+import JobProgress, { useJobsProgress } from './JobProgress.jsx'
 
 // Upscale & detail tab (UPSCALE.ipynb): pictures 2-4x with 4x-UltraSharp / Real-ESRGAN (+ GFPGAN face restore),
 // videos to 720p / 1080p with the sound kept (+ 2x frame rate). Other tabs send pictures here with "Send to Upscale".
@@ -41,8 +41,8 @@ export default function Upscale({ active = true }) {
   const [info, setInfo] = useState(null)
   const [input, setInput] = useState(null)        // { kind: 'image' | 'video', src (object URL), blob, w, h }
   const [opts, setOpts] = useState(() => load('opts', { model: 'ultrasharp', scale: 2, faces: false, faceStrength: 0.7, height: 1080, smooth: false }))
-  const [busy, setBusy] = useState(false)
-  const [progress, setProgress] = useState(0)
+  const upJobs = useJobsProgress()   // one steady bar for every upscale running on this tab (the server queues them)
+  const doneRef = useRef({ count: 0, last: '' })   // the Done message waits until every queued upscale has finished
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)      // { kind, src, w, h }
   const [items, setItems] = useState([])
@@ -110,7 +110,9 @@ export default function Upscale({ active = true }) {
   async function run() {
     if (!backend()) return say('Paste the READY: URL from cell 3 of UPSCALE.ipynb first', 'error')
     if (!input) return say('Choose a picture or video first', 'error')
-    setBusy(true); setProgress(3); setResult(null)
+    if (upJobs.idle()) { doneRef.current = { count: 0, last: '' }; setResult(null) }   // a new round
+    const task = upJobs.start(1)
+    task.set(0.03)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       const data = await blobToDataUrl(input.blob)
@@ -127,7 +129,7 @@ export default function Upscale({ active = true }) {
           job = { ...(await r.json()), job_id: job.job_id }
           if (down) say('')
           down = null
-          if (job.progress) setProgress(p => Math.max(p, Math.min(99, job.progress)))
+          if (job.progress) task.set(job.progress / 100)
         } catch {
           down ??= Date.now()
           if (Date.now() - down > 180000) throw new Error('Could not reach the server — is cell 3 of UPSCALE.ipynb still running?')
@@ -141,15 +143,18 @@ export default function Upscale({ active = true }) {
       await dbPut({ blob, kind, created: Date.now(), width: job.width, height: job.height, from: `${input.w}×${input.h}`, fps: job.fps || null })
       await refresh()
       setResult({ kind, src: URL.createObjectURL(blob), w: job.width, h: job.height })
-      setProgress(100)
-      say(`Done — ${input.w}×${input.h} → ${job.width}×${job.height}` + (job.faces ? ` · ${job.faces} face(s) restored` : '') +
-        (job.fps ? ` · ${job.fps} fps${job.audio ? ' · sound kept' : ''}` : '') + (job.seconds ? ` · ${job.seconds} s` : ''), 'ok')
+      task.finish()
+      const r = doneRef.current
+      r.count++
+      r.last = `Done — ${input.w}×${input.h} → ${job.width}×${job.height}` + (job.faces ? ` · ${job.faces} face(s) restored` : '') +
+        (job.fps ? ` · ${job.fps} fps${job.audio ? ' · sound kept' : ''}` : '') + (job.seconds ? ` · ${job.seconds} s` : '')
+      if (upJobs.idle()) say(r.count > 1 ? `Done — ${r.count} upscales saved in the gallery` : r.last, 'ok')
       finish(true)
     } catch (e) {
       say(/failed to fetch|load failed|networkerror/i.test(e.message) ? 'Could not reach the server — is cell 3 of UPSCALE.ipynb still running?' : e.message, 'error')
       finish(false)
     }
-    setBusy(false)
+    task.finish()
   }
 
   async function remove(item) {
@@ -218,8 +223,8 @@ export default function Upscale({ active = true }) {
       </div>
       {isVideo && opts.faces && <div className="muted small-note">Face restore on every frame makes videos much slower and can flicker a little.</div>}
 
-      <button onClick={run} disabled={busy} className="upscale-go">{busy ? 'Upscaling…' : `Upscale ${isVideo ? 'video' : 'picture'}`}</button>
-      {busy && <JobProgress pct={progress} />}
+      <button onClick={run} className="upscale-go" title="Press again to queue more — they run one after another">{`Upscale ${isVideo ? 'video' : 'picture'}`}</button>
+      {upJobs.pct != null && <JobProgress pct={upJobs.pct} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (
