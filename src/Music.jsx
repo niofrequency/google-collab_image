@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import { queueSync, cloudForget } from './cloud.js'
 import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress, { stagePct } from './JobProgress.jsx'
+import JobProgress, { stagePct, useJobsProgress } from './JobProgress.jsx'
 
 // Music tab: talks to MUSIC-ACESTEP.ipynb (ACE-Step 1.5). Finished songs are kept in this browser (IndexedDB "MusicGallery").
 
@@ -71,9 +71,8 @@ export default function Music() {
   const [seed, setSeed] = useState(-1)
   const [steps, setSteps] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [pct, setPct] = useState(0)   // overall progress of the job, only moves forward
-  const [job, setJob] = useState(null)
+  const songJobs = useJobsProgress()   // one steady bar for every song running on this tab (the server queues them)
+  const doneRef = useRef({ count: 0, last: '' })   // the Done message waits until every queued song has finished
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)
   const [songs, setSongs] = useState([])
@@ -136,10 +135,9 @@ export default function Music() {
     if (!info) return say('Paste the READY: URL from cell 3 of MUSIC-ACESTEP.ipynb first', 'error')
     if (!tags.trim()) return say('Describe the style first (genre, instruments, mood, voice)', 'error')
     if (!instrumental && !lyrics.trim()) return say('Add lyrics, or turn on Instrumental', 'error')
-    setBusy(true)
-    setResult(null)
+    if (songJobs.idle()) { doneRef.current = { count: 0, last: '' }; setResult(null) }   // a new round
+    const job = songJobs.start(1)
     say('')
-    setPct(0)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_music', {
@@ -162,11 +160,9 @@ export default function Music() {
         if (downSince) say('')
         downSince = null
         data = next
-        setJob(data)
-        setPct(old => Math.max(old, stagePct(data.stage || data.status, data.step, data.total_steps)))
+        job.set(stagePct(data.stage || data.status, data.step, data.total_steps) / 100)
       }
       if (data.status === 'error') throw new Error(data.error || 'Music generation failed')
-      setPct(100)
       const blob = await (await fetch(backend + data.audio, { headers: HEADERS })).blob()
       const item = { blob, created: Date.now(), tags, lyrics: instrumental ? '' : lyrics, instrumental, seconds: data.seconds,
         bpm: +bpm, key, seed: data.seed, model: info.label }
@@ -174,14 +170,17 @@ export default function Music() {
       queueSync('songs')
       await refreshSongs()
       setResult({ ...item, src: URL.createObjectURL(blob) })
-      say(`Done — ${data.seconds} s in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the list below.`, 'ok')
+      job.finish()
+      const r = doneRef.current
+      r.count++
+      r.last = `Done — ${data.seconds} s in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the list below.`
+      if (songJobs.idle()) say(r.count > 1 ? `Done — ${r.count} songs saved in the list below.` : r.last, 'ok')
       finish(true)
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
       finish(false)
     }
-    setJob(null)
-    setBusy(false)
+    job.finish()
   }
 
   function reuse(s) {
@@ -280,9 +279,9 @@ export default function Music() {
       )}
 
       <div className="row" style={{ marginTop: 16 }}>
-        <button onClick={generate} disabled={busy}>{busy ? 'Making music...' : 'Generate song'}</button>
+        <button onClick={generate} title="Press again to queue more — they run one after another">Generate song</button>
       </div>
-      {busy && <JobProgress pct={pct} />}
+      {songJobs.pct != null && <JobProgress pct={songJobs.pct} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (
