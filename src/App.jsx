@@ -12,6 +12,7 @@ import { GENERATOR_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
+import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -91,6 +92,19 @@ export default function App({ active = true }) {
   const [faceRefStrength, setFaceRefStrength] = useState(savedFaceRef.strength ?? 0.8)
   const [faceRefCharacter, setFaceRefCharacter] = useState(savedFaceRef.character || '')
   const [supportsFaceRef, setSupportsFaceRef] = useState(false)
+  // BigLust: pose / depth / style / img2img picture (next to the face reference)
+  const [refModes, setRefModes] = useState([])          // modes the connected notebook supports
+  const [refPicture, setRefPicture] = useState(null)
+  const [refMap, setRefMap] = useState(null)              // pose / depth map the last image used
+  const [refSettings, setRefSettingsState] = useState(() => {
+    try { return { ...DEFAULT_REF_SETTINGS, ...JSON.parse(localStorage.getItem('ref_picture_settings')) } } catch { return DEFAULT_REF_SETTINGS }
+  })
+  const setRefSettings = update => setRefSettingsState(prev => {
+    const next = typeof update === 'function' ? update(prev) : update
+    localStorage.setItem('ref_picture_settings', JSON.stringify(next))
+    return next
+  })
+  const refPicHoverRef = useRef(false)   // the pose picture box is under the mouse: Ctrl+V goes there
   useEffect(() => {
     try {
       localStorage.setItem('face_ref', JSON.stringify({ on: faceRefOn, images: faceRefImages, strength: +faceRefStrength, character: faceRefCharacter }))
@@ -209,6 +223,11 @@ export default function App({ active = true }) {
       for (const item of cd.items || []) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
           const blob = item.getAsFile()
+          if (blob && refPicHoverRef.current) {   // pasted onto the pose / style picture box
+            e.preventDefault()
+            shrinkImage(URL.createObjectURL(blob), 1024).then(src => { setRefPicture(src); setStatusMsg('Pose / style picture loaded', 'ok') })
+            return
+          }
           if (blob) { e.preventDefault(); loadImageFromBlob(blob); return }
         }
       }
@@ -430,6 +449,7 @@ export default function App({ active = true }) {
       setSupportsLoraTargets(!!data.supports_lora_targets)
       setSupportsRefiner(!!data.supports_refiner)
       setSupportsFaceRef(!!data.supports_face_ref)
+      setRefModes(Array.isArray(data.supports_ref_modes) ? data.supports_ref_modes : [])
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -573,6 +593,8 @@ export default function App({ active = true }) {
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
+    const refActive = backendType === 'sdxl' && refModes.length > 0 && !!refPicture
+    const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
@@ -589,6 +611,13 @@ export default function App({ active = true }) {
       refiner_steps: +refinerSteps,
       face_ref_images: faceRefActive ? faceRefImages : [],
       face_ref_strength: +faceRefStrength,
+      ...(refActive ? {
+        ref_image: refPicture,
+        ref_mode: refMode,
+        ref_strength: +refSettings.strength,
+        ref_end_percent: +refSettings.end,
+        ref_denoise: +refSettings.denoise,
+      } : {}),
     }
     try {
       const res = await fetch(backend + '/generate', {
@@ -639,7 +668,9 @@ export default function App({ active = true }) {
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, character: faceRefCharacter } : null,
+        refPicture: data.ref_mode ? { mode: data.ref_mode, strength: +refSettings.strength } : null,
       }
+      if (data.ref_map) setRefMap(data.ref_map)
 
       // Prefer the images array if present, fall back to single image
       const imageList = Array.isArray(data.images) && data.images.length > 0
@@ -1117,6 +1148,12 @@ export default function App({ active = true }) {
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg} />
       )}
 
+      {backendType === 'sdxl' && refModes.length > 0 && (
+        <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
+          settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
+          say={setStatusMsg} hoverRef={refPicHoverRef} />
+      )}
+
       {backendType === 'sdxl' && (
         <div className="refiner-box">
           <div className="inline">
@@ -1360,6 +1397,10 @@ export default function App({ active = true }) {
             <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
             <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
             <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(gallery[lightboxIndex])}>Use as face</button>
+            {backendType === 'sdxl' && refModes.length > 0 && (
+              <button className="secondary" title="Use this image as the pose / structure / style picture (BigLust)"
+                onClick={async () => { setRefPicture(await shrinkImage(gallery[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}>Use as pose / style</button>
+            )}
             <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
             <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>

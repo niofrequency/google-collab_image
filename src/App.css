@@ -1013,3 +1013,13 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
   .characters-grid { grid-template-columns: 1fr; }
   .save-char .save-char-row { flex-wrap: wrap; }
 }
+
+/* ---------- BigLust pose / structure / style picture (RefPicture.jsx) ---------- */
+.ref-pic-box { margin-top: 14px; }
+.ref-pic-drop { margin-bottom: 8px; }
+.ref-pic-preview { position: relative; display: inline-flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.ref-pic-preview img { max-width: 200px; max-height: 220px; border-radius: 8px; display: block; background: #000; }
+.ref-pic-settings { margin-top: 0; }
+.ref-pic-settings label { margin-top: 6px; }
+.ref-pic-help { margin-top: 6px; font-size: 12px; }
+.ref-pic-map { margin-top: 8px; font-size: 12px; }

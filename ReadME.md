@@ -164,6 +164,24 @@ Your prompt still decides everything else: pose, clothes, hair, place, style. *S
 | **Krea 2**, **Wan 2.1** (older notebooks) | ❌ No | — |
 | **LoRA training** | — | For the strongest likeness from every angle, train a LoRA of the character and use it *together with* Face reference |
 
+### Pose / structure / style picture (BigLust)
+
+Next to the Face reference you can add a **second picture** — the face still comes from the Face reference (or your
+LoRA / prompt), and this picture decides:
+
+| Mode | What it copies | How |
+|---|---|---|
+| **Body pose** | body, arms, hands and head angle | OpenPose skeleton (body + hands + face) → `xinsir/controlnet-openpose-sdxl-1.0` |
+| **Depth / framing** | shapes, layout and camera framing (stricter than the pose) | Depth Anything V2 Small depth map → `xinsir/controlnet-depth-sdxl-1.0` |
+| **Style / outfit** | outfit, colours, light and style, without fixing positions | IP-Adapter Plus SDXL (`ip-adapter-plus_sdxl_vit-h`, same image encoder as Face reference) |
+| **Img2img** | the picture itself, redrawn | starts from the picture instead of noise; *Denoise* 0.3 close … 0.8 loose |
+
+*Strength* (0.8) is how strongly it steers; *Until* (0.85) stops steering near the end so the last steps can refine
+details. **Face fix never gets the pose / depth ControlNet**, so a full-body skeleton can't distort the close-up of the
+face; it keeps the Face reference and your LoRAs. The pose and depth readers run on the CPU (no GPU memory). The
+ControlNets (2.5 GB each) and IP-Adapter Plus (0.85 GB) download the first time their mode is used in a session, and
+only one is kept loaded at a time. Use **Use as pose / style** in the full-size viewer to take a picture from the gallery.
+
 **Workflow for comics and short films**
 
 1. In the Image Generator (BigLust), make a face you like — or upload clear face pictures — and press **Use as face** in
