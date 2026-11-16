@@ -12,6 +12,7 @@ import Info from './Info.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import { trackJob } from './favicon.js'
+import JobProgress, { stepPct } from './JobProgress.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -448,8 +449,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         if (data.status === 'done' || data.status === 'completed') {
           setStatusMsg('Job finished — waiting for its image…')
         } else {
-          const step = data.step != null && data.total_steps ? ` — step ${data.step}/${data.total_steps}` : ''
-          setStatusMsg(`${data.message || data.status || 'Generating head swap'}${step}`)
+          setStatusMsg(`${data.message || data.status || 'Generating head swap'}${data.step != null ? stepPct(data.step, data.total_steps) : ''}`)
         }
         if (data.progress != null) setProgress(Math.max(5, Math.min(95, Number(data.progress))))
       } catch (error) {
@@ -733,7 +733,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         <button className="secondary headswap-save-prompt" onClick={() => savePromptAs(savedPrompts, storeSavedPrompts, prompt, setStatusMsg)}>Save Prompt</button>
       </div>
 
-      {loading && <div className="progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>}
+      {loading && <JobProgress pct={progress} />}
       {status && <div className={`status ${statusType}`} role="status">{status}</div>}
 
       <SavedPrompts items={savedPrompts} store={storeSavedPrompts} onLoad={setPrompt} say={setStatusMsg} />

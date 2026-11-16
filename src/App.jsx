@@ -16,6 +16,7 @@ import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
+import JobProgress, { stepPct } from './JobProgress.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -163,6 +164,7 @@ export default function App({ active = true }) {
   const [status, setStatus] = useState('')
   const [statusType, setStatusType] = useState('')
   const [progress, setProgress] = useState(0)
+  const [batchProg, setBatchProg] = useState(null)   // { total, done } while images are being made; progress = the current one
   const [showProgress, setShowProgress] = useState(false)
   const [gallery, setGallery] = useState([])
   const [savedPrompts, setSavedPrompts] = useState([])
@@ -546,6 +548,7 @@ export default function App({ active = true }) {
     setDownloading(true)
     setStatusMsg(`Downloading ${label}...`)
     setShowProgress(true)
+    setBatchProg(null)
     setProgress(2)
     try {
       const res = await fetch(backend + '/download_model', {
@@ -629,6 +632,7 @@ export default function App({ active = true }) {
     const count = Math.max(1, Math.min(8, +batchSize || 1))
     setStatusMsg(`Generating ${count} image(s)...`)
     setShowProgress(true)
+    setBatchProg({ total: count, done: 0 })
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
@@ -698,23 +702,28 @@ export default function App({ active = true }) {
           downSince = null
           data = next
           const total = data.batch_size || count
-          const stepFrac = data.total_steps ? data.step / data.total_steps : 0
-          const frac = Math.min(((data.done || 0) + stepFrac) / total, 1)
-          setProgress(5 + frac * 90)
+          const done = Math.min(data.done || 0, total)
+          const stepFrac = data.total_steps ? Math.min(1, data.step / data.total_steps) : 0
+          const phase = data.phase || ''
+          // the current image: drawing it is most of the bar, face fix the last 15%
+          const share = payload.face_fix ? 85 : 100
+          const pct = done >= total ? 100 : phase === 'fixing faces' ? share + (100 - share) * stepFrac : phase ? 0 : share * stepFrac
+          setBatchProg({ total, done })
+          setProgress(pct)
           if (data.status === 'queued') setStatusMsg('Queued — waiting for GPU...')
           else if (data.status === 'running') {
-            setStatusMsg(`Generating image ${Math.min((data.done || 0) + 1, total)}/${total}` +
-              (data.width ? ` (${data.width}×${data.height})` : '') +
-              (data.total_steps ? ` — step ${data.step}/${data.total_steps}` : '...'))
+            if (done >= total) setStatusMsg(`${phase ? phase[0].toUpperCase() + phase.slice(1) : 'Finishing'}${stepPct(data.step, data.total_steps)}`)
+            else setStatusMsg(`Generating image ${done + 1}/${total} — ${Math.round(pct)}%${phase ? ` · ${phase}` : ''}`)
           }
         }
       }
       clearInterval(timer)
+      setBatchProg(b => b && { ...b, done: b.total })
       setProgress(100)
 
       const meta = {
         positive, negative,
-        checkpoint: checkpoint || '',
+        checkpoint: checkpoint || (backendType === 'sdxl' && checkpoints[0]) || '',
         sampler, scheduler,
         steps: +steps, cfg: +cfg, denoise: +denoise,
         width: data.width || +width, height: data.height || +height,
@@ -936,6 +945,7 @@ export default function App({ active = true }) {
       `For ${m.quant}, switch Colab to a bigger GPU first: Runtime → Change runtime type → L4 or A100.\n\nSwitch anyway?`)) return
     setSwitching(true)
     setShowProgress(true)
+    setBatchProg(null)
     setProgress(2)
     setStatusMsg(`Switching to ${m.quant}...`)
     try {
@@ -1383,7 +1393,7 @@ export default function App({ active = true }) {
         <button className="secondary" onClick={savePrompt}>Save Prompt</button>
       </div>
 
-      {showProgress && <div className="progress"><div className="progress-bar" style={{width: progress + '%'}} /></div>}
+      {showProgress && <JobProgress total={batchProg?.total || 1} done={batchProg?.done || 0} pct={progress} />}
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
       <h3>Saved Prompts</h3>
@@ -1531,7 +1541,11 @@ export default function App({ active = true }) {
             <div className="meta-info">
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
-              {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
+              {(infoItem.checkpoint || infoItem.faceFix) && <><br/>Checkpoint: {infoItem.checkpoint ? infoItem.checkpoint.split('/').pop() : 'default'}</>}
+              {infoItem.faceFix && (() => {
+                const used = (infoItem.loras || []).filter(l => l.name && +l.strength !== 0 && (l.target || 'all') !== 'main')
+                return <><br/>Face fix: on (strength {infoItem.faceStrength}) · {used.length ? `LoRA: ${used.map(l => `${l.name.split('/').pop()} ${l.strength}`).join(', ')}` : 'no LoRA'}</>
+              })()}
               {(infoItem.loras || []).filter(l => l.name).map((l, i) => (
                 <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
               ))}

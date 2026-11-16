@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
+import JobProgress from './JobProgress.jsx'
 
 // Upscale & detail tab (UPSCALE.ipynb): pictures 2-4x with 4x-UltraSharp / Real-ESRGAN (+ GFPGAN face restore),
 // videos to 720p / 1080p with the sound kept (+ 2x frame rate). Other tabs send pictures here with "Send to Upscale".
@@ -218,7 +219,7 @@ export default function Upscale({ active = true }) {
       {isVideo && opts.faces && <div className="muted small-note">Face restore on every frame makes videos much slower and can flicker a little.</div>}
 
       <button onClick={run} disabled={busy} className="upscale-go">{busy ? 'Upscaling…' : `Upscale ${isVideo ? 'video' : 'picture'}`}</button>
-      {busy && <div className="progress"><div className="progress-bar" style={{ width: progress + '%' }} /></div>}
+      {busy && <JobProgress pct={progress} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (

@@ -5,6 +5,7 @@ import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
+import JobProgress, { stepPct } from './JobProgress.jsx'
 
 // Music tab: talks to MUSIC-ACESTEP.ipynb (ACE-Step 1.5). Finished songs are kept in this browser (IndexedDB "MusicGallery").
 
@@ -161,7 +162,7 @@ export default function Music() {
         data = next
         setJob(data)
         const s = Math.floor((Date.now() - started) / 1000)
-        say(`${data.stage || data.status}${data.total_steps ? ` — step ${data.step}/${data.total_steps}` : ''} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
+        say(`${data.stage || data.status}${stepPct(data.step, data.total_steps)} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`)
       }
       if (data.status === 'error') throw new Error(data.error || 'Music generation failed')
       const blob = await (await fetch(backend + data.audio, { headers: HEADERS })).blob()
@@ -280,7 +281,7 @@ export default function Music() {
       <div className="row" style={{ marginTop: 16 }}>
         <button onClick={generate} disabled={busy}>{busy ? 'Making music...' : 'Generate song'}</button>
       </div>
-      {busy && <div className="progress"><div className="progress-bar" style={{ width: Math.max(5, pct) + '%' }} /></div>}
+      {busy && <JobProgress pct={pct} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (

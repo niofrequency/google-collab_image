@@ -11,6 +11,7 @@ import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galler
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import { trackJob } from './favicon.js'
+import JobProgress, { stepPct } from './JobProgress.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -286,7 +287,7 @@ export default function Video({ active }) {
         data = next
         setJob(data)
         const mins = Math.floor((Date.now() - started) / 60000), secs = Math.floor((Date.now() - started) / 1000) % 60
-        say(`${data.stage || data.status}${data.total_steps ? ` — step ${data.step}/${data.total_steps}` : ''} · ${mins}:${String(secs).padStart(2, '0')}`)
+        say(`${data.stage || data.status}${stepPct(data.step, data.total_steps)} · ${mins}:${String(secs).padStart(2, '0')}`)
       }
       if (data.status === 'error') throw new Error(data.error || 'Video generation failed')
       const blob = await (await fetch(backend + data.video, { headers: HEADERS })).blob()
@@ -471,7 +472,7 @@ export default function Video({ active }) {
       <div className="row" style={{ marginTop: 16 }}>
         <button onClick={generate} disabled={busy}>{busy ? 'Generating...' : 'Generate video'}</button>
       </div>
-      {busy && <div className="progress"><div className="progress-bar" style={{ width: Math.max(5, pct) + '%' }} /></div>}
+      {busy && <JobProgress pct={pct} />}
       {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
 
       {result && (

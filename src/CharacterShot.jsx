@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Info from './Info.jsx'
 import { loadCharacters } from './FaceRef.jsx'
+import { stepPct } from './JobProgress.jsx'
 
 // Image to Video: make the start / end image from a saved character. The video model can't take a face
 // reference itself, so the character's face is put into the start (and end) picture with the Image
@@ -73,7 +74,7 @@ export default function CharacterShot({ startImage, supportsEnd, onImage, say, a
         await sleep(1500)
         try { data = await (await fetch(`${L.backend}/job/${data.job_id}`, { headers: HEADERS })).json() } catch { /* restarting */ }
         if (Date.now() - started > 10 * 60 * 1000) throw new Error('BigLust took too long — check its cell 4 in Colab')
-        if (data.total_steps) say(`Making the ${slot} image of ${c.name}... step ${data.step}/${data.total_steps}`)
+        if (data.total_steps) say(`Making the ${slot} image of ${c.name}${stepPct(data.step, data.total_steps)}`)
       }
       if (data.status === 'error') throw new Error(data.error || 'BigLust could not make the picture')
       const img = data.images?.[0] || data.image
