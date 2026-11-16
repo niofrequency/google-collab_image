@@ -8,7 +8,8 @@ import CloudBar from './CloudBar.jsx'
 import { ConfirmHost } from './ConfirmDialog.jsx'
 import HeadSwap from './HeadSwap.jsx'
 import FaceSwap from './FaceSwap.jsx'
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, MusicIcon, TrainingIcon } from './icons.jsx'
+import Characters from './Characters.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, MusicIcon, TrainingIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
@@ -17,6 +18,7 @@ const TABS = [
   { id: 'video', label: 'Image to Video', short: 'Video', Icon: VideoIcon },
   { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
   { id: 'faceswap', label: 'Face Swap', short: 'Face Swap', Icon: FaceSwapIcon },
+  { id: 'characters', label: 'Characters', short: 'Characters', Icon: CharactersIcon },
   { id: 'music', label: 'Music', short: 'Music', Icon: MusicIcon },
   { id: 'train', label: 'LoRA Training', short: 'Training', Icon: TrainingIcon },
 ]
@@ -63,6 +65,7 @@ export default function Root() {
       <div style={{ display: tab === 'video' ? 'block' : 'none' }}><Video active={tab === 'video'} /></div>
       <div style={{ display: tab === 'headswap' ? 'block' : 'none' }}><HeadSwap active={tab === 'headswap'} /></div>
       <div style={{ display: tab === 'faceswap' ? 'block' : 'none' }}><FaceSwap active={tab === 'faceswap'} /></div>
+      <div style={{ display: tab === 'characters' ? 'block' : 'none' }}><Characters active={tab === 'characters'} /></div>
       <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>
       </main>

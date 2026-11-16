@@ -9,6 +9,8 @@ import { askConfirm } from './ConfirmDialog.jsx'
 import SavedPrompts, { useSavedPrompts, savePromptAs } from './SavedPrompts.jsx'
 import PresetBar from './PresetBar.jsx'
 import Info from './Info.jsx'
+import CharacterBar from './CharacterBar.jsx'
+import SaveToCharacter from './SaveToCharacter.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -175,7 +177,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
   const [lastSeed, setLastSeed] = useState(null)
-  const seedRef = useRef(null)   // seed of the job that just finished (for the Done message)
+  const seedRef = useRef(null)
+  const [activeCharacter, setActiveCharacter] = useState('')   // picked in the Saved faces bar
+  const [saveCharSrc, setSaveCharSrc] = useState(null)         // picture shown in the Save to Characters pop-up   // seed of the job that just finished (for the Done message)
   const set = patch => setSettings(prev => {
     const next = { ...prev, ...patch }
     localStorage.setItem(`${M.storage}_settings`, JSON.stringify(next))
@@ -342,6 +346,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   }, [loadGallery, prompt])
 
   const setSlotImage = useCallback((type, dataUrl) => {
+    if (type === 'head') setActiveCharacter('')   // a picture chosen by hand replaces the picked character
     if (type === 'body') setBodyImage(dataUrl)
     else setHeadImage(dataUrl)
     setStatusMsg(`${SLOT_LABEL[type]} image loaded`, 'ok')
@@ -575,7 +580,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   return (
     <div className="container">
       <h1>{M.name}</h1>
-      <p className="muted headswap-intro">Upload a body image and a head image. The head will be swapped onto the body while keeping pose, lighting and background.</p>
+      <p className="muted headswap-intro">{M.intro}</p>
+      <CharacterBar storageKey={`${M.storage}_charbar`} allAngles={false} active={activeCharacter}
+        hint={`Puts the character's Primary picture in the ${SLOT_LABEL.head} box.`}
+        onPick={(c, images) => { setSlotImage('head', images[0]); setActiveCharacter(c.name); setStatusMsg(`${c.name} is in the ${SLOT_LABEL.head} box`, 'ok') }}
+        onClear={() => { setActiveCharacter(''); setHeadImage(null) }} />
 
       <label>Backend URL (from Colab)</label>
       <input type="text" placeholder="https://xxxx.trycloudflare.com" value={backendUrl} onChange={event => setBackendUrl(event.target.value)} onBlur={loadUserModels} />
@@ -776,10 +785,12 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         <div className="lb-bar" onClick={event => event.stopPropagation()}>
           <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
           <span className="lb-caption">{gallery[lightboxIndex].prompt || `${M.name} result`}</span>
+          <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
           <button className="secondary" onClick={() => download(gallery[lightboxIndex])}>Download</button>
         </div>
         <div className="lb-help">← → browse · Esc to close</div>
       </div>}
+      {saveCharSrc && <SaveToCharacter src={saveCharSrc} onClose={() => setSaveCharSrc(null)} say={setStatusMsg} />}
 
     </div>
   )

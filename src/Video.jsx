@@ -9,6 +9,7 @@ import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import { askConfirm } from './ConfirmDialog.jsx'
+import CharacterBar from './CharacterBar.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -156,7 +157,8 @@ export default function Video({ active }) {
   }
   useEffect(() => { if (url) connect() }, [])
 
-  function setStartImage(src) { setImage(src); say('Start image loaded', 'ok') }
+  const [videoCharacter, setVideoCharacter] = useState('')   // picked in the Saved faces bar
+  function setStartImage(src) { setImage(src); setVideoCharacter(''); say('Start image loaded', 'ok') }
   function setSlot(slot, src) {
     if (slot === 'end') { setEndImage(src); say('End image loaded', 'ok') } else setStartImage(src)
   }
@@ -359,6 +361,10 @@ export default function Video({ active }) {
         3. Add a start image, describe the motion, press Generate. A clip takes a few minutes (longer on a T4).<br />
         Videos are saved in this browser; use Download to keep a file.
       </>} /></h1>
+      <CharacterBar storageKey="video_charbar" allAngles={false} active={videoCharacter}
+        hint="Puts the character's Primary picture in Start image. To make a new start picture of the character in a scene, use “Make the start / end image from a character” below."
+        onPick={(c, images) => { setStartImage(images[0]); setVideoCharacter(c.name) }}
+        onClear={() => { setVideoCharacter(''); setImage('') }} />
 
       <label>Video server URL <Info text="The READY: URL printed by cell 3 of IMG2VID-WAN22-A14B.ipynb or IMG2VID-WAN22-5B-FREE.ipynb. It's a different notebook from the image generator, and the URL changes every time you start cell 3." /></label>
       <input value={url} onChange={e => setUrl(e.target.value)} onBlur={connect} placeholder="Paste the READY: URL from cell 3 of an IMG2VID notebook (https://….trycloudflare.com)" />

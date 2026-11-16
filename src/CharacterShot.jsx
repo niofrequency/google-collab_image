@@ -47,7 +47,8 @@ export default function CharacterShot({ startImage, supportsEnd, onImage, say, a
   useEffect(() => {
     const reload = () => setCharacters(loadCharacters())
     window.addEventListener('cloud-settings', reload)
-    return () => window.removeEventListener('cloud-settings', reload)
+    window.addEventListener('characters-changed', reload)
+    return () => { window.removeEventListener('cloud-settings', reload); window.removeEventListener('characters-changed', reload) }
   }, [])
 
   async function make(slot) {

@@ -10,6 +10,8 @@ import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { GENERATOR_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
+import CharacterBar from './CharacterBar.jsx'
+import SaveToCharacter from './SaveToCharacter.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -310,6 +312,30 @@ export default function App({ active = true }) {
     img.src = src
   }
 
+  // Saved faces bar: BigLust -> Face reference (all angles averaged); Qwen -> the reference pictures (Picture 1-3)
+  const [qwenCharacter, setQwenCharacter] = useState('')
+  const [saveCharSrc, setSaveCharSrc] = useState(null)
+  function pickCharacter(c, images) {
+    if (backendTypeRef.current === 'qwen_image_edit') {
+      setRefImages(images.slice(0, MAX_REFS))
+      applyImageSize(images[0], false)
+      setQwenCharacter(c.name)
+      setStatusMsg(`${c.name}: ${images.length} picture${images.length === 1 ? '' : 's'} in Reference Images — refer to them as "Picture 1"` +
+        (images.length > 1 ? ` to "Picture ${images.length}"` : '') + ' in the prompt', 'ok')
+    } else {
+      setFaceRefImages(images)
+      setFaceRefOn(true)
+      setFaceRefCharacter(c.name)
+      if (c.strength) setFaceRefStrength(c.strength)
+      setStatusMsg(`${c.name} is the Face reference (${images.length} picture${images.length === 1 ? '' : 's'})` +
+        (backendTypeRef.current === 'sdxl' ? '' : ' — it is used with the BigLust notebook'), 'ok')
+    }
+  }
+  function clearCharacter() {
+    if (backendTypeRef.current === 'qwen_image_edit') { setQwenCharacter(''); setRefImages([]) }
+    else { setFaceRefCharacter(''); setFaceRefImages([]) }
+  }
+
   function setRefImages(list) {
     refImagesRef.current = list
     setRefImagesState(list)
@@ -317,6 +343,7 @@ export default function App({ active = true }) {
 
   // Adds an image to the next free slot. Picture 1 also sets Width/Height when editing with Qwen.
   function setReference(src, msg) {
+    setQwenCharacter('')   // pictures added by hand: no longer just the picked character
     const current = refImagesRef.current
     if (current.includes(src)) return setStatusMsg('That image is already added', 'error')
     if (current.length >= MAX_REFS) return setStatusMsg(`Up to ${MAX_REFS} images — remove one first (× on the image)`, 'error')
@@ -350,6 +377,7 @@ export default function App({ active = true }) {
   }
 
   function removeRefImage(i) {
+    setQwenCharacter('')
     setRefImages(refImagesRef.current.filter((_, idx) => idx !== i))
     if (i === 0 && refImagesRef.current.length) setStatusMsg('Picture 2 is now Picture 1 — press "Use image size" if you want its size', 'ok')
   }
@@ -385,6 +413,7 @@ export default function App({ active = true }) {
   }
 
   function clearReferenceImage() {
+    setQwenCharacter('')
     setRefImages([])
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -951,6 +980,10 @@ export default function App({ active = true }) {
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
+      <CharacterBar storageKey="gen_charbar" allAngles={true}
+        active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
+        hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : 'BigLust: the pictures become the Face reference.'}
+        onPick={pickCharacter} onClear={clearCharacter} />
 
       <label>Backend URL</label>
       <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
@@ -1329,12 +1362,15 @@ export default function App({ active = true }) {
             <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(gallery[lightboxIndex])}>Use as face</button>
             <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
+            <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
           {[gallery[lightboxIndex - 1], gallery[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}
         </div>
       )}
+
+      {saveCharSrc && <SaveToCharacter src={saveCharSrc} onClose={() => setSaveCharSrc(null)} say={setStatusMsg} />}
 
       {infoItem && (
         <div className="prompt-popup-overlay" onClick={() => setInfoItem(null)}>

@@ -62,3 +62,6 @@ export function TrainingIcon(props) {
 export function FaceSwapIcon(props) {
   return <NavSvg {...props}><circle cx="12" cy="12" r="8.5" /><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none" /><path d="M8.8 14.6c.9 1.1 2 1.6 3.2 1.6s2.3-.5 3.2-1.6" /></NavSvg>
 }
+export function CharactersIcon(props) {
+  return <NavSvg {...props}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.4.2 4.3 1.8 5 5.4" /></NavSvg>
+}

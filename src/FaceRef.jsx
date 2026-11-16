@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
+import { loadCharacters, saveCharacters as storeCharacters } from './characters.js'
 
 // Face reference (BigLust): 1–3 pictures of a character's face; every image keeps that face
 // (IP-Adapter FaceID Plus v2 in the notebook). Saved "characters" make comics / films easy:
 // pick the character for each panel or shot.
 
 export const MAX_FACE_REFS = 3
-const CHAR_KEY = 'face_characters'
 
 // Shrink a picture (data URL, blob URL or same-site address) to a small JPEG: plenty for the face
 // recogniser, and small enough to keep several characters in the browser.
@@ -33,28 +33,25 @@ export function shrinkImage(src, maxSide = 768) {
   })
 }
 
-export function loadCharacters() {
-  try { return JSON.parse(localStorage.getItem(CHAR_KEY)) || [] } catch { return [] }
-}
+export { loadCharacters }   // used to live here; the shared store is characters.js
 
 export default function FaceRef({ images, setImages, on, setOn, strength, setStrength, supported, say, character, setCharacter }) {
   const [characters, setCharacters] = useState(loadCharacters)
   const fileRef = useRef(null)
-  useEffect(() => {  // characters saved on another device arrive with the cloud backup
+  useEffect(() => {  // characters changed in the Characters tab, or saved on another device (cloud backup)
     const reload = () => setCharacters(loadCharacters())
     window.addEventListener('cloud-settings', reload)
-    return () => window.removeEventListener('cloud-settings', reload)
+    window.addEventListener('characters-changed', reload)
+    return () => {
+      window.removeEventListener('cloud-settings', reload)
+      window.removeEventListener('characters-changed', reload)
+    }
   }, [])
 
   function saveCharacters(list) {
-    try {
-      localStorage.setItem(CHAR_KEY, JSON.stringify(list))
-      setCharacters(list)
-      return true
-    } catch {
-      say('Browser storage is full — delete a character first', 'error')
-      return false
-    }
+    if (storeCharacters(list)) { setCharacters(list); return true }
+    say('Browser storage is full — delete a character first', 'error')
+    return false
   }
 
   async function addPictures(srcs) {
@@ -79,7 +76,8 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
     if (!images.length) return say('Add face pictures first', 'error')
     const name = (prompt('Character name (e.g. "Mia" or "The detective"):', character || '') || '').trim()
     if (!name) return
-    const list = [...characters.filter(c => c.name !== name), { name, images, strength: +strength }]
+    const old = characters.find(c => c.name === name)
+    const list = [...characters.filter(c => c.name !== name), { ...old, name, images, strength: +strength, createdAt: old?.createdAt || Date.now() }]
     if (saveCharacters(list)) { setCharacter(name); say(`Character "${name}" saved`, 'ok') }
   }
 
