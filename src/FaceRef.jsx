@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
+import { askConfirm } from './ConfirmDialog.jsx'
 
 // Face reference (BigLust): 1–3 pictures of a character's face; every image keeps that face
 // (IP-Adapter FaceID Plus v2 in the notebook). Saved "characters" make comics / films easy:
@@ -85,8 +86,8 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
     say(`Character "${c.name}" loaded`, 'ok')
   }
 
-  function deleteCharacter(c) {
-    if (!confirm(`Delete the character "${c.name}"? (Only the saved face pictures — not your images.)`)) return
+  async function deleteCharacter(c) {
+    if (!(await askConfirm({ title: `Delete the character "${c.name}"?`, message: 'Only its saved face pictures are deleted — not your images.', yes: 'Delete' }))) return
     saveCharacters(characters.filter(x => x.name !== c.name))
     if (character === c.name) setCharacter('')
   }

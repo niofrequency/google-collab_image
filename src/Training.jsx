@@ -3,6 +3,7 @@ import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { TRAINING_PRESETS, QWEN_TRAINING_PRESETS } from './presets.js'
 import { onUserChange, listCloudDatasets, saveDatasetToCloud, loadDatasetFromCloud, cloudFile, friendly } from './cloud.js'
+import { askConfirm } from './ConfirmDialog.jsx'
 
 // LoRA Training tab: talks to the training server started by cell 2 of SDXL-LORA-TRAINING.ipynb.
 // Images and captions live in Google Drive (MyDrive/ComfyUI/training/<name>/images); this page edits them there.
@@ -289,7 +290,7 @@ export default function Training({ active }) {
 
   async function removeImage(i) {
     const item = images[i]
-    if (!confirm(`Delete ${item.file} from Google Drive?`)) return
+    if (!(await askConfirm({ title: `Delete ${item.file}?`, message: 'It is deleted from the training dataset in your Google Drive.', yes: 'Delete' }))) return
     try {
       const r = await api(`/training/dataset/${encodeURIComponent(dsName)}/image/${encodeURIComponent(item.file)}`, { method: 'DELETE' })
       setImages(r.images.map(x => ({ ...x, saved: x.caption })))

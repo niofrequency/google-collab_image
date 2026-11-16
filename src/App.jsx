@@ -9,6 +9,7 @@ import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
 import { GENERATOR_PRESETS } from './presets.js'
+import { askConfirm } from './ConfirmDialog.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -712,10 +713,10 @@ export default function App({ active = true }) {
     else setSelectedPromptIndices(new Set(savedPrompts.map((_, i) => i)))
   }
 
-  function deleteSelectedPrompts() {
-    if (selectedPromptIndices.size === 0) return
-    const confirmText = prompt(`Type DELETE to confirm removal of ${selectedPromptIndices.size} prompt(s):`)
-    if (confirmText !== 'DELETE') { setStatusMsg('Deletion cancelled', 'error'); return }
+  async function deleteSelectedPrompts() {
+    const n = selectedPromptIndices.size
+    if (n === 0) return
+    if (!(await askConfirm({ title: `Delete ${n} saved prompt${n === 1 ? '' : 's'}?`, message: 'This can\'t be undone.', yes: 'Delete' }))) return
     const updated = savedPrompts.filter((_, i) => !selectedPromptIndices.has(i))
     setSavedPrompts(updated)
     localStorage.setItem('prompts', JSON.stringify(updated))
@@ -739,9 +740,9 @@ export default function App({ active = true }) {
   }
 
   async function deleteSelected() {
-    if (selectedIds.size === 0) return
-    const confirmText = prompt(`Type DELETE to confirm removal of ${selectedIds.size} image(s):`)
-    if (confirmText !== 'DELETE') { setStatusMsg('Deletion cancelled', 'error'); return }
+    const n = selectedIds.size
+    if (n === 0) return
+    if (!(await askConfirm({ title: `Delete ${n} image${n === 1 ? '' : 's'}?`, message: 'They are removed from the gallery (and from your cloud backup, if it is on). This can\'t be undone.', yes: 'Delete' }))) return
     await cloudForget('images', [...selectedIds])
     const db = await openDB()
     const tx = db.transaction('images', 'readwrite')
@@ -1283,7 +1284,7 @@ export default function App({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
           }
           // Whole images in justified rows: each row has one height, wide pictures get more width than tall ones
           const gap = layout.narrow ? 6 : 12

@@ -5,6 +5,7 @@ import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import './App.css'
+import { askConfirm } from './ConfirmDialog.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -428,7 +429,9 @@ export default function HeadSwap({ active = true }) {
   }
 
   async function deleteSelected() {
-    if (!selectedIds.size) return
+    const n = selectedIds.size
+    if (!n) return
+    if (!(await askConfirm({ title: `Delete ${n} Head Swap image${n === 1 ? '' : 's'}?`, message: 'This can\'t be undone.', yes: 'Delete' }))) return
     const db = await openGalleryDb()
     await new Promise((resolve, reject) => {
       const tx = db.transaction(GALLERY_STORE, 'readwrite')
@@ -571,7 +574,7 @@ export default function HeadSwap({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
           }
           // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
           const gap = layout.narrow ? 6 : 12

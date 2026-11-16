@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Info from './Info.jsx'
+import { askConfirm } from './ConfirmDialog.jsx'
 
 // Row of preset buttons: built-in presets (each with an "i") plus your own saved ones (kept in this browser).
 // onApply(preset) applies a preset; getCurrent() returns { s, tag?, ... } for "Save current as preset".
@@ -27,8 +28,8 @@ export default function PresetBar({ scope, builtins, onApply, getCurrent, help }
     setActive(name)
   }
 
-  function remove(name) {
-    if (!confirm(`Delete the preset "${name}"?`)) return
+  async function remove(name) {
+    if (!(await askConfirm({ title: `Delete the preset "${name}"?`, yes: 'Delete' }))) return
     store(custom.filter(c => c.name !== name))
   }
 

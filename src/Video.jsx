@@ -8,6 +8,7 @@ import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
+import { askConfirm } from './ConfirmDialog.jsx'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -308,7 +309,7 @@ export default function Video({ active }) {
   }
 
   async function removeVideo(v) {
-    if (!confirm('Delete this video from the gallery?')) return
+    if (!(await askConfirm({ title: 'Delete this video?', message: 'It is removed from the gallery (and from your cloud backup, if it is on). This can\'t be undone.', yes: 'Delete' }))) return
     await cloudForget('videos', [v.id])
     await dbDelete(v.id)
     setViewIndex(-1)
@@ -317,7 +318,8 @@ export default function Video({ active }) {
   }
 
   async function deleteSelected() {
-    if (!selectedIds.size || !confirm(`Delete ${selectedIds.size} video(s) from the gallery?`)) return
+    const n = selectedIds.size
+    if (!n || !(await askConfirm({ title: `Delete ${n} video${n === 1 ? '' : 's'}?`, message: 'They are removed from the gallery (and from your cloud backup, if it is on). This can\'t be undone.', yes: 'Delete' }))) return
     await cloudForget('videos', [...selectedIds])
     for (const id of selectedIds) await dbDelete(id)
     setSelectedIds(new Set())
@@ -513,7 +515,7 @@ export default function Video({ active }) {
             </div>
           )
           if (!fitVideos) {
-            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
           }
           // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
           const gap = layout.narrow ? 6 : 12

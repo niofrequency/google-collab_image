@@ -5,6 +5,7 @@ import Video from './Video.jsx'
 import Music from './Music.jsx'
 import GalleryPrompts from './GalleryPrompts.jsx'
 import CloudBar from './CloudBar.jsx'
+import { ConfirmHost } from './ConfirmDialog.jsx'
 import HeadSwap from './HeadSwap.jsx'
 import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, MusicIcon, TrainingIcon } from './icons.jsx'
 
@@ -62,6 +63,7 @@ export default function Root() {
       <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>
       </main>
+      <ConfirmHost />
     </div>
   )
 }

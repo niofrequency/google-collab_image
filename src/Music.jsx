@@ -3,6 +3,7 @@ import Info from './Info.jsx'
 import { queueSync, cloudForget } from './cloud.js'
 import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
+import { askConfirm } from './ConfirmDialog.jsx'
 
 // Music tab: talks to MUSIC-ACESTEP.ipynb (ACE-Step 1.5). Finished songs are kept in this browser (IndexedDB "MusicGallery").
 
@@ -184,7 +185,7 @@ export default function Music() {
   }
 
   async function removeSong(s) {
-    if (!confirm('Delete this song?')) return
+    if (!(await askConfirm({ title: 'Delete this song?', message: 'This can\'t be undone.', yes: 'Delete' }))) return
     await cloudForget('songs', [s.id])
     await dbDelete(s.id)
     refreshSongs()
