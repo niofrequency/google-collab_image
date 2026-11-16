@@ -38,10 +38,11 @@ export { loadCharacters }   // used to live here; the shared store is characters
 const METHODS = [
   ['faceid', 'FaceID', 'IP-Adapter FaceID Plus v2 — the original method. Keep it low (about 0.2–0.5) or the picture can look off.'],
   ['pulid', 'PuLID', 'PuLID — keeps the face but leaves the lighting and style alone, so it can go higher (about 0.6–1.0). Its models download the first time you use it (a minute or two).'],
+  ['both', 'Both', 'FaceID and PuLID together, each with its own strength. They add up, so keep both lower than alone — start at FaceID 0.15 + PuLID 0.5.'],
 ]
 
 export default function FaceRef({ images, setImages, on, setOn, strength, setStrength, supported, say, character, setCharacter,
-  method = 'faceid', setMethod = () => {}, methods = ['faceid'] }) {
+  method = 'faceid', setMethod = () => {}, methods = ['faceid'], strength2 = 0.5, setStrength2 = () => {} }) {
   const [characters, setCharacters] = useState(loadCharacters)
   const fileRef = useRef(null)
   useEffect(() => {  // characters changed in the Characters tab, or saved on another device (cloud backup)
@@ -110,8 +111,13 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
           Face reference: {on && supported ? 'On' : 'Off'}
         </button>
         {on && supported && (
-          <label className="inline-label">Strength
+          <label className="inline-label">{method === 'both' ? 'FaceID' : 'Strength'}
             <input type="number" step="0.05" min="0.05" max={method === 'pulid' ? 2 : 1.5} value={strength} onChange={e => setStrength(e.target.value)} />
+          </label>
+        )}
+        {on && supported && method === 'both' && (
+          <label className="inline-label">PuLID
+            <input type="number" step="0.05" min="0.05" max="2" value={strength2} onChange={e => setStrength2(e.target.value)} />
           </label>
         )}
         {on && supported && (
@@ -126,7 +132,7 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
             })}
           </div>
         )}
-        <Info text={<>Keeps <b>the same face</b> in every image — no training needed. Add 1–3 clear pictures of the character's face (front-facing, head-and-shoulders works best; different angles help). Used in the main image and in face fix.<br /><br /><b>Method</b>: <b>FaceID</b> (IP-Adapter FaceID Plus v2, the original) or <b>PuLID</b> — PuLID keeps the face but changes the lighting and style much less, so it can be turned up further before the picture looks off. Each method remembers its own strength.<br /><br /><b>Comics / short films</b>: make your character once (generate a face you like, then <i>Use as face</i> in the full-size viewer), press <b>Save as character</b>, and pick that character for every panel or shot. Start frames made this way keep the character in Image to Video too.<br /><br /><b>Strength</b> — FaceID: 0.2–0.5 natural · 0.8 strong (can look stiff or odd). PuLID: 0.6 light · 0.8–1.0 default · 1.2+ very strong. Turn <b>Face fix</b> on for small faces in full-body shots.<br /><br />It copies the <b>face</b> only — describe hair, body and clothes in the prompt (or use a LoRA). Works with your LoRAs.<br /><br />Only use pictures of real people who have agreed to it.{!supported && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (cell 1 installs it).</>}</>} />
+        <Info text={<>Keeps <b>the same face</b> in every image — no training needed. Add 1–3 clear pictures of the character's face (front-facing, head-and-shoulders works best; different angles help). Used in the main image and in face fix.<br /><br /><b>Method</b>: <b>FaceID</b> (IP-Adapter FaceID Plus v2, the original) or <b>PuLID</b> — PuLID keeps the face but changes the lighting and style much less, so it can be turned up further before the picture looks off — or <b>Both</b> stacked, each with its own strength (they add up, so keep both lower: FaceID 0.15 + PuLID 0.5 to start). Each method remembers its own strength.<br /><br /><b>Comics / short films</b>: make your character once (generate a face you like, then <i>Use as face</i> in the full-size viewer), press <b>Save as character</b>, and pick that character for every panel or shot. Start frames made this way keep the character in Image to Video too.<br /><br /><b>Strength</b> — FaceID: 0.2–0.5 natural · 0.8 strong (can look stiff or odd). PuLID: 0.6 light · 0.8–1.0 default · 1.2+ very strong. Turn <b>Face fix</b> on for small faces in full-body shots.<br /><br />It copies the <b>face</b> only — describe hair, body and clothes in the prompt (or use a LoRA). Works with your LoRAs.<br /><br />Only use pictures of real people who have agreed to it.{!supported && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (cell 1 installs it).</>}</>} />
       </div>
 
       {supported && on && (<>

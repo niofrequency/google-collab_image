@@ -184,6 +184,9 @@ alone. So it can be turned up further than FaceID before the picture looks off, 
   session (a minute or two), not in cell 1.
 - Use a **clean, sharp** face picture — PuLID picks up more detail from it than FaceID does.
 - Works with face fix, the refiner, your LoRAs and the pose / depth / style picture, like FaceID.
+- **Both:** FaceID and PuLID stacked (FaceID first, then PuLID), each with its own strength. Their pushes add up,
+  so keep both lower than alone — start at FaceID 0.15 + PuLID 0.5. In practice FaceID tends to hold the overall
+  look of the reference (and works well with a pose picture), PuLID the facial identity.
 
 | Model / notebook | Face reference | How to keep a face instead |
 |---|---|---|

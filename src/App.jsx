@@ -98,7 +98,8 @@ export default function App({ active = true }) {
   const [faceRefImages, setFaceRefImages] = useState(savedFaceRef.images || [])
   const [faceRefStrength, setFaceRefStrength] = useState(savedFaceRef.strength ?? 0.8)
   // FaceID or PuLID; each method remembers its own strength (they feel different at the same number)
-  const [faceRefMethod, setFaceRefMethod] = useState(savedFaceRef.method === 'pulid' ? 'pulid' : 'faceid')
+  const [faceRefMethod, setFaceRefMethod] = useState(['pulid', 'both'].includes(savedFaceRef.method) ? savedFaceRef.method : 'faceid')
+  const [faceRefStrength2, setFaceRefStrength2] = useState(savedFaceRef.strength2 ?? 0.5)   // "both": PuLID's strength
   const [faceRefStrengths, setFaceRefStrengths] = useState(savedFaceRef.strengths || {})
   const [faceRefMethods, setFaceRefMethods] = useState([])
   const [supportsLoraTags, setSupportsLoraTags] = useState(false)
@@ -133,15 +134,17 @@ export default function App({ active = true }) {
   useEffect(() => {
     try {
       localStorage.setItem('face_ref', JSON.stringify({ on: faceRefOn, images: faceRefImages, strength: +faceRefStrength, character: faceRefCharacter,
-        method: faceRefMethod, strengths: { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength } }))
+        method: faceRefMethod, strength2: +faceRefStrength2,
+        strengths: { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength, ...(faceRefMethod === 'both' ? { both2: +faceRefStrength2 } : {}) } }))
     } catch { /* storage full: the pictures still work until the page is reloaded */ }
-  }, [faceRefOn, faceRefImages, faceRefStrength, faceRefCharacter, faceRefMethod, faceRefStrengths])
+  }, [faceRefOn, faceRefImages, faceRefStrength, faceRefStrength2, faceRefCharacter, faceRefMethod, faceRefStrengths])
   function switchFaceRefMethod(m) {
     if (m === faceRefMethod) return
-    const strengths = { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength }
+    const strengths = { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength, ...(faceRefMethod === 'both' ? { both2: +faceRefStrength2 } : {}) }
     setFaceRefStrengths(strengths)
     setFaceRefMethod(m)
-    setFaceRefStrength(strengths[m] ?? 0.8)
+    setFaceRefStrength(strengths[m] ?? (m === 'both' ? 0.15 : 0.8))
+    if (m === 'both') setFaceRefStrength2(strengths.both2 ?? 0.5)
   }
   const [showAddRefiner, setShowAddRefiner] = useState(false)
   const [newRefinerUrl, setNewRefinerUrl] = useState('')
@@ -636,7 +639,7 @@ export default function App({ active = true }) {
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
-    if (faceRefActive && faceRefMethod === 'pulid' && !faceRefMethods.includes('pulid')) { clearInterval(timer); setShowProgress(false); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
+    if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); setShowProgress(false); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
     if (inpaint && !supportsInpaint) { clearInterval(timer); setShowProgress(false); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
     if (inpaintActive && backendType === 'sdxl' && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); setShowProgress(false); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
@@ -659,6 +662,7 @@ export default function App({ active = true }) {
       face_ref_images: faceRefActive ? faceRefImages : [],
       face_ref_strength: +faceRefStrength,
       face_ref_method: faceRefMethod,
+      ...(faceRefMethod === 'both' ? { face_ref_pulid_strength: +faceRefStrength2 } : {}),
       ...(inpaintActive ? (backendType === 'sdxl' ? {
         init_image: inpaint.image, mask_image: inpaint.mask, inpaint_denoise: +inpaintSettings.denoise,
         mask_grow: +inpaintSettings.grow, mask_feather: +inpaintSettings.feather, width: inpaint.width, height: inpaint.height,
@@ -730,7 +734,8 @@ export default function App({ active = true }) {
         loras: [...loras],
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
-        faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter } : null,
+        faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
+          ...(faceRefMethod === 'both' ? { strength2: +faceRefStrength2 } : {}) } : null,
         refPicture: data.ref_mode ? (data.ref_mode === 'img2img' ? { mode: 'img2img', denoise: +refSettings.denoise }
           : { mode: data.ref_mode, strength: +refSettings.strength, end: +refSettings.end }) : null,
       }
@@ -1006,6 +1011,7 @@ export default function App({ active = true }) {
     if (s.faceRef != null) setFaceRefOn(s.faceRef && supportsFaceRef)
     if (s.faceRefMethod) { setFaceRefStrengths(prev => ({ ...prev, [faceRefMethod]: +faceRefStrength })); setFaceRefMethod(s.faceRefMethod) }
     if (s.faceRefStrength != null) setFaceRefStrength(s.faceRefStrength)
+    if (s.faceRefStrength2 != null) setFaceRefStrength2(s.faceRefStrength2)
     if (s.loraStrength != null && loras.length) setLoras(prev => prev.map(l => ({ ...l, strength: s.loraStrength })))
     const note = s.faceFix && !supportsFaceFix ? ' (face fix needs the updated BigLust notebook — open it fresh from GitHub)'
       : s.faceRef && !supportsFaceRef ? ' (face reference needs the updated BigLust notebook — open it fresh from GitHub)'
@@ -1018,7 +1024,8 @@ export default function App({ active = true }) {
       steps: +steps, cfg: +cfg, sampler, scheduler, denoise: +denoise, batch: +batchSize,
       ...(backendType === 'qwen_image_edit' ? {} : { width: +width, height: +height }),
       faceFix, faceStrength: +faceStrength,
-      ...(supportsFaceRef ? { faceRef: faceRefOn, faceRefStrength: +faceRefStrength, faceRefMethod } : {}),
+      ...(supportsFaceRef ? { faceRef: faceRefOn, faceRefStrength: +faceRefStrength, faceRefMethod,
+        ...(faceRefMethod === 'both' ? { faceRefStrength2: +faceRefStrength2 } : {}) } : {}),
       ...(loras.length ? { loraStrength: loras[0].strength } : {}),
     } }
   }
@@ -1216,7 +1223,8 @@ export default function App({ active = true }) {
         <FaceRef images={faceRefImages} setImages={setFaceRefImages} on={faceRefOn} setOn={setFaceRefOn}
           strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
-          method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods} />
+          method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods}
+          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} />
       )}
 
       {(
@@ -1550,7 +1558,7 @@ export default function App({ active = true }) {
                 <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
               ))}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
-              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.method === 'pulid' ? 'PuLID' : 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, strength {infoItem.faceRef.strength}</>}
+              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.method === 'both' ? 'FaceID + PuLID' : infoItem.faceRef.method === 'pulid' ? 'PuLID' : 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
                 {infoItem.refPicture.mode === 'img2img'
                   ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)
