@@ -932,3 +932,12 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .confirm-buttons button.confirm-yes:hover:not(:disabled) { background: #b8382f; }
 @keyframes confirm-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes confirm-pop { from { transform: scale(0.96); opacity: 0 } to { transform: none; opacity: 1 } }
+
+/* Head Swap / Face Swap: presets, Generate + Save Prompt, saved prompts */
+.headswap-presets { margin: 4px 0 8px; }
+.headswap-preset-info { font-size: 12px; margin: -2px 0 8px; line-height: 1.45; }
+.headswap-generate-row { margin-top: 16px; gap: 10px; }
+.headswap-generate-row .headswap-generate { margin-top: 0; flex: 2 1 0; }
+.headswap-generate-row .headswap-save-prompt { flex: 1 1 0; width: auto; }
+.saved-prompts-actions { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.saved-prompts-actions button { width: auto; }

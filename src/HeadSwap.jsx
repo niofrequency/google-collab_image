@@ -6,6 +6,7 @@ import { shrinkImage } from './FaceRef.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import './App.css'
 import { askConfirm } from './ConfirmDialog.jsx'
+import SavedPrompts, { useSavedPrompts, savePromptAs } from './SavedPrompts.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -31,6 +32,9 @@ export const SWAP_MODES = {
     },
     baseLoraNote: 'head swap',
     loraModel: 'Qwen-Image 2.1',
+    presets: [
+      { name: 'Default', info: 'The official BFS head swap prompt: the whole head (face, hair, head shape) from the Head image.' },
+    ],
   },
   faceswap: {
     name: 'Face Swap',
@@ -47,6 +51,12 @@ export const SWAP_MODES = {
     },
     baseLoraNote: 'face swap',
     loraModel: 'Qwen-Image-Edit',
+    presets: [
+      { name: 'Face only', info: 'The official BFS face swap prompt: only the face changes; the photo keeps its own hair.' },
+      { name: 'Face + hairstyle',
+        info: 'Also copies the hairstyle (style, length and color) from the Face picture. The face swap LoRA was trained on face-only swaps, so the hair may not always follow — for the hair every time, use the Head Swap tab.',
+        prompt: 'face swap face from Image 1 to Image 2. swap the face and the hairstyle: copy the face and the hair (hairstyle, length and hair color) from Image 1, match the skin tone, and keep the target pose, body, clothes and lighting from Image 2.' },
+    ],
   },
 }
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
@@ -131,7 +141,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const SLOT_LABEL = { body: M.slots.body.short, head: M.slots.head.short }
   const UNREACHABLE_MSG = unreachableMsg(M)
   const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem(`${M.storage}_backend_url`) || '')
-  const [prompt, setPrompt] = useState(M.prompt)
+  const [prompt, setPrompt] = useState(() => localStorage.getItem(`${M.storage}_prompt`) || M.prompt)
+  const [savedPrompts, storeSavedPrompts] = useSavedPrompts(`${M.storage}_prompts`)
+  const presets = M.presets.map(p => ({ ...p, prompt: p.prompt || M.prompt }))
   const [bodyImage, setBodyImage] = useState(null)
   const [headImage, setHeadImage] = useState(null)
   const [result, setResult] = useState(null)
@@ -199,6 +211,10 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   useEffect(() => {
     localStorage.setItem(`${M.storage}_backend_url`, backendUrl)
   }, [backendUrl])
+
+  useEffect(() => {  // the prompt box keeps what you typed between visits
+    localStorage.setItem(`${M.storage}_prompt`, prompt)
+  }, [prompt, M.storage])
 
   useEffect(() => {
     localStorage.setItem(`${M.storage}_loras`, JSON.stringify(loras))
@@ -572,11 +588,26 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       {!showAddLora && <button className="secondary headswap-add-lora" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>}
 
       <label className="headswap-prompt-label">Prompt</label>
+      <div className="preset-bar headswap-presets">
+        <span className="chips-label">Presets</span>
+        {presets.map(p => (
+          <span key={p.name} className="preset">
+            <button className={`chip ${prompt === p.prompt ? 'active' : ''}`} title={p.info}
+              onClick={() => { setPrompt(p.prompt); setStatusMsg(`Preset "${p.name}" loaded into the prompt`, 'ok') }}>{p.name}</button>
+          </span>
+        ))}
+      </div>
+      {presets.find(p => p.prompt === prompt)?.info && <div className="muted headswap-preset-info">{presets.find(p => p.prompt === prompt).info}</div>}
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />
-      <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : `Generate ${M.name}`}</button>
+      <div className="row headswap-generate-row">
+        <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : `Generate ${M.name}`}</button>
+        <button className="secondary headswap-save-prompt" onClick={() => savePromptAs(savedPrompts, storeSavedPrompts, prompt, setStatusMsg)}>Save Prompt</button>
+      </div>
 
       {loading && <div className="progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>}
       {status && <div className={`status ${statusType}`} role="status">{status}</div>}
+
+      <SavedPrompts items={savedPrompts} store={storeSavedPrompts} onLoad={setPrompt} say={setStatusMsg} />
 
       {result && <div className="headswap-latest-result"><h3>Latest result</h3><img src={result} alt={`Latest ${M.name} result`} /></div>}
 

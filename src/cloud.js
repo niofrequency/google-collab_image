@@ -27,7 +27,8 @@ export const KINDS = {
   songs: { db: 'MusicGallery', store: 'songs', ext: 'mp3', type: 'audio/mpeg', label: 'songs', one: 'song' },
 }
 // localStorage keys synced as one settings file (lists of {name, ...} are merged by name)
-const SETTINGS_KEYS = k => k === 'face_characters' || k === 'prompts' || k.startsWith('presets_custom_')
+const SETTINGS_KEYS = k => k === 'face_characters' || k === 'prompts' || k.startsWith('presets_custom_') ||
+  k === 'headswap_prompts' || k === 'faceswap_prompts'
 
 // ---------------------------------------------------------------- config
 export function parseConfig(text) {
