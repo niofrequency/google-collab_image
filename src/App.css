@@ -794,3 +794,29 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
   .lb-bar { gap: 6px; padding: 8px; max-width: 100%; }
   .lb-bar button, .lb-bar a.video-download, .lb-bar .danger { padding: 7px 10px; font-size: 12px; }
 }
+
+/* ---------- Video and Music tabs on phones ---------- */
+.song-list { grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+@media (max-width: 760px) {
+  /* presets: label on its own line, buttons wrap tightly under it */
+  .preset-bar { gap: 6px 4px; }
+  .preset-bar .chips-label { flex-basis: 100%; margin-bottom: 2px; }
+
+  /* "Make the start / end image from a character": keep its (i) next to the button */
+  .char-shot > .link-btn { flex: 1 1 0; min-width: 0; margin-right: 0; white-space: normal; text-align: left; }
+  .char-shot > .info-wrap { margin-top: 10px; margin-left: 0; }
+  .char-shot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .char-shot > .char-shot-body { flex-basis: 100%; }
+
+  /* song cards: compact, buttons share the row evenly */
+  .song-list { gap: 10px; }
+  .song-card { padding: 10px; gap: 6px; }
+  .song-card audio { height: 40px; }
+  .song-card .inline { flex-wrap: wrap; gap: 6px; }
+  .song-card .inline > * { flex: 1 1 auto; text-align: center; }
+  .song-result audio { min-width: 0; width: 100%; }
+  .song-result .video-download { flex: 1; text-align: center; }
+
+  /* video page: badges and toggles a bit smaller */
+  .gpu-note { font-size: 12px; }
+}
