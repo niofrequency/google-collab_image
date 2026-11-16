@@ -12,7 +12,7 @@ import Info from './Info.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import { trackJob } from './favicon.js'
-import JobProgress from './JobProgress.jsx'
+import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -179,8 +179,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
   const [lastSeed, setLastSeed] = useState(null)
-  const seedRef = useRef(null)   // seed of the job that just finished (for the Done message)
-  const timeRef = useRef(null)   // how long it took on the GPU (seconds), when the notebook reports it
+  const swapJobs = useJobsProgress()   // one steady bar for every swap running on this tab (the server queues them)
+  const doneRef = useRef({ count: 0, last: '' })   // the Done message waits until every queued swap has finished
   const [activeCharacter, setActiveCharacter] = useState('')   // picked in the Saved faces bar
   const [saveCharSrc, setSaveCharSrc] = useState(null)         // picture shown in the Save to Characters pop-up   // seed of the job that just finished (for the Done message)
   const set = patch => setSettings(prev => {
@@ -194,7 +194,6 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [result, setResult] = useState(null)
   const [status, setStatus] = useState('')
   const [statusType, setStatusType] = useState('')
-  const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [gallery, setGallery] = useState([])
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -425,7 +424,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     if (url) loadImageFromUrl(url, type)
   }
 
-  async function pollJob(backend, jobId) {
+  async function pollJob(backend, jobId, onProgress) {
     const started = Date.now()
     let delay = 1500
     let lastPollError = ''
@@ -442,15 +441,12 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         if (data.status === 'error' || data.error) throw new JobError(data.error || `${M.name} job failed`)
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) {
-          seedRef.current = data.seed ?? null
-          timeRef.current = data.seconds ?? null
-          if (data.seed != null) setLastSeed(data.seed)
-          return image
+          return { image, seed: data.seed ?? null, seconds: data.seconds ?? null }
         }
         if (lastWasDown) { setStatusMsg(''); lastWasDown = false }
         // only ever forward: the server's own percentage, else its step counter
         const p = data.progress != null ? Number(data.progress) : data.total_steps ? 5 + 90 * (data.step || 0) / data.total_steps : null
-        if (p != null && Number.isFinite(p)) setProgress(old => Math.max(old, Math.min(95, p)))
+        if (p != null && Number.isFinite(p)) onProgress(Math.min(95, p))
       } catch (error) {
         if (error instanceof JobError) throw error
         lastPollError = error.message
@@ -471,11 +467,10 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     if (!bodyImage) return setStatusMsg(`Upload a ${SLOT_LABEL.body} image first`, 'error')
     if (!headImage) return setStatusMsg(`Upload a ${SLOT_LABEL.head} image first`, 'error')
 
-    setLoading(true)
-    setProgress(3)
-    setResult(null)
-    seedRef.current = null
-    timeRef.current = null
+    if (swapJobs.idle()) { doneRef.current = { count: 0, last: '' }; setResult(null) }   // a new round
+    const job = swapJobs.start(1)
+    const progress = p => job.set(p / 100)
+    progress(3)
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       // 1) Is the backend there, and is the model loaded?
@@ -492,7 +487,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       if (health.loaded === false) throw new Error(`The backend is still loading the model. Wait until cell ${M.startCell} prints READY, then try again.`)
 
       // 2) Send smaller copies of the photos
-      setProgress(5)
+      progress(5)
       const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
       const steps = Math.round(Math.min(C.steps[1], Math.max(C.steps[0], +settings.steps || C.steps[2])))
       const payload = JSON.stringify({
@@ -524,21 +519,22 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       }
       if (!response.ok || data.error) throw new Error(data.error || data.detail || `Server error ${response.status}`)
       let output = data.image || data.output || data.result
-      if (!output && data.job_id) output = await pollJob(backend, data.job_id)
+      let seed = data.seed ?? null, seconds = data.seconds ?? null
+      if (!output && data.job_id) ({ image: output, seed, seconds } = await pollJob(backend, data.job_id, progress))
       if (!output) throw new Error('The backend finished without returning an image or job ID')
-      setProgress(p => Math.max(p, 98))
+      progress(98)
       await saveResult(output)
-      setProgress(100)
-      const seed = data.seed ?? seedRef.current
-      setStatusMsg(`Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : '') +
-        (timeRef.current != null ? ` · ${timeRef.current} s` : ''), 'ok')
-      finish(true)
+      job.finish()
       if (seed != null) setLastSeed(seed)
+      const r = doneRef.current
+      r.count++
+      r.last = `Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : '') + (seconds != null ? ` · ${seconds} s` : '')
+      if (swapJobs.idle()) setStatusMsg(r.count > 1 ? `Done — ${r.count} ${M.name} images saved to the gallery` : r.last, 'ok')
+      finish(true)
     } catch (error) {
+      job.finish()
       finish(false)
       setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || `${M.name} failed`), 'error')
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -728,11 +724,12 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         </div>
       )}
       <div className="row headswap-generate-row">
-        <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : `Generate ${M.name}`}</button>
+        <button onClick={runHeadSwap} className="headswap-generate"
+          title="Press again to queue more — they run one after another">{`Generate ${M.name}`}</button>
         <button className="secondary headswap-save-prompt" onClick={() => savePromptAs(savedPrompts, storeSavedPrompts, prompt, setStatusMsg)}>Save Prompt</button>
       </div>
 
-      {loading && <JobProgress pct={progress} />}
+      {swapJobs.pct != null && <JobProgress pct={swapJobs.pct} />}
       {status && <div className={`status ${statusType}`} role="status">{status}</div>}
 
       <SavedPrompts items={savedPrompts} store={storeSavedPrompts} onLoad={setPrompt} say={setStatusMsg} />
