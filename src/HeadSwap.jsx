@@ -38,12 +38,12 @@ export const SWAP_MODES = {
     baseLoraNote: 'head swap',
     loraModel: 'Qwen-Image 2.1',
     // Generation settings this backend takes (Qwen-Image 2.1 has one sampler and always makes a new image)
-    controls: { steps: [8, 60, 40], resolution: [768, 1024, 1280, 1536], defaultResolution: 1024, cfg: true },
+    controls: { steps: [8, 60, 40], resolution: [768, 1024, 1280, 1536], defaultResolution: 1024, cfg: true, fast: true },
     settingPresets: [
-      { name: 'Default', info: '40 steps at ~1024 px, CFG 1: the official settings.', s: { steps: 40, resolution: 1024, cfg: 1 } },
-      { name: 'Fast', info: '20 steps: about twice as fast, a little softer.', s: { steps: 20, resolution: 1024, cfg: 1 } },
-      { name: 'High detail', info: '50 steps at ~1280 px: sharper skin and hair, slower (falls back to a lower size if the GPU runs out of memory).', s: { steps: 50, resolution: 1280, cfg: 1 } },
-      { name: 'Stronger prompt', info: 'CFG 3 with a negative prompt: follows the prompt more strictly and avoids what the negative prompt lists; each step takes about twice as long.', s: { steps: 40, resolution: 1024, cfg: 3 } },
+      { name: 'Default', info: '40 steps at ~1024 px, CFG 1: the official settings, best quality.', s: { steps: 40, resolution: 1024, cfg: 1, fast: false } },
+      { name: 'Fast (8 steps)', info: 'PrunaAI\'s 8-step speed LoRA (the one the BFS author\'s own workflow uses): about 5x faster, a little less fine detail in skin and hair. Compare it with Default on your pictures.', s: { resolution: 1024, cfg: 1, fast: true } },
+      { name: 'High detail', info: '50 steps at ~1280 px: sharper skin and hair, slower (falls back to a lower size if the GPU runs out of memory).', s: { steps: 50, resolution: 1280, cfg: 1, fast: false } },
+      { name: 'Stronger prompt', info: 'CFG 3 with a negative prompt: follows the prompt more strictly and avoids what the negative prompt lists; each step takes about twice as long.', s: { steps: 40, resolution: 1024, cfg: 3, fast: false } },
     ],
     presets: [
       { name: 'Default', info: 'The official BFS head swap prompt: the whole head (face, hair, head shape) from the Head image.' },
@@ -173,12 +173,13 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [savedPrompts, storeSavedPrompts] = useSavedPrompts(`${M.storage}_prompts`)
   const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
   const C = M.controls
-  const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1 }
+  const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1, fast: false }
   const [settings, setSettings] = useState(() => {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
   const [lastSeed, setLastSeed] = useState(null)
-  const seedRef = useRef(null)
+  const seedRef = useRef(null)   // seed of the job that just finished (for the Done message)
+  const timeRef = useRef(null)   // how long it took on the GPU (seconds), when the notebook reports it
   const [activeCharacter, setActiveCharacter] = useState('')   // picked in the Saved faces bar
   const [saveCharSrc, setSaveCharSrc] = useState(null)         // picture shown in the Save to Characters pop-up   // seed of the job that just finished (for the Done message)
   const set = patch => setSettings(prev => {
@@ -440,6 +441,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) {
           seedRef.current = data.seed ?? null
+          timeRef.current = data.seconds ?? null
           if (data.seed != null) setLastSeed(data.seed)
           return image
         }
@@ -473,6 +475,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     setProgress(3)
     setResult(null)
     seedRef.current = null
+    timeRef.current = null
     const finish = trackJob()   // dot on the browser tab's icon
     try {
       // 1) Is the backend there, and is the model loaded?
@@ -500,6 +503,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(+settings.seed >= 0 ? { seed: Math.floor(+settings.seed) } : {}),
         ...(C.resolution ? { resolution: +settings.resolution || C.defaultResolution } : {}),
         ...(C.cfg ? { true_cfg_scale: Math.min(10, Math.max(1, +settings.cfg || 1)), negative_prompt: settings.negative || '' } : {}),
+        ...(C.fast ? { fast: !!settings.fast } : {}),
       })
       let response
       for (let attempt = 1; ; attempt++) {
@@ -527,7 +531,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       await saveResult(output)
       setProgress(100)
       const seed = data.seed ?? seedRef.current
-      setStatusMsg(`Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : ''), 'ok')
+      setStatusMsg(`Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : '') +
+        (timeRef.current != null ? ` · ${timeRef.current} s` : ''), 'ok')
       finish(true)
       if (seed != null) setLastSeed(seed)
     } catch (error) {
@@ -670,12 +675,20 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         : <><b>Steps</b>: 8 is what the 8-step Lightning LoRA is made for; 10–12 can add a little detail. <b>Seed</b>: −1 = new every time; reuse a seed to get the same result again.</>} /></label>
       <PresetBar scope={`${M.storage}_settings`} builtins={M.settingPresets}
         onApply={p => { set({ ...p.s }); setStatusMsg(`Preset "${p.name}" applied`, 'ok') }}
-        getCurrent={() => ({ s: { steps: +settings.steps, ...(C.resolution ? { resolution: +settings.resolution } : {}), ...(C.cfg ? { cfg: +settings.cfg, negative: settings.negative } : {}) } })}
+        getCurrent={() => ({ s: { steps: +settings.steps, ...(C.resolution ? { resolution: +settings.resolution } : {}), ...(C.cfg ? { cfg: +settings.cfg, negative: settings.negative } : {}), ...(C.fast ? { fast: !!settings.fast } : {}) } })}
         help="One click sets the steps and other settings below. Save your own with '+ Save current as preset'." />
+      {C.fast && (
+        <div className="inline headswap-fast">
+          <button className={`toggle ${settings.fast ? 'on' : ''}`} onClick={() => set({ fast: !settings.fast })}>
+            Speed LoRA (8 steps): {settings.fast ? 'On' : 'Off'}
+          </button>
+          <span className="muted small-note">{settings.fast ? 'About 5x faster; Steps and CFG are fixed (8, 1). Turn it off for the best quality.' : 'Off = best quality (the official 40 steps).'}</span>
+        </div>
+      )}
       <div className="row headswap-settings">
         <div>
           <label>Steps</label>
-          <input type="number" min={C.steps[0]} max={C.steps[1]} value={settings.steps} onChange={e => set({ steps: e.target.value })} />
+          <input type="number" min={C.steps[0]} max={C.steps[1]} value={C.fast && settings.fast ? 8 : settings.steps} disabled={C.fast && settings.fast} onChange={e => set({ steps: e.target.value })} />
         </div>
         {C.resolution && (
           <div>
@@ -688,7 +701,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         {C.cfg && (
           <div>
             <label>CFG</label>
-            <input type="number" step="0.5" min="1" max="10" value={settings.cfg} onChange={e => set({ cfg: e.target.value })} />
+            <input type="number" step="0.5" min="1" max="10" value={C.fast && settings.fast ? 1 : settings.cfg} disabled={C.fast && settings.fast} onChange={e => set({ cfg: e.target.value })} />
           </div>
         )}
         <div>
@@ -700,7 +713,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           </div>
         </div>
       </div>
-      {C.cfg && +settings.cfg > 1 && (<>
+      {C.cfg && +settings.cfg > 1 && !settings.fast && (<>
         <label>Negative prompt</label>
         <input value={settings.negative} onChange={e => set({ negative: e.target.value })} placeholder="blurry, low quality, deformed face, extra head, seams, color streaks (used when empty)" />
       </>)}
