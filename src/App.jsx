@@ -24,6 +24,7 @@ const NGROK_HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 }
 
+const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
 
 const DEFAULT_SAMPLERS = ['euler', 'dpmpp_2m', 'euler_ancestral', 'sa_solver', 'res_multistep', 'er_sde']
@@ -1531,6 +1532,9 @@ export default function App({ active = true }) {
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
+              {(infoItem.loras || []).filter(l => l.name).map((l, i) => (
+                <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
+              ))}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
               {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.method === 'pulid' ? 'PuLID' : 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, strength {infoItem.faceRef.strength}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
