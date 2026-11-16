@@ -59,3 +59,6 @@ export function MusicIcon(props) {
 export function TrainingIcon(props) {
   return <NavSvg {...props}><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z" /><path d="M18.5 15l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" /></NavSvg>
 }
+export function FaceSwapIcon(props) {
+  return <NavSvg {...props}><circle cx="12" cy="12" r="8.5" /><circle cx="9" cy="10.5" r="0.9" fill="currentColor" stroke="none" /><circle cx="15" cy="10.5" r="0.9" fill="currentColor" stroke="none" /><path d="M8.8 14.6c.9 1.1 2 1.6 3.2 1.6s2.3-.5 3.2-1.6" /></NavSvg>
+}

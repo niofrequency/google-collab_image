@@ -11,8 +11,44 @@ const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
   'ngrok-skip-browser-warning': 'true'
 }
-const GALLERY_DB = 'HeadSwapGallery'
 const GALLERY_STORE = 'images'
+
+// The Head Swap and Face Swap tabs are the same page with these differences.
+// body = the photo that is kept, head = the head / face that is put in (the backend's request uses these names).
+export const SWAP_MODES = {
+  headswap: {
+    name: 'Head Swap',
+    storage: 'headswap',               // localStorage key prefix
+    db: 'HeadSwapGallery',             // its own gallery
+    endpoint: '/headswap',
+    notebook: 'HEADSWAP.ipynb',
+    startCell: 4,
+    intro: 'Upload a body image and a head image. The head will be swapped onto the body while keeping pose, lighting and background.',
+    prompt: 'head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k',
+    slots: {
+      body: { short: 'Body', label: 'Body Image (pose + body to keep)', icon: '📷' },
+      head: { short: 'Head', label: 'Head Image (face + hair to paste)', icon: '🧑' },
+    },
+    baseLoraNote: 'head swap',
+    loraModel: 'Qwen-Image 2.1',
+  },
+  faceswap: {
+    name: 'Face Swap',
+    storage: 'faceswap',
+    db: 'FaceSwapGallery',
+    endpoint: '/faceswap',
+    notebook: 'FACESWAP.ipynb',
+    startCell: 3,
+    intro: 'Upload a photo and a face. Only the face is swapped: the hair, head shape, body, pose, lighting and background stay from the photo. (Head Swap also moves the hair and head shape.) Only use faces of people who agreed to it.',
+    prompt: 'face swap face from Image 1 to Image 2. swap only the face, match the skin tone, and keep the target pose and lighting.',
+    slots: {
+      body: { short: 'Photo', label: 'Photo (everything but the face is kept)', icon: '📷' },
+      head: { short: 'Face', label: 'Face (the face to put in)', icon: '🙂' },
+    },
+    baseLoraNote: 'face swap',
+    loraModel: 'Qwen-Image-Edit',
+  },
+}
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 const MAX_JOB_WAIT_MS = 15 * 60 * 1000
 
@@ -25,9 +61,11 @@ function isNetworkError(error) {
   return error instanceof TypeError || /failed to fetch|load failed|networkerror|network request failed/i.test(error?.message || '')
 }
 
-const UNREACHABLE_MSG = 'Could not reach the Colab backend. Check that cell 4 is still running in Colab ' +
-  '(and the runtime is not disconnected), and that the Backend URL is the latest READY: link. ' +
-  'If the notebook just restarted the server, wait a minute for the model to load and try again.'
+function unreachableMsg(mode) {
+  return `Could not reach the Colab backend. Check that cell ${mode.startCell} of ${mode.notebook} is still running in Colab ` +
+    '(and the runtime is not disconnected), and that the Backend URL is the latest READY: link. ' +
+    'If the notebook just restarted the server, wait a minute for the model to load and try again.'
+}
 
 async function fetchWithTimeout(url, options = {}, ms = 15000) {
   const controller = new AbortController()
@@ -39,13 +77,13 @@ async function fetchWithTimeout(url, options = {}, ms = 15000) {
 // An error the backend reported for the job itself: shown right away instead of retried
 class JobError extends Error {}
 
-function loadSavedLoras() {
-  try { return JSON.parse(localStorage.getItem('headswap_loras')) || [] } catch { return [] }
+function loadSavedLoras(storage) {
+  try { return JSON.parse(localStorage.getItem(`${storage}_loras`)) || [] } catch { return [] }
 }
 
-function openGalleryDb() {
+function openGalleryDb(name) {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(GALLERY_DB, 1)
+    const request = indexedDB.open(name, 1)
     request.onerror = () => reject(request.error)
     request.onupgradeneeded = () => {
       const db = request.result
@@ -75,8 +113,6 @@ function blobToDataUrl(blob) {
   })
 }
 
-const SLOT_LABEL = { body: 'Body', head: 'Head' }
-
 function imageBlob(dataUrl) {
   const [header, encoded] = dataUrl.split(',', 2)
   const binary = atob(encoded || header)
@@ -87,10 +123,15 @@ function imageBlob(dataUrl) {
 }
 
 export default function HeadSwap({ active = true }) {
-  const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem('headswap_backend_url') || '')
-  const [prompt, setPrompt] = useState(
-    `head_swap: start with <image1> as the base image, keeping its lighting, environment, and background. remove the head from <image1> completely and replace it with the head from <image2>, strictly preserving the hair, eye color, nose structure from <image2>. copy the direction of the eye, head rotation, micro expressions from <image1>, high quality, sharp details, 4k`
-  )
+  return <SwapTab active={active} mode="headswap" />
+}
+
+export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
+  const M = SWAP_MODES[modeId]
+  const SLOT_LABEL = { body: M.slots.body.short, head: M.slots.head.short }
+  const UNREACHABLE_MSG = unreachableMsg(M)
+  const [backendUrl, setBackendUrl] = useState(() => localStorage.getItem(`${M.storage}_backend_url`) || '')
+  const [prompt, setPrompt] = useState(M.prompt)
   const [bodyImage, setBodyImage] = useState(null)
   const [headImage, setHeadImage] = useState(null)
   const [result, setResult] = useState(null)
@@ -102,7 +143,7 @@ export default function HeadSwap({ active = true }) {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lightboxIndex, setLightboxIndex] = useState(-1)
   const [loraFiles, setLoraFiles] = useState([])        // extra LoRAs downloaded on the backend
-  const [loras, setLoras] = useState(loadSavedLoras)     // chosen extra LoRAs: [{ name, strength }]
+  const [loras, setLoras] = useState(() => loadSavedLoras(M.storage))     // chosen extra LoRAs: [{ name, strength }]
   const [baseLora, setBaseLora] = useState('')           // the head swap LoRA the notebook always uses
   const [showAddLora, setShowAddLora] = useState(false)
   const [newLoraUrl, setNewLoraUrl] = useState('')
@@ -113,8 +154,8 @@ export default function HeadSwap({ active = true }) {
   const galleryRef = useRef([])
   const galleryWrapRef = useRef(null)
   const [ratios, setRatios] = useState({})  // picture id -> width / height, measured when it loads
-  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('headswap_gallery_thumb') || 200))
-  const [fitImages, setFitImages] = useState(() => localStorage.getItem('headswap_gallery_fit') === '1')
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem(`${M.storage}_gallery_thumb`) || 200))
+  const [fitImages, setFitImages] = useState(() => localStorage.getItem(`${M.storage}_gallery_fit`) === '1')
   const [galleryWidth, setGalleryWidth] = useState(1000)
 
   const setStatusMsg = useCallback((message, type = '') => {
@@ -123,7 +164,7 @@ export default function HeadSwap({ active = true }) {
   }, [])
 
   const loadGallery = useCallback(async () => {
-    const db = await openGalleryDb()
+    const db = await openGalleryDb(M.db)
     const records = await new Promise((resolve, reject) => {
       const tx = db.transaction(GALLERY_STORE, 'readonly')
       const request = tx.objectStore(GALLERY_STORE).getAll()
@@ -144,7 +185,7 @@ export default function HeadSwap({ active = true }) {
   }, [])
 
   useEffect(() => {
-    loadGallery().catch(error => setStatusMsg(`Could not load Head Swap gallery: ${error.message}`, 'error'))
+    loadGallery().catch(error => setStatusMsg(`Could not load the ${M.name} gallery: ${error.message}`, 'error'))
     return () => galleryRef.current.forEach(item => URL.revokeObjectURL(item.url))
   }, [loadGallery, setStatusMsg])
 
@@ -156,11 +197,11 @@ export default function HeadSwap({ active = true }) {
   }, [active])
 
   useEffect(() => {
-    localStorage.setItem('headswap_backend_url', backendUrl)
+    localStorage.setItem(`${M.storage}_backend_url`, backendUrl)
   }, [backendUrl])
 
   useEffect(() => {
-    localStorage.setItem('headswap_loras', JSON.stringify(loras))
+    localStorage.setItem(`${M.storage}_loras`, JSON.stringify(loras))
   }, [loras])
 
   const backendBase = () => backendUrl.trim().replace(/\/$/, '')
@@ -205,7 +246,7 @@ export default function HeadSwap({ active = true }) {
         body: JSON.stringify({ url: withCivitaiToken(url), type: 'lora' })
       })
       if (response.status === 404) {
-        throw new Error('this backend has no LoRA downloads. Open HEADSWAP.ipynb fresh from GitHub, run its cells again and paste the new URL here.')
+        throw new Error(`this backend has no LoRA downloads. Open ${M.notebook} fresh from GitHub, run its cells again and paste the new URL here.`)
       }
       let data = await response.json()
       while (data.job_id && data.status !== 'done' && data.status !== 'error') {
@@ -233,7 +274,7 @@ export default function HeadSwap({ active = true }) {
   }
 
   const saveResult = useCallback(async (dataUrl) => {
-    const db = await openGalleryDb()
+    const db = await openGalleryDb(M.db)
     await new Promise((resolve, reject) => {
       const tx = db.transaction(GALLERY_STORE, 'readwrite')
       tx.objectStore(GALLERY_STORE).add({ blob: imageBlob(dataUrl), created: Date.now(), prompt })
@@ -250,7 +291,7 @@ export default function HeadSwap({ active = true }) {
     if (type === 'body') setBodyImage(dataUrl)
     else setHeadImage(dataUrl)
     setStatusMsg(`${SLOT_LABEL[type]} image loaded`, 'ok')
-    // After filling Body, the next paste goes to Head
+    // After filling the first box, the next paste goes to the second
     if (type === 'body') setPasteTarget('head')
   }, [setStatusMsg])
 
@@ -275,7 +316,7 @@ export default function HeadSwap({ active = true }) {
       if (!blob.type.startsWith('image/')) throw new Error('Not an image')
       setSlotImage(type, await blobToDataUrl(blob))
     } catch {
-      // The Head Swap backend needs the image data itself, so a site that blocks downloads can't be used by address
+      // The backend needs the image data itself, so a site that blocks downloads can't be used by address
       setStatusMsg('That site blocks loading its images by address — right-click the image, choose "Copy image", then paste it here (Ctrl+V)', 'error')
     }
   }, [setSlotImage, setStatusMsg])
@@ -335,7 +376,7 @@ export default function HeadSwap({ active = true }) {
         const data = await response.json()
         lastPollError = ''
         downSince = null
-        if (data.status === 'error' || data.error) throw new JobError(data.error || 'Head Swap job failed')
+        if (data.status === 'error' || data.error) throw new JobError(data.error || `${M.name} job failed`)
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) return image
         if (data.status === 'done' || data.status === 'completed') {
@@ -361,8 +402,8 @@ export default function HeadSwap({ active = true }) {
   async function runHeadSwap() {
     const backend = backendUrl.trim().replace(/\/$/, '')
     if (!backend) return setStatusMsg('Paste the backend URL from the Colab notebook', 'error')
-    if (!bodyImage) return setStatusMsg('Upload a Body image first', 'error')
-    if (!headImage) return setStatusMsg('Upload a Head image first', 'error')
+    if (!bodyImage) return setStatusMsg(`Upload a ${SLOT_LABEL.body} image first`, 'error')
+    if (!headImage) return setStatusMsg(`Upload a ${SLOT_LABEL.head} image first`, 'error')
 
     setLoading(true)
     setProgress(3)
@@ -379,7 +420,7 @@ export default function HeadSwap({ active = true }) {
         throw new Error(error.name === 'AbortError' || isNetworkError(error) || /answered/.test(error.message)
           ? UNREACHABLE_MSG : error.message)
       }
-      if (health.loaded === false) throw new Error('The backend is still loading the model. Wait until cell 4 prints READY, then try again.')
+      if (health.loaded === false) throw new Error(`The backend is still loading the model. Wait until cell ${M.startCell} prints READY, then try again.`)
 
       // 2) Send smaller copies of the photos
       setStatusMsg('Sending images to backend…')
@@ -389,7 +430,7 @@ export default function HeadSwap({ active = true }) {
       let response
       for (let attempt = 1; ; attempt++) {
         try {
-          response = await fetchWithTimeout(`${backend}/headswap`, { method: 'POST', headers: BACKEND_HEADERS, body: payload }, 90000)
+          response = await fetchWithTimeout(`${backend}${M.endpoint}`, { method: 'POST', headers: BACKEND_HEADERS, body: payload }, 90000)
           break
         } catch (error) {
           if (attempt >= 3 || !(isNetworkError(error) || error.name === 'AbortError')) {
@@ -411,9 +452,9 @@ export default function HeadSwap({ active = true }) {
       setProgress(98)
       await saveResult(output)
       setProgress(100)
-      setStatusMsg('Done — saved to the Head Swap gallery', 'ok')
+      setStatusMsg(`Done — saved to the ${M.name} gallery`, 'ok')
     } catch (error) {
-      setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || 'Head Swap failed'), 'error')
+      setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || `${M.name} failed`), 'error')
     } finally {
       setLoading(false)
     }
@@ -431,8 +472,8 @@ export default function HeadSwap({ active = true }) {
   async function deleteSelected() {
     const n = selectedIds.size
     if (!n) return
-    if (!(await askConfirm({ title: `Delete ${n} Head Swap image${n === 1 ? '' : 's'}?`, message: 'This can\'t be undone.', yes: 'Delete' }))) return
-    const db = await openGalleryDb()
+    if (!(await askConfirm({ title: `Delete ${n} ${M.name} image${n === 1 ? '' : 's'}?`, message: 'This can\'t be undone.', yes: 'Delete' }))) return
+    const db = await openGalleryDb(M.db)
     await new Promise((resolve, reject) => {
       const tx = db.transaction(GALLERY_STORE, 'readwrite')
       const store = tx.objectStore(GALLERY_STORE)
@@ -452,7 +493,7 @@ export default function HeadSwap({ active = true }) {
   function download(item) {
     const link = document.createElement('a')
     link.href = item.url
-    link.download = `headswap-${item.id}.jpg`
+    link.download = `${M.storage}-${item.id}.jpg`
     link.click()
   }
 
@@ -464,7 +505,7 @@ export default function HeadSwap({ active = true }) {
 
   return (
     <div className="container">
-      <h1>Head Swap</h1>
+      <h1>{M.name}</h1>
       <p className="muted headswap-intro">Upload a body image and a head image. The head will be swapped onto the body while keeping pose, lighting and background.</p>
 
       <label>Backend URL (from Colab)</label>
@@ -472,8 +513,8 @@ export default function HeadSwap({ active = true }) {
 
       <div className="row headswap-upload-row">
         {[
-          { type: 'body', label: 'Body Image (pose + body to keep)', image: bodyImage, setImage: setBodyImage, inputRef: bodyInputRef, icon: '📷' },
-          { type: 'head', label: 'Head Image (face + hair to paste)', image: headImage, setImage: setHeadImage, inputRef: headInputRef, icon: '🧑' }
+          { type: 'body', label: M.slots.body.label, image: bodyImage, setImage: setBodyImage, inputRef: bodyInputRef, icon: M.slots.body.icon },
+          { type: 'head', label: M.slots.head.label, image: headImage, setImage: setHeadImage, inputRef: headInputRef, icon: M.slots.head.icon }
         ].map(slot => <div key={slot.type}>
           <label>{slot.label}</label>
           <div className={`headswap-drop ${pasteTarget === slot.type ? 'paste-target' : ''} ${slot.image ? 'has-image' : ''}`}
@@ -498,7 +539,7 @@ export default function HeadSwap({ active = true }) {
       </div>
 
       <label className="headswap-prompt-label">LoRAs</label>
-      {baseLora && <div className="muted headswap-base-lora">Always on: {baseLora} (head swap)</div>}
+      {baseLora && <div className="muted headswap-base-lora">Always on: {baseLora} ({M.baseLoraNote})</div>}
       {loras.map((lora, index) => (
         <div className="lora-item" key={lora.name}>
           <span className="headswap-lora-name" title={lora.name}>{lora.name}</span>
@@ -508,7 +549,7 @@ export default function HeadSwap({ active = true }) {
         </div>
       ))}
       {loras.some(lora => /body[_-]?swap/i.test(lora.name)) && (
-        <div className="muted headswap-lora-warn">A body swap LoRA is on. It is made for swapping the whole body and usually makes head swaps worse — remove it for head swaps.</div>
+        <div className="muted headswap-lora-warn">A body swap LoRA is on. It is made for swapping the whole body and usually makes {M.name.toLowerCase()}s worse — remove it.</div>
       )}
       {loraFiles.some(file => !loras.some(lora => lora.name === file)) && (
         <div className="lora-item">
@@ -520,7 +561,7 @@ export default function HeadSwap({ active = true }) {
       )}
       {showAddLora && (
         <div className="add-box">
-          <input value={newLoraUrl} onChange={event => setNewLoraUrl(event.target.value)} placeholder="Civitai or Hugging Face LoRA link (page or download link) — must be a Qwen-Image 2.1 LoRA"
+          <input value={newLoraUrl} onChange={event => setNewLoraUrl(event.target.value)} placeholder={`Civitai or Hugging Face LoRA link (page or download link) — must be a ${M.loraModel} LoRA`}
             onKeyDown={event => event.key === 'Enter' && !downloading && downloadLora()} />
           <div className="row">
             <button className="secondary" disabled={downloading} onClick={downloadLora}>Download & Add</button>
@@ -532,25 +573,25 @@ export default function HeadSwap({ active = true }) {
 
       <label className="headswap-prompt-label">Prompt</label>
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />
-      <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : 'Generate Head Swap'}</button>
+      <button onClick={runHeadSwap} disabled={loading} className="headswap-generate">{loading ? 'Generating…' : `Generate ${M.name}`}</button>
 
       {loading && <div className="progress"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>}
       {status && <div className={`status ${statusType}`} role="status">{status}</div>}
 
-      {result && <div className="headswap-latest-result"><h3>Latest result</h3><img src={result} alt="Latest Head Swap result" /></div>}
+      {result && <div className="headswap-latest-result"><h3>Latest result</h3><img src={result} alt={`Latest ${M.name} result`} /></div>}
 
       <div className="gallery-header headswap-gallery-header">
-        <h3>Head Swap Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <h3>{M.name} Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
           {gallery.length > 0 && (<>
             <label className="gallery-control" title="Thumbnail size">
               <span>Size</span>
               <input type="range" min="130" max="360" step="10" value={thumbSize}
-                onChange={event => { setThumbSize(+event.target.value); localStorage.setItem('headswap_gallery_thumb', event.target.value) }} />
+                onChange={event => { setThumbSize(+event.target.value); localStorage.setItem(`${M.storage}_gallery_thumb`, event.target.value) }} />
             </label>
             <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
-              onClick={() => setFitImages(fit => { localStorage.setItem('headswap_gallery_fit', fit ? '0' : '1'); return !fit })}>Full images</button>
+              onClick={() => setFitImages(fit => { localStorage.setItem(`${M.storage}_gallery_fit`, fit ? '0' : '1'); return !fit })}>Full images</button>
             <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={toggleAll} title="Select all images" />
           </>)}
         </div>
@@ -558,7 +599,7 @@ export default function HeadSwap({ active = true }) {
       {gallery.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryWrapRef}>
-        {gallery.length === 0 ? <div className="empty-msg">Head Swap results will be saved here, separately from the Image Generator gallery.</div> : (() => {
+        {gallery.length === 0 ? <div className="empty-msg">{M.name} results will be saved here, separately from the Image Generator gallery.</div> : (() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (item, index, cell) => (
             <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} style={cell}
@@ -595,12 +636,12 @@ export default function HeadSwap({ active = true }) {
         <div className="lb-image-wrap" onClick={event => event.stopPropagation()}>
           <button className="lb-btn left" title="Close (Esc)" onClick={() => setLightboxIndex(-1)}><CloseIcon /></button>
           <button className="lb-btn nav-left" title="Previous (←)" onClick={previous} disabled={lightboxIndex === 0}><ChevronLeftIcon /></button>
-          <img src={gallery[lightboxIndex].url} alt="Head Swap result" />
+          <img src={gallery[lightboxIndex].url} alt={`${M.name} result`} />
           <button className="lb-btn nav-right" title="Next (→)" onClick={next} disabled={lightboxIndex === gallery.length - 1}><ChevronRightIcon /></button>
         </div>
         <div className="lb-bar" onClick={event => event.stopPropagation()}>
           <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
-          <span className="lb-caption">{gallery[lightboxIndex].prompt || 'Head Swap result'}</span>
+          <span className="lb-caption">{gallery[lightboxIndex].prompt || `${M.name} result`}</span>
           <button className="secondary" onClick={() => download(gallery[lightboxIndex])}>Download</button>
         </div>
         <div className="lb-help">← → browse · Esc to close</div>
