@@ -7,7 +7,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
-import { galleryLayout } from './galleryLayout.js'
+import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -99,6 +99,7 @@ export default function Video({ active }) {
   const [fitVideos, setFitVideos] = useState(() => localStorage.getItem('video_fit') === '1')
   const [infoItem, setInfoItem] = useState(null)
   const galleryRef = useRef(null)
+  const [ratios, setRatios] = useState({})  // video id -> width / height, measured when the size wasn't saved
   const [galleryWidth, setGalleryWidth] = useState(1000)
   const fileRef = useRef(null)
   const activeRef = useRef(active)
@@ -494,13 +495,15 @@ export default function Video({ active }) {
       <div ref={galleryRef}>
         {(() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
-          const tile = (v, i) => (
-            <div key={v.id} className={`gallery-item video-tile ${selectedIds.has(v.id) ? 'selected' : ''}`}
+          const tile = (v, i, cell) => (
+            <div key={v.id} className={`gallery-item video-tile ${selectedIds.has(v.id) ? 'selected' : ''}`} style={cell}
               onClick={() => toggleSelect(v.id)} onDoubleClick={() => setViewIndex(i)}
               onMouseEnter={e => e.currentTarget.querySelector('video')?.play().catch(() => {})}
               onMouseLeave={e => e.currentTarget.querySelector('video')?.pause()}>
               <video src={v.src + '#t=0.1'} muted loop playsInline preload="metadata"
-                style={fitVideos ? { height: 'auto' } : { height: layout.tile + 'px' }} />
+                style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
+                onLoadedMetadata={e => { const { videoWidth: w, videoHeight: h } = e.currentTarget
+                  if (w && h && !(v.width && v.height) && !ratios[v.id]) setRatios(r => ({ ...r, [v.id]: w / h })) }} />
               {selectedIds.has(v.id) && <span className="selected-badge">✓</span>}
               <span className="video-badge">{v.seconds} s{v.sound ? ' · 🔊' : ''}</span>
               <div className="gallery-overlay">
@@ -512,11 +515,15 @@ export default function Video({ active }) {
           if (!fitVideos) {
             return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
-          const cols = layout.cols
+          // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
+          const gap = layout.narrow ? 6 : 12
+          const rows = justifyRows(gallery, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
-            <div className="gallery-masonry">
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="gallery-col">{gallery.map((v, i) => i % cols === c ? tile(v, i) : null)}</div>
+            <div className="gallery-justified" style={{ gap }}>
+              {rows.map((row, r) => (
+                <div key={r} className="gallery-row" style={{ gap, height: Math.round(row.height) }}>
+                  {row.cells.map(cell => tile(cell.item, cell.index, cellStyle(row, cell)))}
+                </div>
               ))}
             </div>
           )

@@ -4,7 +4,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
 import { CIVITAI_TOKEN } from './civitai.js'
-import { galleryLayout } from './galleryLayout.js'
+import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
@@ -146,6 +146,7 @@ export default function App({ active = true }) {
   const [fitImages, setFitImages] = useState(() => localStorage.getItem('gallery_fit') === '1')       // whole images, no crop
   const promptClickTimer = useRef(null)
   const galleryRef = useRef(null)
+  const [ratios, setRatios] = useState({})  // picture id -> width / height, measured when the size wasn't saved
   const [galleryWidth, setGalleryWidth] = useState(1000)
   useEffect(() => {  // track the gallery's width for the "Full images" columns
     if (!galleryRef.current) return
@@ -1268,10 +1269,12 @@ export default function App({ active = true }) {
       <div ref={galleryRef}>
         {(() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
-          const tile = (item, i) => (
-            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+          const tile = (item, i, cell) => (
+            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} style={cell}
               onClick={() => toggleSelect(item.id)} onDoubleClick={() => openLightbox(i)}>
-              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: layout.tile + 'px' }} />
+              <img src={item.url} alt="" loading="lazy" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
+                onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+                  if (w && h && !(item.width && item.height) && !ratios[item.id]) setRatios(r => ({ ...r, [item.id]: w / h })) }} />
               {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
               <div className="gallery-overlay">
                 <button className="magnify-btn" title="View full size" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}><ZoomIcon /></button>
@@ -1282,13 +1285,14 @@ export default function App({ active = true }) {
           if (!fitImages) {
             return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
-          // Whole images in columns, filled row by row so the newest stay at the top
-          const cols = layout.cols
+          // Whole images in justified rows: each row has one height, wide pictures get more width than tall ones
+          const gap = layout.narrow ? 6 : 12
+          const rows = justifyRows(gallery, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
-            <div className="gallery-masonry">
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="gallery-col">
-                  {gallery.map((item, i) => i % cols === c ? tile(item, i) : null)}
+            <div className="gallery-justified" style={{ gap }}>
+              {rows.map((row, r) => (
+                <div key={r} className="gallery-row" style={{ gap, height: Math.round(row.height) }}>
+                  {row.cells.map(cell => tile(cell.item, cell.index, cellStyle(row, cell)))}
                 </div>
               ))}
             </div>

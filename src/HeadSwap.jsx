@@ -3,7 +3,7 @@ import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
-import { galleryLayout } from './galleryLayout.js'
+import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import './App.css'
  
 const BACKEND_HEADERS = {
@@ -111,6 +111,7 @@ export default function HeadSwap({ active = true }) {
   const headInputRef = useRef(null)
   const galleryRef = useRef([])
   const galleryWrapRef = useRef(null)
+  const [ratios, setRatios] = useState({})  // picture id -> width / height, measured when it loads
   const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('headswap_gallery_thumb') || 200))
   const [fitImages, setFitImages] = useState(() => localStorage.getItem('headswap_gallery_fit') === '1')
   const [galleryWidth, setGalleryWidth] = useState(1000)
@@ -556,10 +557,12 @@ export default function HeadSwap({ active = true }) {
       <div ref={galleryWrapRef}>
         {gallery.length === 0 ? <div className="empty-msg">Head Swap results will be saved here, separately from the Image Generator gallery.</div> : (() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
-          const tile = (item, index) => (
-            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
+          const tile = (item, index, cell) => (
+            <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} style={cell}
               onClick={() => toggleSelected(item.id)} onDoubleClick={() => setLightboxIndex(index)}>
-              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: layout.tile + 'px' }} />
+              <img src={item.url} alt="" loading="lazy" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
+                onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+                  if (w && h && !ratios[item.id]) setRatios(r => ({ ...r, [item.id]: w / h })) }} />
               {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
               <div className="gallery-overlay">
                 <button className="magnify-btn" title="View full size" onClick={event => { event.stopPropagation(); setLightboxIndex(index) }}><ZoomIcon /></button>
@@ -570,12 +573,14 @@ export default function HeadSwap({ active = true }) {
           if (!fitImages) {
             return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
-          const cols = layout.cols
+          // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
+          const gap = layout.narrow ? 6 : 12
+          const rows = justifyRows(gallery, it => ratios[it.id], galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
-            <div className="gallery-masonry">
-              {Array.from({ length: cols }, (_, c) => (
-                <div key={c} className="gallery-col">
-                  {gallery.map((item, index) => index % cols === c ? tile(item, index) : null)}
+            <div className="gallery-justified" style={{ gap }}>
+              {rows.map((row, r) => (
+                <div key={r} className="gallery-row" style={{ gap, height: Math.round(row.height) }}>
+                  {row.cells.map(cell => tile(cell.item, cell.index, cellStyle(row, cell)))}
                 </div>
               ))}
             </div>
