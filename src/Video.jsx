@@ -7,6 +7,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
+import { galleryLayout } from './galleryLayout.js'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -488,17 +489,18 @@ export default function Video({ active }) {
       </div>
       {gallery.length === 0
         ? <div className="empty-msg">No videos yet.</div>
-        : <div className="gallery-hint">Hover to play · click to select · magnifier or double-click to watch full size · ← → to browse</div>}
+        : <div className="gallery-hint"><span className="hint-mouse">Hover to play · click to select · magnifier or double-click to watch full size · ← → to browse</span><span className="hint-touch">Tap a video to select it · tap the magnifier to watch it full size</span></div>}
 
       <div ref={galleryRef}>
         {(() => {
+          const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (v, i) => (
             <div key={v.id} className={`gallery-item video-tile ${selectedIds.has(v.id) ? 'selected' : ''}`}
               onClick={() => toggleSelect(v.id)} onDoubleClick={() => setViewIndex(i)}
               onMouseEnter={e => e.currentTarget.querySelector('video')?.play().catch(() => {})}
               onMouseLeave={e => e.currentTarget.querySelector('video')?.pause()}>
               <video src={v.src + '#t=0.1'} muted loop playsInline preload="metadata"
-                style={fitVideos ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+                style={fitVideos ? { height: 'auto' } : { height: layout.tile + 'px' }} />
               {selectedIds.has(v.id) && <span className="selected-badge">✓</span>}
               <span className="video-badge">{v.seconds} s{v.sound ? ' · 🔊' : ''}</span>
               <div className="gallery-overlay">
@@ -508,9 +510,9 @@ export default function Video({ active }) {
             </div>
           )
           if (!fitVideos) {
-            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
-          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          const cols = layout.cols
           return (
             <div className="gallery-masonry">
               {Array.from({ length: cols }, (_, c) => (

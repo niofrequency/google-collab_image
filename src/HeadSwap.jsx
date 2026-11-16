@@ -3,6 +3,7 @@ import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ZoomIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
+import { galleryLayout } from './galleryLayout.js'
 import './App.css'
  
 const BACKEND_HEADERS = {
@@ -550,14 +551,15 @@ export default function HeadSwap({ active = true }) {
           </>)}
         </div>
       </div>
-      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · magnifier or double-click to view full size · ← → to browse</div>}
+      {gallery.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryWrapRef}>
         {gallery.length === 0 ? <div className="empty-msg">Head Swap results will be saved here, separately from the Image Generator gallery.</div> : (() => {
+          const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (item, index) => (
             <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
               onClick={() => toggleSelected(item.id)} onDoubleClick={() => setLightboxIndex(index)}>
-              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: layout.tile + 'px' }} />
               {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
               <div className="gallery-overlay">
                 <button className="magnify-btn" title="View full size" onClick={event => { event.stopPropagation(); setLightboxIndex(index) }}><ZoomIcon /></button>
@@ -566,9 +568,9 @@ export default function HeadSwap({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
-          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          const cols = layout.cols
           return (
             <div className="gallery-masonry">
               {Array.from({ length: cols }, (_, c) => (

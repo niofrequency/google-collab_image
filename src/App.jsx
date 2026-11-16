@@ -4,6 +4,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
 import { CIVITAI_TOKEN } from './civitai.js'
+import { galleryLayout } from './galleryLayout.js'
 import './App.css'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
@@ -1260,14 +1261,15 @@ export default function App({ active = true }) {
           </>)}
         </div>
       </div>
-      {gallery.length > 0 && <div className="gallery-hint">Click an image to select it · magnifier or double-click to view full size · ← → to browse</div>}
+      {gallery.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryRef}>
         {(() => {
+          const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (item, i) => (
             <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`}
               onClick={() => toggleSelect(item.id)} onDoubleClick={() => openLightbox(i)}>
-              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: thumbSize + 'px' }} />
+              <img src={item.url} alt="" loading="lazy" style={fitImages ? { height: 'auto' } : { height: layout.tile + 'px' }} />
               {selectedIds.has(item.id) && <span className="selected-badge">✓</span>}
               <div className="gallery-overlay">
                 <button className="magnify-btn" title="View full size" onClick={(e) => { e.stopPropagation(); openLightbox(i) }}><ZoomIcon /></button>
@@ -1276,10 +1278,10 @@ export default function App({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>{gallery.map(tile)}</div>
+            return <div className="gallery" style={layout.grid}>{gallery.map(tile)}</div>
           }
           // Whole images in columns, filled row by row so the newest stay at the top
-          const cols = Math.max(1, Math.floor((galleryWidth + 12) / (thumbSize + 12)))
+          const cols = layout.cols
           return (
             <div className="gallery-masonry">
               {Array.from({ length: cols }, (_, c) => (
