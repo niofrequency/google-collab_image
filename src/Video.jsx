@@ -10,6 +10,7 @@ import VideoLoras from './VideoLoras.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
+import { trackJob } from './favicon.js'
 
 // Image to Video tab: talks to IMG2VID-WAN22-A14B.ipynb (best, L4/A100) or IMG2VID-WAN22-5B-FREE.ipynb (free T4).
 // Finished videos are kept in this browser (IndexedDB "VideoGallery").
@@ -263,6 +264,7 @@ export default function Video({ active }) {
     setResult(null)
     const started = Date.now()
     say('Starting...')
+    const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_video', {
         method: 'POST', headers: HEADERS,
@@ -303,8 +305,10 @@ export default function Video({ active }) {
       say(`Done — ${data.seconds} s at ${data.width}×${data.height}${data.sound ? ' with sound' : ''} in ${took}. Saved in the gallery below.` +
         (data.warning ? ` ${data.warning}` : '') + (data.warnings?.length ? ` ${data.warnings.join(' ')}` : ''),
         data.warning || data.warnings?.length ? 'error' : 'ok')
+      finish(true)
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
+      finish(false)
     }
     setJob(null)
     setBusy(false)

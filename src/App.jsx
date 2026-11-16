@@ -14,6 +14,7 @@ import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
+import { trackJob } from './favicon.js'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -646,6 +647,7 @@ export default function App({ active = true }) {
         ref_denoise: +refSettings.denoise,
       } : {}),
     }
+    const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate', {
         method: 'POST',
@@ -721,12 +723,15 @@ export default function App({ active = true }) {
         } else {
           setStatusMsg(done, 'ok')
         }
+        finish(true)
       } else {
         setStatusMsg(data.error || 'No image returned', 'error')
+        finish(false)
       }
     } catch (e) {
       clearInterval(timer)
       setStatusMsg('Error: ' + e.message, 'error')
+      finish(false)
     }
     setTimeout(() => setShowProgress(false), 700)
   }

@@ -11,6 +11,7 @@ import PresetBar from './PresetBar.jsx'
 import Info from './Info.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
+import { trackJob } from './favicon.js'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -472,6 +473,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     setProgress(3)
     setResult(null)
     seedRef.current = null
+    const finish = trackJob()   // dot on the browser tab's icon
     try {
       // 1) Is the backend there, and is the model loaded?
       setStatusMsg('Connecting to the backend…')
@@ -526,8 +528,10 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setProgress(100)
       const seed = data.seed ?? seedRef.current
       setStatusMsg(`Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : ''), 'ok')
+      finish(true)
       if (seed != null) setLastSeed(seed)
     } catch (error) {
+      finish(false)
       setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || `${M.name} failed`), 'error')
     } finally {
       setLoading(false)

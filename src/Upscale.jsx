@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
+import { trackJob } from './favicon.js'
 
 // Upscale & detail tab (UPSCALE.ipynb): pictures 2-4x with 4x-UltraSharp / Real-ESRGAN (+ GFPGAN face restore),
 // videos to 720p / 1080p with the sound kept (+ 2x frame rate). Other tabs send pictures here with "Send to Upscale".
@@ -109,6 +110,7 @@ export default function Upscale({ active = true }) {
     if (!backend()) return say('Paste the READY: URL from cell 3 of UPSCALE.ipynb first', 'error')
     if (!input) return say('Choose a picture or video first', 'error')
     setBusy(true); setProgress(3); setResult(null)
+    const finish = trackJob()   // dot on the browser tab's icon
     try {
       const data = await blobToDataUrl(input.blob)
       const body = input.kind === 'video'
@@ -141,8 +143,10 @@ export default function Upscale({ active = true }) {
       setProgress(100)
       say(`Done — ${input.w}×${input.h} → ${job.width}×${job.height}` + (job.faces ? ` · ${job.faces} face(s) restored` : '') +
         (job.fps ? ` · ${job.fps} fps${job.audio ? ' · sound kept' : ''}` : '') + (job.seconds ? ` · ${job.seconds} s` : ''), 'ok')
+      finish(true)
     } catch (e) {
       say(/failed to fetch|load failed|networkerror/i.test(e.message) ? 'Could not reach the server — is cell 3 of UPSCALE.ipynb still running?' : e.message, 'error')
+      finish(false)
     }
     setBusy(false)
   }

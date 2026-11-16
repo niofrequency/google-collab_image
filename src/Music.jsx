@@ -4,6 +4,7 @@ import { queueSync, cloudForget } from './cloud.js'
 import PresetBar from './PresetBar.jsx'
 import { MUSIC_PRESETS } from './presets.js'
 import { askConfirm } from './ConfirmDialog.jsx'
+import { trackJob } from './favicon.js'
 
 // Music tab: talks to MUSIC-ACESTEP.ipynb (ACE-Step 1.5). Finished songs are kept in this browser (IndexedDB "MusicGallery").
 
@@ -137,6 +138,7 @@ export default function Music() {
     setResult(null)
     const started = Date.now()
     say('Starting...')
+    const finish = trackJob()   // dot on the browser tab's icon
     try {
       const res = await fetch(backend + '/generate_music', {
         method: 'POST', headers: HEADERS,
@@ -170,8 +172,10 @@ export default function Music() {
       await refreshSongs()
       setResult({ ...item, src: URL.createObjectURL(blob) })
       say(`Done — ${data.seconds} s in ${data.took < 60 ? data.took + ' s' : Math.round(data.took / 60 * 10) / 10 + ' min'}. Saved in the list below.`, 'ok')
+      finish(true)
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the server — is cell 3 still running in Colab?' : e.message, 'error')
+      finish(false)
     }
     setJob(null)
     setBusy(false)

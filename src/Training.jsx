@@ -4,6 +4,7 @@ import PresetBar from './PresetBar.jsx'
 import { TRAINING_PRESETS, QWEN_TRAINING_PRESETS } from './presets.js'
 import { onUserChange, listCloudDatasets, saveDatasetToCloud, loadDatasetFromCloud, cloudFile, friendly } from './cloud.js'
 import { askConfirm } from './ConfirmDialog.jsx'
+import { trackJob } from './favicon.js'
 
 // LoRA Training tab: talks to the training server started by cell 2 of SDXL-LORA-TRAINING.ipynb.
 // Images and captions live in Google Drive (MyDrive/ComfyUI/training/<name>/images); this page edits them there.
@@ -217,6 +218,7 @@ export default function Training({ active }) {
   useEffect(() => {
     if (!connected || !running) return
     let stop = false
+    const finish = trackJob()   // dot on the browser tab's icon (training / auto-tagging)
     ;(async () => {
       while (!stop) {
         await sleep(3000)
@@ -234,12 +236,13 @@ export default function Training({ active }) {
             } else if (s.status === 'error') {
               say(s.error || 'Training failed', 'error')
             }
+            finish(s.status === 'done' ? true : s.status === 'error' ? false : null)
             break
           }
         } catch { /* keep polling through brief network errors */ }
       }
     })()
-    return () => { stop = true }
+    return () => { stop = true; finish(null) }   // left / disconnected: no result (finish only counts once)
   }, [connected, running])
 
   async function addFiles(fileList) {
