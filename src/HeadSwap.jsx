@@ -786,6 +786,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
           <span className="lb-caption">{gallery[lightboxIndex].prompt || `${M.name} result`}</span>
           <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
+          <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = gallery[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: M.name } })) }}>Send to Upscale</button>
           <button className="secondary" onClick={() => download(gallery[lightboxIndex])}>Download</button>
         </div>
         <div className="lb-help">← → browse · Esc to close</div>

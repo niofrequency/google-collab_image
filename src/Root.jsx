@@ -9,7 +9,8 @@ import { ConfirmHost } from './ConfirmDialog.jsx'
 import HeadSwap from './HeadSwap.jsx'
 import FaceSwap from './FaceSwap.jsx'
 import Characters from './Characters.jsx'
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, MusicIcon, TrainingIcon } from './icons.jsx'
+import Upscale from './Upscale.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
@@ -19,6 +20,7 @@ const TABS = [
   { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
   { id: 'faceswap', label: 'Face Swap', short: 'Face Swap', Icon: FaceSwapIcon },
   { id: 'characters', label: 'Characters', short: 'Characters', Icon: CharactersIcon },
+  { id: 'upscale', label: 'Upscale', short: 'Upscale', Icon: UpscaleIcon },
   { id: 'music', label: 'Music', short: 'Music', Icon: MusicIcon },
   { id: 'train', label: 'LoRA Training', short: 'Training', Icon: TrainingIcon },
 ]
@@ -38,8 +40,10 @@ export default function Root() {
   }
   useEffect(() => {  // "Video start" / "Video end" in the Image Generator's viewer switch to the video tab
     const go = () => pick('video')
+    const goUpscale = () => pick('upscale')
     window.addEventListener('send-to-video', go)
-    return () => window.removeEventListener('send-to-video', go)
+    window.addEventListener('send-to-upscale', goUpscale)
+    return () => { window.removeEventListener('send-to-video', go); window.removeEventListener('send-to-upscale', goUpscale) }
   }, [])
   return (
     <div className="layout">
@@ -66,6 +70,7 @@ export default function Root() {
       <div style={{ display: tab === 'headswap' ? 'block' : 'none' }}><HeadSwap active={tab === 'headswap'} /></div>
       <div style={{ display: tab === 'faceswap' ? 'block' : 'none' }}><FaceSwap active={tab === 'faceswap'} /></div>
       <div style={{ display: tab === 'characters' ? 'block' : 'none' }}><Characters active={tab === 'characters'} /></div>
+      <div style={{ display: tab === 'upscale' ? 'block' : 'none' }}><Upscale active={tab === 'upscale'} /></div>
       <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>
       </main>

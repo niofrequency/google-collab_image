@@ -1470,6 +1470,7 @@ export default function App({ active = true }) {
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
             {supportsInpaint && <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(gallery[lightboxIndex].url)}>Inpaint / outpaint</button>}
             <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
+            <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = gallery[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>

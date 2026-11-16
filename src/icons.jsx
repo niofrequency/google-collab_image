@@ -65,3 +65,6 @@ export function FaceSwapIcon(props) {
 export function CharactersIcon(props) {
   return <NavSvg {...props}><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5" /><circle cx="17" cy="9" r="2.6" /><path d="M16.5 14.6c2.4.2 4.3 1.8 5 5.4" /></NavSvg>
 }
+export function UpscaleIcon(props) {
+  return <NavSvg {...props}><rect x="3" y="11" width="10" height="10" rx="1.5" /><path d="M13 3h8v8" /><path d="M21 3l-9 9" /></NavSvg>
+}

@@ -553,6 +553,7 @@ export default function Video({ active }) {
             <button className="secondary" onClick={() => setInfoItem(viewing)}>Info</button>
             <button className="secondary" onClick={() => usePrompt(viewing)}>Use prompt</button>
             <button className="secondary" onClick={() => continueFrom(viewing)} title="Start the next clip from this clip's last frame">Continue</button>
+            <button className="secondary" title="Upscale to 720p / 1080p, sound kept (Upscale tab)" onClick={() => { const src = viewing.src; setViewIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'Image to Video' } })) }}>Send to Upscale</button>
             <a className="secondary video-download small" href={viewing.src} download={`video-${viewing.created}.mp4`}>Download</a>
             <button className="danger" onClick={() => removeVideo(viewing)}>Delete</button>
           </div>
