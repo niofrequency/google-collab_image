@@ -24,6 +24,8 @@ const NGROK_HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 }
 
+const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
+
 const DEFAULT_SAMPLERS = ['euler', 'dpmpp_2m', 'euler_ancestral', 'sa_solver', 'res_multistep', 'er_sde']
 const DEFAULT_SCHEDULERS = ['simple', 'karras', 'normal', 'beta', 'sgm_uniform']
 
@@ -300,7 +302,10 @@ export default function App({ active = true }) {
       faceFix: !!item.faceFix,
       faceStrength: item.faceStrength || 0,
       refiner: item.refiner || null,
-      faceRef: item.faceRef || null
+      faceRef: item.faceRef || null,
+      refPicture: item.refPicture || null,
+      inpaint: item.inpaint || null,
+      denoise: item.denoise ?? null
     })))
     setSelectedIds(new Set())
   }
@@ -332,7 +337,8 @@ export default function App({ active = true }) {
         cfg: meta.cfg || 0, width: meta.width || 0,
         height: meta.height || 0, loras: meta.loras || [],
         faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
-        faceRef: meta.faceRef || null
+        faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
+        denoise: meta.denoise ?? null
       })
       req.onsuccess = resolve
       req.onerror = () => reject(req.error)
@@ -709,13 +715,14 @@ export default function App({ active = true }) {
         positive, negative,
         checkpoint: checkpoint || '',
         sampler, scheduler,
-        steps: +steps, cfg: +cfg,
+        steps: +steps, cfg: +cfg, denoise: +denoise,
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter } : null,
-        refPicture: data.ref_mode ? { mode: data.ref_mode, strength: +refSettings.strength } : null,
+        refPicture: data.ref_mode ? (data.ref_mode === 'img2img' ? { mode: 'img2img', denoise: +refSettings.denoise }
+          : { mode: data.ref_mode, strength: +refSettings.strength, end: +refSettings.end }) : null,
       }
       if (data.ref_map) setRefMap(data.ref_map)
       if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: backendType === 'sdxl' ? +inpaintSettings.denoise : null }
@@ -1524,7 +1531,13 @@ export default function App({ active = true }) {
               Steps: {infoItem.steps} | CFG: {infoItem.cfg} | {infoItem.width}x{infoItem.height}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {infoItem.faceFix && <><br/>Face fix: on (strength {infoItem.faceStrength})</>}
-              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, strength {infoItem.faceRef.strength}</>}
+              {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
+              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.method === 'pulid' ? 'PuLID' : 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, strength {infoItem.faceRef.strength}</>}
+              {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
+                {infoItem.refPicture.mode === 'img2img'
+                  ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)
+                  : <>, strength {infoItem.refPicture.strength}{infoItem.refPicture.end != null && <> (until {Math.round(infoItem.refPicture.end * 100)}% of the steps)</>}</>}</>}
+              {infoItem.inpaint && <><br/>Inpaint / outpaint{infoItem.inpaint.area ? `: ${infoItem.inpaint.area}` : ''}{infoItem.inpaint.denoise != null && `, denoise ${infoItem.inpaint.denoise}`}</>}
               {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}</>}
             </div>
             <div className="row" style={{marginTop:16}}>
