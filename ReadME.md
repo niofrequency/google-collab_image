@@ -140,6 +140,21 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   strong likeness*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
 
+## Prompt enhancer (LoRA training tags)
+
+Under the BigLust prompt, **✨ Enhance with LoRA tags** suggests tags from the LoRAs you've added. LoRAs trained with
+kohya sd-scripts (the LoRA Training tab, and most Civitai LoRAs) store how often every caption tag was used in training
+inside the `.safetensors` file — the server just reads that list (instant, nothing is loaded on the GPU).
+
+- **Your words → the LoRA's tags:** type `shirt` and it offers `white shirt`, `collared shirt`, … — the way the
+  training captions (Auto-tag) described it, most-used first. The most-used one is pre-selected; click to change.
+- **Trigger / in almost every training picture:** the trigger word and tags in ≥ 90% of the pictures (pre-selected,
+  put at the start of the prompt).
+- **Often in the training pictures** (40–90%) and **all other tags**: click any to add it.
+
+Green = will be added; press **Add … tag(s) to the prompt**. A LoRA made without kohya (or with metadata turned off)
+has no tag list — the enhancer says so.
+
 ## Face reference: which models it works with
 
 **Face reference** keeps one character's face the same across many pictures, from 1–3 pictures of that face, with no

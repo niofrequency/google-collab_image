@@ -1062,3 +1062,12 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 
 /* Face reference method switch (FaceID / PuLID): the picked one in green, like the On toggle */
 .face-ref-box .chip.active { background: rgba(46,204,113,0.16); border-color: rgba(46,204,113,0.6); color: #2ecc71; }
+
+/* Prompt enhancer (LoRA training tags) */
+.enhance-btn { width: auto; margin-top: 8px; padding: 6px 12px; font-size: 13px; }
+.enhancer { margin-top: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.03); }
+.enhancer .chips { margin-top: 6px; }
+.enhancer .chip.active { background: rgba(46,204,113,0.16); border-color: rgba(46,204,113,0.6); color: #2ecc71; }
+.enh-head { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.enh-pct { margin-left: 6px; font-size: 10px; opacity: 0.6; }
+.enhancer .link-btn { width: auto; margin-top: 8px; padding: 0; background: none; border: none; color: var(--muted); text-decoration: underline; font-size: 12px; cursor: pointer; }

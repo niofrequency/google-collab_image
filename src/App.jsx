@@ -15,6 +15,7 @@ import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
+import PromptEnhancer from './PromptEnhancer.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -96,6 +97,7 @@ export default function App({ active = true }) {
   const [faceRefMethod, setFaceRefMethod] = useState(savedFaceRef.method === 'pulid' ? 'pulid' : 'faceid')
   const [faceRefStrengths, setFaceRefStrengths] = useState(savedFaceRef.strengths || {})
   const [faceRefMethods, setFaceRefMethods] = useState([])
+  const [supportsLoraTags, setSupportsLoraTags] = useState(false)
   const [faceRefCharacter, setFaceRefCharacter] = useState(savedFaceRef.character || '')
   const [supportsFaceRef, setSupportsFaceRef] = useState(false)
   // BigLust: pose / depth / style / img2img picture (next to the face reference)
@@ -479,6 +481,7 @@ export default function App({ active = true }) {
       setFaceRefMethods(Array.isArray(data.face_ref_methods) ? data.face_ref_methods : data.supports_face_ref ? ['faceid'] : [])
       setRefModes(Array.isArray(data.supports_ref_modes) ? data.supports_ref_modes : [])
       setSupportsInpaint(!!data.supports_inpaint)
+      setSupportsLoraTags(!!data.supports_lora_tags)
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -1360,6 +1363,9 @@ export default function App({ active = true }) {
 
       <label>Positive Prompt</label>
       <textarea value={positive} onChange={e => setPositive(e.target.value)} />
+      {backendType === 'sdxl' && supportsLoraTags && loras.length > 0 && (
+        <PromptEnhancer backend={getBackend()} loras={loras} positive={positive} setPositive={setPositive} say={setStatusMsg} />
+      )}
 
       <label>Negative Prompt</label>
       <textarea value={negative} onChange={e => setNegative(e.target.value)} />
