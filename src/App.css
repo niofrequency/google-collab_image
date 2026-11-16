@@ -820,3 +820,25 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
   /* video page: badges and toggles a bit smaller */
   .gpu-note { font-size: 12px; }
 }
+
+/* ---------- Image Generator ---------- */
+.prompts-list.empty { height: auto; min-height: 0; resize: none; padding: 4px 12px; }
+.prompts-hint { margin: -6px 0 8px; }
+/* double/triple taps register as taps, without the browser zooming in */
+.prompt-item, .gallery-item, .headswap-drop, .image-drop { touch-action: manipulation; }
+
+@media (max-width: 760px) {
+  /* Generate + Save Prompt side by side */
+  .row > button { flex: 1 1 0; min-width: 0; }
+  .prompts-list { height: 200px; }
+  .prompt-item { padding: 12px; }
+  /* pop-ups (edit prompt, image info) fit the phone */
+  .prompt-popup { width: calc(100vw - 24px); max-width: none; max-height: calc(100dvh - 24px); overflow-y: auto; padding: 16px; }
+  .prompt-popup .row { flex-wrap: wrap; }
+  /* LoRA rows: name on top, strength and remove below */
+  .lora-item { flex-wrap: wrap; }
+  .lora-item select, .lora-item .headswap-lora-name { flex-basis: 100%; }
+  .lora-item input[type=number] { flex: 1; }
+  .lora-item .lora-target { flex: 2; }
+  .add-box .row { flex-wrap: nowrap; }
+}

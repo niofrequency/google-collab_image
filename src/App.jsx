@@ -1208,13 +1208,15 @@ export default function App({ active = true }) {
       {status && <div className={`status ${statusType}`}>{status}</div>}
 
       <h3>Saved Prompts</h3>
+      {savedPrompts.length > 0 && <div className="gallery-hint prompts-hint"><span className="hint-mouse">Click: select · double-click: edit · triple-click: rename</span><span className="hint-touch">Tap: select · double-tap: edit · triple-tap: rename</span></div>}
       {selectedPromptIndices.size > 0 && (
         <div style={{display:'flex', gap:8, marginBottom:8, alignItems:'center'}}>
           <button className="danger" style={{width:'auto'}} onClick={deleteSelectedPrompts}>Delete Selected ({selectedPromptIndices.size})</button>
           <div className={`select-all-box ${selectedPromptIndices.size === savedPrompts.length ? 'checked' : ''}`} onClick={selectAllPrompts} title="Select all prompts" />
         </div>
       )}
-      <div className="prompts-list">
+      <div className={`prompts-list ${savedPrompts.length ? '' : 'empty'}`}>
+        {savedPrompts.length === 0 && <div className="empty-msg">No saved prompts yet. Write a prompt and press Save Prompt.</div>}
         {savedPrompts.map((p, i) => (
           <div key={i} className={`prompt-item ${selectedPromptIndices.has(i) ? 'selected' : ''}`} onClick={e => editingNameIndex !== i && handlePromptClick(e, i, p.name)} title="Click: select · Double-click: edit · Triple-click: rename">
             {editingNameIndex === i ? (

@@ -515,9 +515,11 @@ Google Drive (`MyDrive/ComfyUI/loras_sdxl`).
    gcloud storage buckets update gs://YOUR-BUCKET --cors-file=cors.json
    ```
 
-   This **replaces** the bucket's CORS settings. If another app already uses this bucket from the browser, first
-   check its current settings with `gcloud storage buckets describe gs://YOUR-BUCKET --format="default(cors_config)"`
-   and add that app's site addresses to the `origin` list in `cors.json` before running the command.
+   `cors.json` lets the browser download from any site address (`"*"`), so it keeps working on Vercel preview links
+   and custom domains. That doesn't make your files public: the Storage rules still allow each signed-in account only
+   its own folder. Check that it worked with
+   `gcloud storage buckets describe gs://YOUR-BUCKET --format="default(cors_config)"`.
+   This **replaces** the bucket's CORS settings; if another app's settings were there, they are covered by `"*"`.
 
 6. **Connect the website:** *Project settings (⚙) → General → Your apps → Web (`</>`)* → register an app → copy the
    `firebaseConfig = { ... }` block. Either paste it in the **☁** panel on the site (saved in that browser), or add it
@@ -530,8 +532,11 @@ The rules let each Google account read and write only its own folder (`users/<ui
 files, even though the Firebase config itself is not secret. Keep it to content you have the right to store: generated
 pictures of real people only with their consent.
 
-**Problems:** *Permission denied* → the rules from steps 3–4 aren't published. *Downloads fail on a second device* →
-step 5 (CORS). *Sign-in popup error "unauthorized domain"* → step 2.
+**Problems:** *Permission denied* → the rules from steps 3–4 aren't published. *Downloads fail on a second device*, or
+*"Max retry time for operation exceeded (storage/retry-limit-exceeded)"* → step 5 (CORS) wasn't run, or was run with an
+older `cors.json` that doesn't include the address you open the site from; also check that `storageBucket` in the
+config is exactly the bucket name on the Firebase Storage page (newer projects use `PROJECT.firebasestorage.app`, older
+ones `PROJECT.appspot.com`). *Sign-in popup error "unauthorized domain"* → step 2 (add every address you open the site from).
 
 ## Please note
 

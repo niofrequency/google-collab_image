@@ -61,10 +61,14 @@ async function firebase() {
     import('firebase/app'), import('firebase/auth'), import('firebase/firestore'), import('firebase/storage'),
   ])
   const app = appMod.initializeApp(cfg)
+  const storage = stMod.getStorage(app)
+  // Give up on a download after 30 s instead of 2 min (it keeps retrying when the bucket's CORS blocks this
+  // site, which never fixes itself). Uploads keep 10 min, so big videos still go up on slow phone connections.
+  storage.maxOperationRetryTime = 30 * 1000
   fb = {
     auth: authMod.getAuth(app), authMod,
     db: fsMod.getFirestore(app), fs: fsMod,
-    storage: stMod.getStorage(app), st: stMod,
+    storage, st: stMod,
   }
   return fb
 }
@@ -85,7 +89,7 @@ export async function initCloud() {
     const signedIn = user && (!currentUser || currentUser.uid !== user.uid)
     currentUser = user ? { uid: user.uid, name: user.displayName || user.email || 'you', email: user.email, photo: user.photoURL } : null
     userListeners.forEach(cb => cb(currentUser))
-    if (signedIn) syncEverything().catch(e => setStatus({ state: 'error', text: e.message }))
+    if (signedIn) syncEverything().catch(e => setStatus({ state: 'error', text: friendly(e) }))
   })
 }
 
@@ -159,7 +163,7 @@ export async function syncKind(kind) {
     const local = await openStore(kind)
     const records = await idb(local, k.store, 'readonly', s => s.getAll())
     const known = new Set()
-    let up = 0, down = 0, removed = 0
+    let up = 0, down = 0, removed = 0, failed = 0, lastError = null
     for (const rec of records) {
       if (rec.cloudId && rec.cloudUid && rec.cloudUid !== uid) continue   // backed up to a different account: leave it
       if (rec.cloudId && rec.cloudUid === uid) {
@@ -172,25 +176,33 @@ export async function syncKind(kind) {
       }
       if (!rec.blob) continue
       setStatus({ state: 'busy', text: `Backing up ${k.label}... ${up + 1}` })
-      const id = newId()
-      const path = `users/${uid}/${kind}/${id}.${k.ext}`
-      const type = (rec.blob.type || '').split('/')[0] === k.type.split('/')[0] ? rec.blob.type : k.type  // the rules check the type
-      await st.uploadBytes(st.ref(storage, path), rec.blob, { contentType: type })
-      await fs.setDoc(fs.doc(col, id), { ...metaOf(rec), path, size: rec.blob.size, created: rec.created || Date.now() })
-      await idb(local, k.store, 'readwrite', s => s.put({ ...rec, cloudId: id, cloudUid: uid }))
-      known.add(id)
-      up++
+      try {   // one file that fails doesn't stop the others
+        const id = newId()
+        const path = `users/${uid}/${kind}/${id}.${k.ext}`
+        const type = (rec.blob.type || '').split('/')[0] === k.type.split('/')[0] ? rec.blob.type : k.type  // the rules check the type
+        await st.uploadBytes(st.ref(storage, path), rec.blob, { contentType: type })
+        await fs.setDoc(fs.doc(col, id), { ...metaOf(rec), path, size: rec.blob.size, created: rec.created || Date.now() })
+        await idb(local, k.store, 'readwrite', s => s.put({ ...rec, cloudId: id, cloudUid: uid }))
+        known.add(id)
+        up++
+      } catch (e) { failed++; lastError = e; console.warn(`Backup of a ${k.one} failed`, e) }
     }
     for (const [id, data] of cloud) {
       if (known.has(id)) continue
       setStatus({ state: 'busy', text: `Downloading ${k.label}... ${down + 1}` })
-      const blob = await st.getBlob(st.ref(storage, data.path))
-      const { path, size, ...meta } = data
-      await idb(local, k.store, 'readwrite', s => s.add({ ...meta, blob, cloudId: id, cloudUid: uid }))
-      down++
+      try {
+        const blob = await st.getBlob(st.ref(storage, data.path))
+        const { path, size, ...meta } = data
+        await idb(local, k.store, 'readwrite', s => s.add({ ...meta, blob, cloudId: id, cloudUid: uid }))
+        down++
+      } catch (e) {
+        failed++; lastError = e; console.warn(`Download of a ${k.one} failed`, e)
+        // Every download fails the same way when the bucket blocks this site: stop instead of waiting on each one
+        if (e?.code === 'storage/retry-limit-exceeded' || e?.code === 'storage/unknown') break
+      }
     }
     if (up || down || removed) window.dispatchEvent(new CustomEvent('cloud-synced', { detail: { kind, up, down, removed } }))
-    return { up, down, removed }
+    return { up, down, removed, failed, lastError }
   })()
   try {
     return await running[kind]
@@ -208,8 +220,9 @@ export function queueSync(kind) {
   timers[kind] = setTimeout(async () => {
     try {
       const r = await syncKind(kind)
-      setStatus({ state: 'ok', text: r.up ? `Backed up ${r.up} ${r.up === 1 ? KINDS[kind].one : KINDS[kind].label}` : 'Synced' })
-    } catch (e) { setStatus({ state: 'error', text: `Backup failed: ${e.message}` }) }
+      if (r.failed) setStatus({ state: 'error', text: `${r.failed} ${r.failed === 1 ? KINDS[kind].one : KINDS[kind].label} could not be synced: ${friendly(r.lastError)}` })
+      else setStatus({ state: 'ok', text: r.up ? `Backed up ${r.up} ${r.up === 1 ? KINDS[kind].one : KINDS[kind].label}` : 'Synced' })
+    } catch (e) { setStatus({ state: 'error', text: `Backup failed: ${friendly(e)}` }) }
   }, 2500)
 }
 
@@ -279,13 +292,20 @@ setInterval(() => { if (currentUser) syncSettings().catch(() => {}) }, 20000)
 export async function syncEverything() {
   setStatus({ state: 'busy', text: 'Syncing...' })
   try {
-    await syncSettings({ merge: true })
-    const totals = { up: 0, down: 0, removed: 0 }
+    const totals = { up: 0, down: 0, removed: 0, failed: 0 }
+    let lastError = null
+    // Settings first, but a failure there doesn't stop the pictures, videos and songs
+    try { await syncSettings({ merge: true }) } catch (e) { totals.failed++; lastError = e; console.warn('Settings sync failed', e) }
     for (const kind of Object.keys(KINDS)) {
       const r = await syncKind(kind)
-      totals.up += r.up; totals.down += r.down; totals.removed += r.removed
+      totals.up += r.up; totals.down += r.down; totals.removed += r.removed; totals.failed += r.failed
+      if (r.lastError) lastError = r.lastError
     }
-    setStatus({ state: 'ok', text: `Synced — ${totals.up} uploaded, ${totals.down} downloaded` })
+    if (totals.failed) {
+      setStatus({ state: 'error', text: `Synced ${totals.up} up, ${totals.down} down — ${totals.failed} failed: ${friendly(lastError)}` })
+    } else {
+      setStatus({ state: 'ok', text: `Synced — ${totals.up} uploaded, ${totals.down} downloaded` })
+    }
     return totals
   } catch (e) {
     setStatus({ state: 'error', text: friendly(e) })
@@ -297,6 +317,11 @@ export function friendly(e) {
   const code = e?.code || ''
   if (code.includes('permission-denied') || code.includes('unauthorized')) {
     return 'Permission denied — publish the security rules from the README (Firestore and Storage)'
+  }
+  if (code === 'storage/retry-limit-exceeded') {
+    return `Firebase Storage didn't answer. Usually the bucket's CORS settings don't allow this site (${location.origin}): ` +
+      'run the CORS step from the README again (cors.json now allows any site). If it still happens, check your connection, ' +
+      'and that the Storage bucket in your Firebase config matches the one on the Firebase Storage page.'
   }
   if (code === 'storage/unknown' || code.includes('bucket')) return 'Storage is not set up — create the Storage bucket in Firebase (needs the Blaze plan)'
   if (code === 'auth/unauthorized-domain') return 'Add this site\'s domain under Firebase → Authentication → Settings → Authorized domains'

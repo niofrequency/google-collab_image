@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["https://google-collabimage-one.vercel.app", "http://localhost:5173", "http://localhost:4173"],
+    "origin": ["*"],
     "method": ["GET"],
     "maxAgeSeconds": 3600
   }
