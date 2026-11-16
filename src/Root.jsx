@@ -6,39 +6,52 @@ import Music from './Music.jsx'
 import GalleryPrompts from './GalleryPrompts.jsx'
 import CloudBar from './CloudBar.jsx'
 import HeadSwap from './HeadSwap.jsx'
+import { ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, MusicIcon, TrainingIcon } from './icons.jsx'
 
+// short: the name under the icon in the narrow phone sidebar
 const TABS = [
-  { id: 'generate', label: 'Image Generator' },
-  { id: 'gallery', label: 'Gallery Prompts' },
-  { id: 'video', label: 'Image to Video' },
-  { id: 'headswap', label: 'Head Swap' },
-  { id: 'music', label: 'Music' },
-  { id: 'train', label: 'LoRA Training' },
+  { id: 'generate', label: 'Image Generator', short: 'Images', Icon: ImageIcon },
+  { id: 'gallery', label: 'Gallery Prompts', short: 'Prompts', Icon: PromptsIcon },
+  { id: 'video', label: 'Image to Video', short: 'Video', Icon: VideoIcon },
+  { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
+  { id: 'music', label: 'Music', short: 'Music', Icon: MusicIcon },
+  { id: 'train', label: 'LoRA Training', short: 'Training', Icon: TrainingIcon },
 ]
 
 // Both tabs stay mounted (hidden with CSS) so switching doesn't lose anything you were doing
 export default function Root() {
   const [tab, setTab] = useState(localStorage.getItem('tab') || 'generate')
-  function pick(id) { setTab(id); localStorage.setItem('tab', id) }
+  function pick(id) {
+    setTab(id)
+    localStorage.setItem('tab', id)
+    window.scrollTo(0, 0)  // each tab starts at its top
+  }
   useEffect(() => {  // "Video start" / "Video end" in the Image Generator's viewer switch to the video tab
     const go = () => pick('video')
     window.addEventListener('send-to-video', go)
     return () => window.removeEventListener('send-to-video', go)
   }, [])
   return (
-    <>
-      <CloudBar />
-      <nav className="tabs">
+    <div className="layout">
+      <nav className="sidebar" aria-label="Tabs">
         {TABS.map(t => (
-          <button key={t.id} className={`tab ${tab === t.id ? 'active' : ''}`} onClick={() => pick(t.id)}>{t.label}</button>
+          <button key={t.id} className={`nav-item ${tab === t.id ? 'active' : ''}`} onClick={() => pick(t.id)}
+            title={t.label} aria-current={tab === t.id ? 'page' : undefined}>
+            <t.Icon />
+            <span className="nav-label">{t.label}</span>
+            <span className="nav-short">{t.short}</span>
+          </button>
         ))}
       </nav>
+      <main className="main">
+      <CloudBar />
       <div style={{ display: tab === 'generate' ? 'block' : 'none' }}><App active={tab === 'generate'} /></div>
       <div style={{ display: tab === 'gallery' ? 'block' : 'none' }}><GalleryPrompts /></div>
       <div style={{ display: tab === 'video' ? 'block' : 'none' }}><Video active={tab === 'video'} /></div>
       <div style={{ display: tab === 'headswap' ? 'block' : 'none' }}><HeadSwap active={tab === 'headswap'} /></div>
       <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>
-    </>
+      </main>
+    </div>
   )
 }
