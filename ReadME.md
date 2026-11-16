@@ -182,6 +182,22 @@ face; it keeps the Face reference and your LoRAs. The pose and depth readers run
 ControlNets (2.5 GB each) and IP-Adapter Plus (0.85 GB) download the first time their mode is used in a session, and
 only one is kept loaded at a time. Use **Use as pose / style** in the full-size viewer to take a picture from the gallery.
 
+### Inpaint / outpaint (BigLust, Qwen 2511, Qwen Rapid AIO)
+
+Redraw **part** of a picture, or **extend** it to another shape, without making the whole shot again. In the Image
+Generator, press **Inpaint / outpaint** in the gallery's full-size viewer (or *Open a picture to inpaint / outpaint*):
+
+- **Paint** over what should change (hands, a face, clothes, an object); *Erase*, *Undo / Redo*, *Invert*, *Clear*.
+- **Extend to** 16:9, 9:16, 1:1, 4:3, 3:4, or type Top / Bottom / Left / Right in pixels — e.g. a 3:4 portrait to 16:9
+  for a video start frame. The new borders (and a narrow seam just inside the old edge) are filled in.
+- Describe the result in the prompt and press **Generate**.
+
+Only the red areas change: the notebook pastes everything else back from your picture, **pixel for pixel**. BigLust
+redraws only under the mask (SDXL noise mask) with your checkpoint, LoRAs, Face reference and pose / style picture;
+*Denoise* 1.0 redraws the area completely, 0.5–0.8 keeps some of what was there. Face fix runs before the paste-back,
+so faces outside the mask can't change either; the refiner is skipped. With Qwen, the picture becomes Picture 1 and your
+reference pictures Pictures 2–3. *Grow* widens the mask a few pixels; *Feather* softens the edge of the pasted area.
+
 **Workflow for comics and short films**
 
 1. In the Image Generator (BigLust), make a face you like — or upload clear face pictures — and press **Use as face** in

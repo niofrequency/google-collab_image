@@ -13,6 +13,7 @@ import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
+import MaskEditor from './MaskEditor.jsx'
  
 
 // Header to bypass ngrok free tier browser warning
@@ -105,6 +106,19 @@ export default function App({ active = true }) {
     return next
   })
   const refPicHoverRef = useRef(false)   // the pose picture box is under the mouse: Ctrl+V goes there
+  // Inpaint / outpaint: { image, mask, width, height, summary, source } from the mask editor
+  const [supportsInpaint, setSupportsInpaint] = useState(false)
+  const [inpaint, setInpaint] = useState(null)
+  const [maskEditorSrc, setMaskEditorSrc] = useState(null)
+  const inpaintFileRef = useRef(null)
+  const [inpaintSettings, setInpaintSettingsState] = useState(() => {
+    try { return { denoise: 1, grow: 8, feather: 16, ...JSON.parse(localStorage.getItem('inpaint_settings')) } } catch { return { denoise: 1, grow: 8, feather: 16 } }
+  })
+  const setInpaintSettings = patch => setInpaintSettingsState(prev => {
+    const next = { ...prev, ...patch }
+    localStorage.setItem('inpaint_settings', JSON.stringify(next))
+    return next
+  })
   useEffect(() => {
     try {
       localStorage.setItem('face_ref', JSON.stringify({ on: faceRefOn, images: faceRefImages, strength: +faceRefStrength, character: faceRefCharacter }))
@@ -450,6 +464,7 @@ export default function App({ active = true }) {
       setSupportsRefiner(!!data.supports_refiner)
       setSupportsFaceRef(!!data.supports_face_ref)
       setRefModes(Array.isArray(data.supports_ref_modes) ? data.supports_ref_modes : [])
+      setSupportsInpaint(!!data.supports_inpaint)
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -593,6 +608,9 @@ export default function App({ active = true }) {
     setProgress(5)
     const timer = setInterval(() => setProgress(p => Math.min(p + Math.random() * 6, 92)), 600)
     const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
+    const inpaintActive = !!inpaint && supportsInpaint
+    if (inpaint && !supportsInpaint) { clearInterval(timer); setShowProgress(false); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
+    if (inpaintActive && backendType === 'sdxl' && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); setShowProgress(false); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
     const refActive = backendType === 'sdxl' && refModes.length > 0 && !!refPicture
     const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
     const payload = {
@@ -611,6 +629,15 @@ export default function App({ active = true }) {
       refiner_steps: +refinerSteps,
       face_ref_images: faceRefActive ? faceRefImages : [],
       face_ref_strength: +faceRefStrength,
+      ...(inpaintActive ? (backendType === 'sdxl' ? {
+        init_image: inpaint.image, mask_image: inpaint.mask, inpaint_denoise: +inpaintSettings.denoise,
+        mask_grow: +inpaintSettings.grow, mask_feather: +inpaintSettings.feather, width: inpaint.width, height: inpaint.height,
+      } : {
+        reference_image: inpaint.image,                // Picture 1 = the picture being inpainted
+        reference_images: refImages.slice(0, 2),       // your reference pictures become Pictures 2 and 3
+        mask_image: inpaint.mask, mask_grow: +inpaintSettings.grow, mask_feather: +inpaintSettings.feather,
+        width: inpaint.width, height: inpaint.height, denoise: 1,
+      }) : {}),
       ...(refActive ? {
         ref_image: refPicture,
         ref_mode: refMode,
@@ -671,6 +698,7 @@ export default function App({ active = true }) {
         refPicture: data.ref_mode ? { mode: data.ref_mode, strength: +refSettings.strength } : null,
       }
       if (data.ref_map) setRefMap(data.ref_map)
+      if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: backendType === 'sdxl' ? +inpaintSettings.denoise : null }
 
       // Prefer the images array if present, fall back to single image
       const imageList = Array.isArray(data.images) && data.images.length > 0
@@ -1148,6 +1176,43 @@ export default function App({ active = true }) {
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg} />
       )}
 
+      {supportsInpaint && (
+        <div className="inpaint-box">
+          <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b> (BigLust): 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
+          {inpaint ? (<>
+            <div className="inpaint-current">
+              <img src={inpaint.image} alt="Picture being inpainted" />
+              <div>
+                <div>{inpaint.summary} · {inpaint.width}×{inpaint.height}</div>
+                <div className="inline" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                  <button className="secondary" onClick={() => setMaskEditorSrc(inpaint.source)}>Paint again</button>
+                  <button className="danger" onClick={() => setInpaint(null)}>Stop inpainting</button>
+                </div>
+              </div>
+            </div>
+            <div className="row">
+              {backendType === 'sdxl' && <div><label>Denoise</label><input type="number" step="0.05" min="0.05" max="1" value={inpaintSettings.denoise} onChange={e => setInpaintSettings({ denoise: e.target.value })} /></div>}
+              <div><label>Grow (px)</label><input type="number" step="1" min="0" max="64" value={inpaintSettings.grow} onChange={e => setInpaintSettings({ grow: e.target.value })} /></div>
+              <div><label>Feather (px)</label><input type="number" step="1" min="0" max="128" value={inpaintSettings.feather} onChange={e => setInpaintSettings({ feather: e.target.value })} /></div>
+            </div>
+          </>) : (
+            <button className="secondary inpaint-open" onClick={() => inpaintFileRef.current?.click()}>+ Open a picture to inpaint / outpaint</button>
+          )}
+          <input ref={inpaintFileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setMaskEditorSrc(URL.createObjectURL(f)); e.target.value = '' }} />
+        </div>
+      )}
+      {maskEditorSrc && (
+        <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
+          onClose={() => setMaskEditorSrc(null)}
+          onDone={result => {
+            setInpaint({ ...result, source: maskEditorSrc })
+            setWidth(result.width); setHeight(result.height)
+            setMaskEditorSrc(null)
+            setLightboxIndex(-1)
+            setStatusMsg(`Inpaint / outpaint ready (${result.summary}) — describe the result in the prompt and press Generate`, 'ok')
+          }} />
+      )}
+
       {backendType === 'sdxl' && refModes.length > 0 && (
         <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
           settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
@@ -1403,6 +1468,7 @@ export default function App({ active = true }) {
             )}
             <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
+            {supportsInpaint && <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(gallery[lightboxIndex].url)}>Inpaint / outpaint</button>}
             <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
           </div>
