@@ -168,6 +168,7 @@ export default function App({ active = true }) {
   const [statusType, setStatusType] = useState('')
   const [progress, setProgress] = useState(0)
   const genJobs = useJobsProgress()   // one steady bar for every generation running on this tab
+  const doneRef = useRef({ jobs: 0, images: 0, last: '', warnings: [] })   // results held back until every queued job finishes
   const [showProgress, setShowProgress] = useState(false)
   const [gallery, setGallery] = useState([])
   const [savedPrompts, setSavedPrompts] = useState([])
@@ -632,6 +633,7 @@ export default function App({ active = true }) {
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
     const count = Math.max(1, Math.min(8, +batchSize || 1))
+    if (genJobs.idle()) doneRef.current = { jobs: 0, images: 0, last: '', warnings: [] }   // a new round
     setStatusMsg('')
     const job = genJobs.start(count)
     // backends without a step counter: creep toward 90% so the bar keeps moving
@@ -750,10 +752,16 @@ export default function App({ active = true }) {
         const faces = data.faces_fixed == null ? ''
           : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
         const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}${data.refined ? ' · refined' : ''}`
-        if (Array.isArray(data.warnings) && data.warnings.length) {
-          setStatusMsg(`${done}. Warning: ${data.warnings.join(' ')}`, 'error')
-        } else {
-          setStatusMsg(done, 'ok')
+        // shown once every queued generation has finished (the bar is the only thing that moves until then)
+        const r = doneRef.current
+        r.jobs++
+        r.images += imageList.length
+        r.last = done
+        if (Array.isArray(data.warnings)) r.warnings.push(...data.warnings.filter(w => !r.warnings.includes(w)))
+        job.finish()
+        if (genJobs.idle()) {
+          const msg = r.jobs > 1 ? `Done — ${r.images} image(s)` : r.last
+          setStatusMsg(r.warnings.length ? `${msg}. Warning: ${r.warnings.join(' ')}` : msg, r.warnings.length ? 'error' : 'ok')
         }
         finish(true)
       } else {

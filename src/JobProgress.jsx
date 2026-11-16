@@ -71,7 +71,10 @@ export function useJobsProgress() {
     }
   }
 
-  return { pct, start }
+  // true when nothing is running (every job finished, or none started)
+  const idle = () => [...jobs.current.values()].every(j => j.finished)
+
+  return { pct, start, idle }
 }
 
 // Video / music jobs go through stages, each with its own step counter. Map them onto one 0-100 scale:
