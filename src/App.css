@@ -944,3 +944,8 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .headswap-quality { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .headswap-quality label { margin: 0; white-space: nowrap; }
 .headswap-quality select { flex: 1; min-width: 0; }
+.headswap-settings { margin-top: 4px; }
+.headswap-settings label { margin-top: 8px; }
+.headswap-seed { display: flex; gap: 6px; }
+.headswap-seed input { flex: 1; min-width: 0; }
+.headswap-seed button { width: auto; padding: 8px 10px; flex: none; }

@@ -7,6 +7,8 @@ import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galler
 import './App.css'
 import { askConfirm } from './ConfirmDialog.jsx'
 import SavedPrompts, { useSavedPrompts, savePromptAs } from './SavedPrompts.jsx'
+import PresetBar from './PresetBar.jsx'
+import Info from './Info.jsx'
  
 const BACKEND_HEADERS = {
   'Content-Type': 'application/json',
@@ -32,6 +34,14 @@ export const SWAP_MODES = {
     },
     baseLoraNote: 'head swap',
     loraModel: 'Qwen-Image 2.1',
+    // Generation settings this backend takes (Qwen-Image 2.1 has one sampler and always makes a new image)
+    controls: { steps: [8, 60, 40], resolution: [768, 1024, 1280, 1536], defaultResolution: 1024, cfg: true },
+    settingPresets: [
+      { name: 'Default', info: '40 steps at ~1024 px, CFG 1: the official settings.', s: { steps: 40, resolution: 1024, cfg: 1 } },
+      { name: 'Fast', info: '20 steps: about twice as fast, a little softer.', s: { steps: 20, resolution: 1024, cfg: 1 } },
+      { name: 'High detail', info: '50 steps at ~1280 px: sharper skin and hair, slower (falls back to a lower size if the GPU runs out of memory).', s: { steps: 50, resolution: 1280, cfg: 1 } },
+      { name: 'Stronger prompt', info: 'CFG 3 with a negative prompt: follows the prompt more strictly and avoids what the negative prompt lists; each step takes about twice as long.', s: { steps: 40, resolution: 1024, cfg: 3 } },
+    ],
     presets: [
       { name: 'Default', info: 'The official BFS head swap prompt: the whole head (face, hair, head shape) from the Head image.' },
       { name: "Body's expression",
@@ -58,6 +68,11 @@ export const SWAP_MODES = {
     baseLoraNote: 'face swap',
     loraModel: 'Qwen-Image-Edit',
     qualityOption: true,   // Fast (~768 px) / High detail (~1024 px), see FACESWAP.ipynb
+    controls: { steps: [4, 40, 8] },
+    settingPresets: [
+      { name: 'Default', info: '8 steps (made for the 8-step Lightning LoRA).', s: { steps: 8 } },
+      { name: 'More detail', info: '12 steps: a little more detail, about 50% slower.', s: { steps: 12 } },
+    ],
     presets: [
       { name: 'Face only', info: 'The official BFS face swap prompt: only the face changes; the photo keeps its own hair.' },
       { name: 'Face + hairstyle',
@@ -154,6 +169,18 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [prompt, setPrompt] = useState(() => localStorage.getItem(`${M.storage}_prompt`) || M.prompt)
   const [savedPrompts, storeSavedPrompts] = useSavedPrompts(`${M.storage}_prompts`)
   const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
+  const C = M.controls
+  const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1 }
+  const [settings, setSettings] = useState(() => {
+    try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
+  })
+  const [lastSeed, setLastSeed] = useState(null)
+  const seedRef = useRef(null)   // seed of the job that just finished (for the Done message)
+  const set = patch => setSettings(prev => {
+    const next = { ...prev, ...patch }
+    localStorage.setItem(`${M.storage}_settings`, JSON.stringify(next))
+    return next
+  })
   const presets = M.presets.map(p => ({ ...p, prompt: p.prompt || M.prompt }))
   const [bodyImage, setBodyImage] = useState(null)
   const [headImage, setHeadImage] = useState(null)
@@ -405,7 +432,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         downSince = null
         if (data.status === 'error' || data.error) throw new JobError(data.error || `${M.name} job failed`)
         const image = data.image || data.output || data.result
-        if ((data.status === 'done' || data.status === 'completed' || image) && image) return image
+        if ((data.status === 'done' || data.status === 'completed' || image) && image) {
+          seedRef.current = data.seed ?? null
+          if (data.seed != null) setLastSeed(data.seed)
+          return image
+        }
         if (data.status === 'done' || data.status === 'completed') {
           setStatusMsg('Job finished — waiting for its image…')
         } else {
@@ -435,6 +466,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     setLoading(true)
     setProgress(3)
     setResult(null)
+    seedRef.current = null
     try {
       // 1) Is the backend there, and is the model loaded?
       setStatusMsg('Connecting to the backend…')
@@ -453,7 +485,15 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setStatusMsg('Sending images to backend…')
       setProgress(5)
       const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
-      const payload = JSON.stringify({ body, head, prompt, loras, ...(M.qualityOption && quality !== 'auto' ? { quality } : {}) })
+      const steps = Math.round(Math.min(C.steps[1], Math.max(C.steps[0], +settings.steps || C.steps[2])))
+      const payload = JSON.stringify({
+        body, head, prompt, loras,
+        ...(M.qualityOption && quality !== 'auto' ? { quality } : {}),
+        num_inference_steps: steps,
+        ...(+settings.seed >= 0 ? { seed: Math.floor(+settings.seed) } : {}),
+        ...(C.resolution ? { resolution: +settings.resolution || C.defaultResolution } : {}),
+        ...(C.cfg ? { true_cfg_scale: Math.min(10, Math.max(1, +settings.cfg || 1)), negative_prompt: settings.negative || '' } : {}),
+      })
       let response
       for (let attempt = 1; ; attempt++) {
         try {
@@ -479,7 +519,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setProgress(98)
       await saveResult(output)
       setProgress(100)
-      setStatusMsg(`Done — saved to the ${M.name} gallery`, 'ok')
+      const seed = data.seed ?? seedRef.current
+      setStatusMsg(`Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : ''), 'ok')
+      if (seed != null) setLastSeed(seed)
     } catch (error) {
       setStatusMsg(isNetworkError(error) ? UNREACHABLE_MSG : (error.message || `${M.name} failed`), 'error')
     } finally {
@@ -610,6 +652,46 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       </div>
       {presets.find(p => p.prompt === prompt)?.info && <div className="muted headswap-preset-info">{presets.find(p => p.prompt === prompt).info}</div>}
       <textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={5} />
+      <label className="headswap-prompt-label">Settings <Info text={M.storage === 'headswap'
+        ? <>This model has one sampler and always makes a new picture, so there is no sampler, scheduler or denoise to pick.<br /><br /><b>Steps</b>: more = more detail, slower (40 is the official setting). <b>Size</b>: the result's size in pixels (its shape follows the Body picture); bigger is sharper but slower and needs more GPU memory. <b>CFG</b>: 1 = off (official); 2–4 follows the prompt more strictly and avoids what the negative prompt lists, but each step takes about twice as long. <b>Seed</b>: −1 = new every time; reuse a seed to get the same result again.</>
+        : <><b>Steps</b>: 8 is what the 8-step Lightning LoRA is made for; 10–12 can add a little detail. <b>Seed</b>: −1 = new every time; reuse a seed to get the same result again.</>} /></label>
+      <PresetBar scope={`${M.storage}_settings`} builtins={M.settingPresets}
+        onApply={p => { set({ ...p.s }); setStatusMsg(`Preset "${p.name}" applied`, 'ok') }}
+        getCurrent={() => ({ s: { steps: +settings.steps, ...(C.resolution ? { resolution: +settings.resolution } : {}), ...(C.cfg ? { cfg: +settings.cfg, negative: settings.negative } : {}) } })}
+        help="One click sets the steps and other settings below. Save your own with '+ Save current as preset'." />
+      <div className="row headswap-settings">
+        <div>
+          <label>Steps</label>
+          <input type="number" min={C.steps[0]} max={C.steps[1]} value={settings.steps} onChange={e => set({ steps: e.target.value })} />
+        </div>
+        {C.resolution && (
+          <div>
+            <label>Size</label>
+            <select value={settings.resolution} onChange={e => set({ resolution: +e.target.value })}>
+              {C.resolution.map(r => <option key={r} value={r}>~{r} px{r === C.defaultResolution ? ' (default)' : ''}</option>)}
+            </select>
+          </div>
+        )}
+        {C.cfg && (
+          <div>
+            <label>CFG</label>
+            <input type="number" step="0.5" min="1" max="10" value={settings.cfg} onChange={e => set({ cfg: e.target.value })} />
+          </div>
+        )}
+        <div>
+          <label>Seed</label>
+          <div className="headswap-seed">
+            <input type="number" value={settings.seed} onChange={e => set({ seed: e.target.value === '' ? -1 : +e.target.value })} title="-1 = a new seed every time" />
+            <button className="secondary" title="New seed every time" onClick={() => set({ seed: -1 })}>🎲</button>
+            <button className="secondary" title={lastSeed != null ? `Reuse the last seed (${lastSeed})` : 'No result yet'} disabled={lastSeed == null} onClick={() => set({ seed: lastSeed })}>♻</button>
+          </div>
+        </div>
+      </div>
+      {C.cfg && +settings.cfg > 1 && (<>
+        <label>Negative prompt</label>
+        <input value={settings.negative} onChange={e => set({ negative: e.target.value })} placeholder="blurry, low quality, deformed face, extra head, seams, color streaks (used when empty)" />
+      </>)}
+
       {M.qualityOption && (
         <div className="headswap-quality">
           <label>Detail</label>
