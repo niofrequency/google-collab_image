@@ -876,3 +876,37 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .gallery-row .gallery-item { height: 100%; }
 .gallery-row .gallery-item img, .gallery-row .gallery-item video { width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 760px) { .gallery-justified { margin-top: 10px; } }
+
+/* ---------- Gallery Prompts tab ---------- */
+.gp-intro { color: var(--muted); margin: -8px 0 24px; line-height: 1.5; }
+.gp-textarea { min-height: 80px; }
+.gp-note { display: block; color: var(--muted); margin-top: 6px; font-size: 12px; }
+.gp-ref { display: flex; gap: 16px; align-items: flex-start; }
+.gp-upload { width: auto; }
+.gp-ref-img { width: 120px; height: 160px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.gp-actions { margin-top: 24px; display: flex; gap: 12px; }
+.gp-results { margin-top: 32px; }
+.gp-results h2 { font-size: 18px; font-weight: 500; margin: 0 0 16px; }
+.gp-list { display: flex; flex-direction: column; gap: 12px; }
+.gp-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.gp-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.gp-card-head strong { color: var(--muted); }
+.gp-card-head button { width: auto; padding: 4px 12px; font-size: 12px; min-width: 76px; }
+.gp-card pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-size: 13px; font-family: inherit; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  .gp-intro { font-size: 14px; margin: -6px 0 16px; }
+  /* Subject and LoRA name stacked: the subject box needs the full width */
+  .gp-top-row > div { flex-basis: 100%; }
+  .gp-textarea { min-height: 120px; }
+  .gp-ref { gap: 12px; }
+  .gp-ref-img { width: 90px; height: 120px; }
+  /* Generate and Copy All share the row */
+  .gp-actions { margin-top: 18px; gap: 8px; }
+  .gp-actions > button { flex: 1 1 0; min-width: 0; }
+  .gp-results { margin-top: 20px; }
+  .gp-results h2 { font-size: 16px; margin-bottom: 10px; }
+  .gp-list { gap: 8px; }
+  .gp-card { padding: 10px; }
+  .gp-card pre { font-size: 13.5px; }
+}

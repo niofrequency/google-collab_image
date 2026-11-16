@@ -42,6 +42,7 @@ export default function GalleryPrompts() {
   const [clothingDesc, setClothingDesc] = useState('sleeveless V-neck mini dress with vertical light pink and hot pink stripes, slightly shiny fabric, short flared skirt, pink pantyhose, pink knitted leg warmers, pink and white sneakers')
   const [clothingImage, setClothingImage] = useState(null)
   const [prompts, setPrompts] = useState([])
+  const [copied, setCopied] = useState(null)  // 'all' or a prompt id: shows "Copied ✓" on that button for a moment
   const fileInputRef = useRef(null)
 
   function generate() {
@@ -58,14 +59,18 @@ export default function GalleryPrompts() {
     setPrompts(generated)
   }
 
-  function copyAll() {
-    const text = prompts.map(p => p.prompt).join('\n\n')
-    navigator.clipboard.writeText(text)
-    alert('All prompts copied to clipboard!')
+  function flashCopied(key) {
+    setCopied(key)
+    setTimeout(() => setCopied(c => (c === key ? null : c)), 1500)
   }
 
-  function copyOne(prompt) {
-    navigator.clipboard.writeText(prompt)
+  function copyAll() {
+    const text = prompts.map(p => p.prompt).join('\n\n')
+    navigator.clipboard.writeText(text).then(() => flashCopied('all'), () => alert('Could not copy — select the text and copy it by hand'))
+  }
+
+  function copyOne(prompt, id) {
+    navigator.clipboard.writeText(prompt).then(() => flashCopied(id), () => alert('Could not copy — select the text and copy it by hand'))
   }
 
   function handleImageUpload(e) {
@@ -76,20 +81,20 @@ export default function GalleryPrompts() {
   }
 
   return (
-    <div className="container">
+    <div className="container gallery-prompts">
       <h1>Gallery Prompt Generator</h1>
-      <p style={{ color: 'var(--muted)', marginBottom: 24 }}>
+      <p className="gp-intro">
         Generate a full progressive gallery (clothed teasing → full nude explicit) in the style of ATK-style sets.
       </p>
 
-      <div className="row">
+      <div className="row gp-top-row">
         <div>
           <label>Subject Description</label>
           <textarea
             value={subject}
             onChange={e => setSubject(e.target.value)}
             placeholder="woman, pink bob hair, purple headband, cute face, thick thighs..."
-            style={{ minHeight: 80 }}
+            className="gp-textarea"
           />
         </div>
         <div>
@@ -99,7 +104,7 @@ export default function GalleryPrompts() {
             onChange={e => setLora(e.target.value)}
             placeholder="zxq_steph"
           />
-          <small style={{ color: 'var(--muted)' }}>Will be added as lora:name at the start of every prompt</small>
+          <small className="gp-note">Will be added as lora:name at the start of every prompt</small>
         </div>
       </div>
 
@@ -108,11 +113,11 @@ export default function GalleryPrompts() {
         value={clothingDesc}
         onChange={e => setClothingDesc(e.target.value)}
         placeholder="sleeveless V-neck mini dress with vertical pink stripes, pink pantyhose, pink leg warmers..."
-        style={{ minHeight: 80 }}
+        className="gp-textarea"
       />
 
       <label>Clothing Reference Image (optional, for your reference only)</label>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div className="gp-ref">
         <div>
           <input
             type="file"
@@ -121,7 +126,7 @@ export default function GalleryPrompts() {
             onChange={handleImageUpload}
             style={{ display: 'none' }}
           />
-          <button className="secondary" onClick={() => fileInputRef.current?.click()}>
+          <button className="secondary gp-upload" onClick={() => fileInputRef.current?.click()}>
             Upload Clothing Image
           </button>
         </div>
@@ -129,31 +134,31 @@ export default function GalleryPrompts() {
           <img
             src={clothingImage}
             alt="clothing reference"
-            style={{ width: 120, height: 160, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }}
+            className="gp-ref-img"
           />
         )}
       </div>
 
-      <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
+      <div className="gp-actions">
         <button onClick={generate}>Generate 20 Prompts</button>
         {prompts.length > 0 && (
-          <button className="secondary" onClick={copyAll}>Copy All</button>
+          <button className="secondary" onClick={copyAll}>{copied === 'all' ? 'Copied ✓' : 'Copy All'}</button>
         )}
       </div>
 
       {prompts.length > 0 && (
-        <div style={{ marginTop: 32 }}>
-          <h2 style={{ fontSize: 18, marginBottom: 16 }}>Generated Gallery Prompts</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="gp-results">
+          <h2>Generated Gallery Prompts <span className="muted">· {prompts.length}</span></h2>
+          <div className="gp-list">
             {prompts.map(p => (
-              <div key={p.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, padding: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <strong style={{ color: 'var(--muted)' }}>#{p.id}</strong>
-                  <button className="secondary" style={{ width: 'auto', padding: '4px 10px', fontSize: 12 }} onClick={() => copyOne(p.prompt)}>
-                    Copy
+              <div key={p.id} className="gp-card">
+                <div className="gp-card-head">
+                  <strong>#{p.id}</strong>
+                  <button className="secondary" onClick={() => copyOne(p.prompt, p.id)}>
+                    {copied === p.id ? 'Copied ✓' : 'Copy'}
                   </button>
                 </div>
-                <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0, fontSize: 13, fontFamily: 'inherit' }}>
+                <pre>
                   {p.prompt}
                 </pre>
               </div>
