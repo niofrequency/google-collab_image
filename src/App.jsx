@@ -1176,8 +1176,14 @@ export default function App({ active = true }) {
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg} />
       )}
 
-      {supportsInpaint && (
+      {(
         <div className="inpaint-box">
+          {!supportsInpaint && (
+            <div className="muted small-note inpaint-note">
+              {backendType ? 'The notebook connected right now is an older version without inpainting: in Colab use Runtime → Disconnect and delete runtime, open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub, run its cells and paste the new URL. You can already paint the mask.'
+                : 'Works with the BigLust, Qwen 2511 and Qwen Rapid AIO notebooks (open them fresh from GitHub).'}
+            </div>
+          )}
           <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b> (BigLust): 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
           {inpaint ? (<>
             <div className="inpaint-current">
@@ -1468,7 +1474,7 @@ export default function App({ active = true }) {
             )}
             <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
-            {supportsInpaint && <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(gallery[lightboxIndex].url)}>Inpaint / outpaint</button>}
+            <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(gallery[lightboxIndex].url)}>Inpaint / outpaint</button>
             <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
             <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = gallery[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
             <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
