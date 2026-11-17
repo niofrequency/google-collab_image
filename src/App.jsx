@@ -918,6 +918,21 @@ export default function App({ active = true }) {
     setEditingPrompt(null)
   }
 
+  // Click: select / unselect one image. Shift+click: also select every image between the last clicked one and this one.
+  const lastClickRef = useRef(null)
+  function clickImage(e, id) {
+    const ids = shown.map(item => item.id)
+    const from = ids.indexOf(lastClickRef.current)
+    const to = ids.indexOf(id)
+    if (e.shiftKey && from >= 0 && to >= 0 && from !== to) {
+      const [a, b] = from < to ? [from, to] : [to, from]
+      setSelectedIds(prev => new Set([...prev, ...ids.slice(a, b + 1)]))
+    } else {
+      toggleSelect(id)
+    }
+    lastClickRef.current = id
+  }
+
   function toggleSelect(id) {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -1616,14 +1631,15 @@ export default function App({ active = true }) {
           ))}
         </div>
       )}
-      {shown.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
+      {shown.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · Shift+click to select a range · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryRef}>
         {(() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (item, i, cell) => (
             <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} style={cell}
-              onClick={() => toggleSelect(item.id)} onDoubleClick={() => openLightbox(i)}>
+              onClick={e => clickImage(e, item.id)} onDoubleClick={() => openLightbox(i)}
+              onMouseDown={e => { if (e.shiftKey) e.preventDefault() }}>
               <img src={item.url} alt="" loading="lazy" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
                 onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget
                   if (w && h && !(item.width && item.height) && !ratios[item.id]) setRatios(r => ({ ...r, [item.id]: w / h })) }} />
