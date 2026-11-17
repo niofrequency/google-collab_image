@@ -167,6 +167,16 @@ it back with a soft mask.
 - Adds a second or two; its models (~680 MB, `KlingTeam/LivePortrait`) download the first time. If no face is found it
   keeps the swap and says so. LivePortrait's code is MIT; its face detector (InsightFace) is for non-commercial use.
 
+## Head Swap: swap method and face restore (ReActor-style)
+
+- **Swap method**: *Head swap (BFS)* — the Qwen-Image head swap model (whole head, hair, follows the prompt);
+  *InsightFace face swap* — the ReActor / Roop method: InsightFace (buffalo_l) reads the head photo's face identity and
+  `inswapper_128` swaps only the face into the body photo (ignores the prompt, a few seconds, keeps the body photo's
+  expression, angle, light and hair); *Both* — head swap, then the InsightFace identity on top.
+- **Face restore**: CodeFormer (fidelity 0 strongest … 1 closest) or GFPGAN v1.4, blended in by *Visibility*.
+- Models (~1.3 GB, from ReActor's Hugging Face files) download the first time. inswapper / InsightFace models are for
+  non-commercial use. Only swap faces of people who have agreed to it.
+
 ## Detail tools for realistic photos (BigLust)
 
 Under Face fix in the Image Generator. Each is a switch; models download on first use.

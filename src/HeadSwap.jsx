@@ -177,9 +177,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
   const C = M.controls
   const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1, fast: false,
-    expression: false, expressionStrength: 1, expressionRegion: 'all', sharpen: false }
+    expression: false, expressionStrength: 1, expressionRegion: 'all', sharpen: false,
+    swapMethod: 'bfs', restore: 'off', restoreFidelity: 0.7, restoreVisibility: 0.6 }
   const [supportsExpression, setSupportsExpression] = useState(false)   // the notebook has the LivePortrait step
   const [supportsSharpen, setSupportsSharpen] = useState(false)         // … and "Sharper enlarging" (4x-UltraSharp)
+  const [supportsReactor, setSupportsReactor] = useState(false)         // … and the InsightFace swap + face restore
   const [settings, setSettings] = useState(() => {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
@@ -296,6 +298,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setBaseLora(data.base_lora || '')
       setSupportsExpression(!!data.supports_expression)
       setSupportsSharpen(!!data.supports_sharpen)
+      setSupportsReactor(!!data.supports_reactor)
       setLoras(previous => previous.filter(lora => files.includes(lora.name)))
     } catch { /* backend not reachable yet */ }
   }, [backendUrl])
@@ -515,6 +518,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(M.qualityOption && quality !== 'auto' ? { quality } : {}),
         ...(C.expression && supportsExpression && settings.expression ? { expression: { strength: +settings.expressionStrength || 1, region: settings.expressionRegion || 'all' } } : {}),
         ...(C.expression && supportsSharpen && settings.sharpen ? { sharpen: true } : {}),
+        ...(C.expression && supportsReactor ? { method: settings.swapMethod || 'bfs',
+          ...(settings.restore && settings.restore !== 'off' ? { restore: { model: settings.restore, fidelity: +settings.restoreFidelity, visibility: +settings.restoreVisibility } } : {}) } : {}),
         loras: loras.filter(l => l.name).map(l => ({ name: l.name, strength: l.strength })), character: activeCharacter || null,
       }
       const payload = JSON.stringify({
@@ -526,6 +531,10 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(C.cfg ? { true_cfg_scale: Math.min(10, Math.max(1, +settings.cfg || 1)), negative_prompt: settings.negative || '' } : {}),
         ...(C.fast ? { fast: !!settings.fast } : {}),
         ...(C.expression && supportsSharpen && settings.sharpen ? { sharpen: true } : {}),
+        ...(C.expression && supportsReactor ? {
+          swap_method: settings.swapMethod || 'bfs', face_restore: settings.restore || 'off',
+          restore_fidelity: +settings.restoreFidelity, restore_visibility: +settings.restoreVisibility,
+        } : {}),
         ...(C.expression && supportsExpression && settings.expression ? {
           expression_from_target: true, expression_strength: +settings.expressionStrength || 1, expression_region: settings.expressionRegion || 'all',
         } : {}),
@@ -707,6 +716,34 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         onApply={p => { set({ ...p.s }); setStatusMsg(`Preset "${p.name}" applied`, 'ok') }}
         getCurrent={() => ({ s: { steps: +settings.steps, ...(C.resolution ? { resolution: +settings.resolution } : {}), ...(C.cfg ? { cfg: +settings.cfg, negative: settings.negative } : {}), ...(C.fast ? { fast: !!settings.fast } : {}) } })}
         help="One click sets the steps and other settings below. Save your own with '+ Save current as preset'." />
+      {C.expression && supportsReactor && (
+        <div className="inline headswap-fast headswap-expression">
+          <label className="inline-label">Swap method
+            <select value={settings.swapMethod} onChange={e => set({ swapMethod: e.target.value })}>
+              <option value="bfs">Head swap (BFS model — whole head, hair, prompt)</option>
+              <option value="insightface">InsightFace face swap (ReActor-style — fast, keeps the expression)</option>
+              <option value="both">Both (head swap, then InsightFace identity)</option>
+            </select>
+          </label>
+          <label className="inline-label">Face restore
+            <select value={settings.restore} onChange={e => set({ restore: e.target.value })}>
+              <option value="off">Off</option>
+              <option value="codeformer">CodeFormer</option>
+              <option value="gfpgan">GFPGAN</option>
+            </select>
+          </label>
+          {settings.restore === 'codeformer' && <label className="inline-label">Fidelity
+            <input type="number" step="0.1" min="0" max="1" value={settings.restoreFidelity} onChange={e => set({ restoreFidelity: e.target.value })} /></label>}
+          {settings.restore !== 'off' && <label className="inline-label">Visibility
+            <input type="number" step="0.05" min="0.05" max="1" value={settings.restoreVisibility} onChange={e => set({ restoreVisibility: e.target.value })} /></label>}
+          <Info text={<>
+            <b>Head swap (BFS)</b>: the Qwen-Image head swap model — moves the whole head (face, hair, head shape) and follows the prompt.<br />
+            <b>InsightFace face swap</b>: the ReActor / Roop method — InsightFace reads the head photo's face identity and swaps only the <b>face</b> into the body photo mathematically. It ignores the prompt, takes a few seconds, and keeps the body photo's <b>expression, angle, light and hair</b>. Steps, Size and CFG aren't used.<br />
+            <b>Both</b>: the head swap first (hair and head shape), then the InsightFace identity on top for a closer likeness.<br /><br />
+            <b>Face restore</b> (last step): <b>CodeFormer</b> or <b>GFPGAN</b> sharpens eyes, teeth and skin — needed after InsightFace, which works at 128 px. <b>Fidelity</b> (CodeFormer): 0 strongest cleanup … 1 closest to the face. <b>Visibility</b>: how much of the restored face is blended in (0.5–0.7 keeps it natural).<br /><br />
+            Models download the first time (~1.3 GB). InsightFace's models are for non-commercial use. Only swap faces of people who have agreed to it.</>} />
+        </div>
+      )}
       {C.expression && (
         <div className="inline headswap-fast headswap-expression">
           <button className={`toggle ${settings.expression && supportsExpression ? 'on' : ''}`} disabled={!supportsExpression}
@@ -905,11 +942,13 @@ function SwapInfo({ item, name, onClose, onUsePrompt, onUseSeed, onDownload }) {
         <p><strong>Prompt:</strong><br />{item.prompt || '(none)'}</p>
         <div className="meta-info">
           Size: {dims ? `${dims[0]} × ${dims[1]}` : '…'}
-          {m.steps != null && <><br />Steps: {m.fast ? '8 (Speed LoRA)' : m.steps}{m.cfg != null && !m.fast ? ` | CFG: ${m.cfg}` : ''}{m.seed != null ? ` | Seed: ${m.seed}` : ''}</>}
-          {m.resolution && <><br />Generated at: ~{m.resolution} px</>}
+          {m.steps != null && m.method !== 'insightface' && <><br />Steps: {m.fast ? '8 (Speed LoRA)' : m.steps}{m.cfg != null && !m.fast ? ` | CFG: ${m.cfg}` : ''}{m.seed != null ? ` | Seed: ${m.seed}` : ''}</>}
+          {m.resolution && m.method !== 'insightface' && <><br />Generated at: ~{m.resolution} px</>}
           {m.quality && <><br />Quality: {m.quality}</>}
           {m.expression && <><br />Expression from body photo: strength {m.expression.strength}, {REGION[m.expression.region] || m.expression.region}</>}
           {m.sharpen && <><br />Enlarged with 4x-UltraSharp</>}
+          {m.method && m.method !== 'bfs' && <><br />Swap method: {m.method === 'insightface' ? 'InsightFace face swap' : 'head swap + InsightFace'}</>}
+          {m.restore && <><br />Face restore: {m.restore.model === 'codeformer' ? `CodeFormer (fidelity ${m.restore.fidelity})` : 'GFPGAN'}, visibility {m.restore.visibility}</>}
           {m.character && <><br />Character: {m.character}</>}
           {(m.loras || []).map((l, i) => <span key={i}><br />LoRA: {l.name.split('/').pop()} · strength {l.strength}</span>)}
           {m.seconds != null && <><br />Took: {m.seconds} s on the GPU</>}
