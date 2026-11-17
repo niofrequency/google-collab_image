@@ -1114,3 +1114,19 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .folder-new input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 13px; }
 .folder-new button { width: auto; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
 @media (max-width: 700px) { .folder-menu { right: auto; left: 0; min-width: 220px; } }
+
+/* Notebooks tab */
+.nb-intro { margin-top: -4px; }
+.nb-steps { margin: 8px 0 6px 18px; padding: 0; line-height: 1.7; font-size: 14px; }
+.nb-group { margin-top: 22px; }
+.nb-group > h3 { margin: 0 0 10px; }
+.nb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.nb-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); }
+.nb-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.nb-gpu { flex-shrink: 0; font-size: 11px; padding: 3px 8px; border-radius: 10px; border: 1px solid rgba(46,204,113,0.5); color: #2ecc71; white-space: nowrap; }
+.nb-what { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5; flex: 1; }
+.nb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.nb-actions .secondary { width: auto; padding: 7px 12px; font-size: 13px; }
+.nb-open { display: inline-block; padding: 7px 12px; font-size: 13px; border-radius: 8px; background: var(--accent); color: #fff; text-decoration: none; }
+.nb-open:hover { filter: brightness(1.15); }
+.nb-older summary { cursor: pointer; color: var(--muted); margin-bottom: 10px; }

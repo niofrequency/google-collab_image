@@ -74,3 +74,6 @@ export function EyeIcon(props) {
 export function EyeOffIcon(props) {
   return <NavSvg {...props}><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><line x1="3" y1="3" x2="21" y2="21" /></NavSvg>
 }
+export function NotebookIcon(props) {
+  return <NavSvg {...props}><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M7.5 9.5l2.5 2.5-2.5 2.5" /><line x1="12" y1="15" x2="16.5" y2="15" /></NavSvg>
+}
