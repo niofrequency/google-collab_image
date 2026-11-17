@@ -1136,3 +1136,8 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .see-more button { width: auto; padding: 9px 18px; }
 .see-more .see-all { padding: 9px 14px; opacity: 0.85; }
 .see-more .small-note { flex-basis: 100%; text-align: center; }
+
+/* Size presets under Width / Height */
+.size-presets { margin-top: 8px; }
+.size-dim { margin-left: 4px; font-size: 10px; opacity: 0.6; }
+.size-warn { font-size: 12px; color: #f5a623; }

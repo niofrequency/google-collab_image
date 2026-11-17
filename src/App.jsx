@@ -31,6 +31,12 @@ const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
 
+// SDXL's native sizes (about 1 megapixel); far outside them it tends to draw two pictures in one
+const SIZE_PRESETS = [
+  ['Portrait', 832, 1216], ['Portrait (wider)', 896, 1152], ['Tall', 768, 1344], ['Square', 1024, 1024],
+  ['Landscape', 1216, 832], ['Wide', 1344, 768],
+]
+
 const DEFAULT_SAMPLERS = ['euler', 'dpmpp_2m', 'euler_ancestral', 'sa_solver', 'res_multistep', 'er_sde']
 const DEFAULT_SCHEDULERS = ['simple', 'karras', 'normal', 'beta', 'sgm_uniform']
 
@@ -1333,6 +1339,20 @@ export default function App({ active = true }) {
         <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
       </div>
+
+      {backendType !== 'qwen_image_edit' && (
+        <div className="chips size-presets" role="group" aria-label="Image size">
+          <span className="chips-label">Size</span>
+          {SIZE_PRESETS.map(([label, w, h]) => (
+            <button key={label} className={`chip ${+width === w && +height === h ? 'active' : ''}`} title={`${w} × ${h}`}
+              onClick={() => { setWidth(w); setHeight(h) }}>{label} <span className="size-dim">{w}×{h}</span></button>
+          ))}
+          <Info text={<>SDXL (BigLust, Juggernaut, Pony…) was trained at about 1 megapixel in these shapes. Much taller or bigger sizes often come out as <b>two pictures stacked in one</b> (panels / split screen). For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp); for an extra-tall one, extend it afterwards with <b>Inpaint / outpaint</b>.</>} />
+          {(+width * +height > 1.35e6 || Math.max(+width, +height) / Math.max(1, Math.min(+width, +height)) > 1.8) && (
+            <span className="size-warn">This size may come out as two panels — pick one of these sizes</span>
+          )}
+        </div>
+      )}
 
       {backendType === 'sdxl' && (
         <div className="face-fix">
