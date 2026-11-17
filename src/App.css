@@ -1082,11 +1082,8 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 /* steady: the bar glides between updates instead of jumping */
 .job-progress .progress-bar { transition: width 1.5s linear; }
 
-/* Hide images (sidebar): every picture / video / canvas is blurred beyond recognition but stays on the page and
-   keeps working (upload slots, mask painting, galleries). clip-path keeps the blur inside each box. */
+/* Hide images (sidebar): every picture / video / canvas is invisible but stays on the page and keeps working
+   (upload slots, mask painting, galleries all still respond to taps — opacity, not display/visibility). */
 .privacy-toggle { margin-top: auto; }
 .sidebar .privacy-toggle + .sidebar-toggle, .sidebar .privacy-toggle + .sidebar-toggle:hover:not(:disabled) { margin-top: 0; }
-html.hide-images img, html.hide-images video, html.hide-images canvas {
-  filter: blur(28px) grayscale(1) brightness(0.55);
-  clip-path: inset(0);
-}
+html.hide-images img, html.hide-images video, html.hide-images canvas { opacity: 0 !important; }

@@ -33,7 +33,7 @@ export default function Root() {
   function toggleSidebar() {
     setCollapsed(c => { localStorage.setItem('sidebar_collapsed', c ? '0' : '1'); return !c })
   }
-  // Hide images: blurs every picture and video on the site (privacy), but they're still there — uploads, masks,
+  // Hide images: makes every picture and video on the site invisible (privacy), but they're still there — uploads, masks,
   // generating and saving all keep working.
   const [hideImages, setHideImages] = useState(localStorage.getItem('hide_images') === '1')
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function Root() {
           </button>
         ))}
         <button className={`nav-item privacy-toggle ${hideImages ? 'active' : ''}`} onClick={() => setHideImages(h => !h)}
-          title={hideImages ? 'Show images' : 'Hide images (they stay usable, just blurred)'} aria-pressed={hideImages}>
+          title={hideImages ? 'Show images' : 'Hide all images (they stay usable, just invisible)'} aria-pressed={hideImages}>
           {hideImages ? <EyeOffIcon /> : <EyeIcon />}
           <span className="nav-label">{hideImages ? 'Show images' : 'Hide images'}</span>
           <span className="nav-short">{hideImages ? 'Show' : 'Hide'}</span>
