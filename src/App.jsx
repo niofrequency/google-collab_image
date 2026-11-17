@@ -1228,8 +1228,14 @@ export default function App({ active = true }) {
       } else if (refPicture) { setRefPicture(null); setRefMap(null) }
     }
     if (item.inpaint) notes.push('inpainting isn\'t restored (open the picture in Inpaint / outpaint again)')
+    // say which detail tools came back (or that the picture didn't use any), so nothing is a mystery
+    const dl = detailLines(item.detail).map(([name]) => name)
+    if (item.detail?.facePasses === 2) dl.unshift('Face fix 2 passes')
+    if (item.detail?.upscaler && item.detail.upscaler !== 'lanczos') dl.push(UPSCALER_NAMES[item.detail.upscaler] || item.detail.upscaler)
+    const detailNote = item.detail === undefined ? '' : dl.length ? ` · Detail tools: ${dl.join(', ')}` : ' · Detail tools: none were used for this picture'
+    if (dl.length && !detailTools) notes.push('the detail tools are set but greyed out until the BigLust notebook is connected')
     setInfoItem(null)
-    setStatusMsg('Full workflow loaded' + (item.seed != null ? ` (seed ${item.seed})` : '') + (notes.length ? ` — except: ${notes.join('; ')}` : ''), notes.length ? 'warn' : 'ok')
+    setStatusMsg('Full workflow loaded' + (item.seed != null ? ` (seed ${item.seed})` : '') + detailNote + (notes.length ? ` — except: ${notes.join('; ')}` : ''), notes.length ? 'warn' : 'ok')
   }
 
   function loadPromptOnly(item) {

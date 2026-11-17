@@ -98,10 +98,14 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
   const set = patch => setValue(prev => { const next = { ...prev, ...patch }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
   const off = !tools
   const need = 'Needs the updated BigLust notebook — open it fresh from GitHub and run cells 1–3'
-  const T = (key, on, label, onClick, title) => (
-    <button className={`toggle small ${on && !off && tools[key] ? 'on' : ''}`} disabled={off || !tools[key]}
-      title={off || !tools[key] ? need : title} onClick={onClick}>{label}: {on && !off && tools[key] ? 'On' : 'Off'}</button>
-  )
+  // Not connected: show the setting as it is (dimmed). Connected to a notebook without the tool: Off (it isn't used).
+  const T = (key, on, label, onClick, title) => {
+    const shownOn = on && (off || tools[key])
+    return (
+      <button className={`toggle small ${shownOn ? 'on' : ''}`} disabled={off || !tools[key]}
+        title={off ? 'Connect the BigLust notebook to use it' : !tools[key] ? need : title} onClick={onClick}>{label}: {shownOn ? 'On' : 'Off'}</button>
+    )
+  }
   return (
     <div className="detail-tools">
       <div className="inline" style={{ alignItems: 'center' }}>
