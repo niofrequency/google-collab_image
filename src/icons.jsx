@@ -77,3 +77,6 @@ export function EyeOffIcon(props) {
 export function NotebookIcon(props) {
   return <NavSvg {...props}><rect x="3.5" y="4" width="17" height="16" rx="2.5" /><path d="M7.5 9.5l2.5 2.5-2.5 2.5" /><line x1="12" y1="15" x2="16.5" y2="15" /></NavSvg>
 }
+export function GalleryIcon(props) {
+  return <NavSvg {...props}><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></NavSvg>
+}

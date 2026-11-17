@@ -11,12 +11,14 @@ import FaceSwap from './FaceSwap.jsx'
 import Characters from './Characters.jsx'
 import Upscale from './Upscale.jsx'
 import Notebooks from './Notebooks.jsx'
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon, NotebookIcon } from './icons.jsx'
+import Library from './Library.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon, NotebookIcon, GalleryIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
   { id: 'notebooks', label: 'Notebooks', short: 'Notebooks', Icon: NotebookIcon },
   { id: 'generate', label: 'Image Generator', short: 'Images', Icon: ImageIcon },
+  { id: 'library', label: 'Gallery', short: 'Gallery', Icon: GalleryIcon },
   { id: 'gallery', label: 'Gallery Prompts', short: 'Prompts', Icon: PromptsIcon },
   { id: 'video', label: 'Image to Video', short: 'Video', Icon: VideoIcon },
   { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
@@ -82,6 +84,7 @@ export default function Root() {
       <main className="main">
       <CloudBar />
       <div style={{ display: tab === 'notebooks' ? 'block' : 'none' }}><Notebooks /></div>
+      <div style={{ display: tab === 'library' ? 'block' : 'none' }}><Library active={tab === 'library'} /></div>
       <div style={{ display: tab === 'generate' ? 'block' : 'none' }}><App active={tab === 'generate'} /></div>
       <div style={{ display: tab === 'gallery' ? 'block' : 'none' }}><GalleryPrompts /></div>
       <div style={{ display: tab === 'video' ? 'block' : 'none' }}><Video active={tab === 'video'} /></div>

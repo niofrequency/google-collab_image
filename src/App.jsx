@@ -396,6 +396,13 @@ export default function App({ active = true }) {
     setStatusMsg(`Folder "${name}" deleted — its images are still in All images`, 'ok')
   }
 
+  // "Open in Image Generator" on the Gallery tab: show that folder (or All images) here
+  useEffect(() => {
+    const onOpen = e => { setActiveFolder(e.detail || null); setTimeout(() => galleryRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80) }
+    window.addEventListener('open-image-folder', onOpen)
+    return () => window.removeEventListener('open-image-folder', onOpen)
+  })
+
   async function loadGallery() {
     const db = await openDB()
     const tx = db.transaction('images', 'readonly')
