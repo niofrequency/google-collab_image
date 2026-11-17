@@ -1387,7 +1387,7 @@ export default function App({ active = true }) {
         </div>
       </div>
 
-      {backendType === 'sdxl' && (
+      {backendType !== 'qwen_image_edit' && (
         <div className="variation-row">
           <span className="chips-label">Variation</span>
           <Info text={<>Make <b>derivatives of the same picture</b>: keep its <b>Seed</b> (♻ or Load Full) and turn Variation up. A second seed's noise is blended into the picture's own, so the result stays the same picture with changes.<br /><br />
@@ -1408,7 +1408,9 @@ export default function App({ active = true }) {
               <button className="secondary" title={lastVarSeed != null ? `Reuse the last variation seed (${lastVarSeed})` : 'No variation yet'} disabled={lastVarSeed == null} onClick={() => setVarSeed(lastVarSeed)}>♻</button>
             </div>
           )}
-          {!detailTools?.variation_seed && <span className="muted small-note">needs the updated BigLust notebook</span>}
+          {!detailTools?.variation_seed && <span className="muted small-note">{backendType === 'sdxl'
+            ? 'The connected BigLust notebook is an older version: in Colab use Runtime → Disconnect and delete runtime, open BIGLUST fresh from the Notebooks tab, run cells 1–3 and paste the new URL.'
+            : 'Connect the BigLust notebook (Notebooks tab → BigLust, run cells 1–3, paste its URL above) to use it.'}</span>}
           {detailTools?.variation_seed && +varStrength > 0 && +seed < 0 && <span className="muted small-note">set a Seed (♻ or Load Full) to vary one picture — with 🎲 every picture is new anyway</span>}
         </div>
       )}
