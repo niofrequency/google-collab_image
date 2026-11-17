@@ -5,6 +5,7 @@ import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
+import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import './App.css'
 import { askConfirm } from './ConfirmDialog.jsx'
 import SavedPrompts, { useSavedPrompts, savePromptAs } from './SavedPrompts.jsx'
@@ -199,10 +200,18 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [statusType, setStatusType] = useState('')
   const [progress, setProgress] = useState(0)
   const [gallery, setGallery] = useState([])
-  const pager = useSeeMore(60)   // only the newest 60 are built; See more for the rest
-  const visible = gallery.slice(0, pager.limit)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lightboxIndex, setLightboxIndex] = useState(-1)
+  const [infoItem, setInfoItem] = useState(null)
+  // Folders, like the Image Generator's gallery (saved on each picture)
+  const folderHook = useGalleryFolders(gallery, `${M.storage}_gallery_folder`)
+  const folders = { ...folderHook, setActiveFolder: name => { folderHook.setActiveFolder(name); setSelectedIds(new Set()); setLightboxIndex(-1) } }
+  const shown = folders.shown
+  const pager = useSeeMore(60, folders.activeFolder)   // only the newest 60 are built; See more for the rest
+  const visible = shown.slice(0, pager.limit)
+  const [folderMenu, setFolderMenu] = useState(false)
+  const folderAddRef = useRef(null)
+  const clickImage = useShiftSelect(visible.map(item => item.id), setSelectedIds)
   const [loraFiles, setLoraFiles] = useState([])        // extra LoRAs downloaded on the backend
   const [loras, setLoras] = useState(() => loadSavedLoras(M.storage))     // chosen extra LoRAs: [{ name, strength }]
   const [baseLora, setBaseLora] = useState('')           // the head swap LoRA the notebook always uses
@@ -236,7 +245,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       id: record.id,
       url: URL.createObjectURL(record.blob),
       created: record.created,
-      prompt: record.prompt || ''
+      prompt: record.prompt || '',
+      folders: record.folders || [],
+      meta: record.meta || null,
     }))
     galleryRef.current.forEach(item => URL.revokeObjectURL(item.url))
     galleryRef.current = next
@@ -339,11 +350,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     }
   }
 
-  const saveResult = useCallback(async (dataUrl) => {
+  const saveResult = useCallback(async (dataUrl, meta = null) => {
     const db = await openGalleryDb(M.db)
     await new Promise((resolve, reject) => {
       const tx = db.transaction(GALLERY_STORE, 'readwrite')
-      tx.objectStore(GALLERY_STORE).add({ blob: imageBlob(dataUrl), created: Date.now(), prompt })
+      tx.objectStore(GALLERY_STORE).add({ blob: imageBlob(dataUrl), created: Date.now(), prompt: meta?.prompt ?? prompt, ...(meta ? { meta } : {}) })
       tx.oncomplete = resolve
       tx.onerror = () => reject(tx.error)
       tx.onabort = () => reject(tx.error || new Error('Could not save result'))
@@ -496,6 +507,13 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       progress(5)
       const [body, head] = await Promise.all([shrinkImage(bodyImage, MAX_UPLOAD_SIDE), shrinkImage(headImage, MAX_UPLOAD_SIDE)])
       const steps = Math.round(Math.min(C.steps[1], Math.max(C.steps[0], +settings.steps || C.steps[2])))
+      const meta = {
+        prompt, steps, ...(C.resolution ? { resolution: +settings.resolution || C.defaultResolution } : {}),
+        ...(C.cfg ? { cfg: Math.min(10, Math.max(1, +settings.cfg || 1)) } : {}), ...(C.fast && settings.fast ? { fast: true } : {}),
+        ...(M.qualityOption && quality !== 'auto' ? { quality } : {}),
+        ...(C.expression && supportsExpression && settings.expression ? { expression: { strength: +settings.expressionStrength || 1, region: settings.expressionRegion || 'all' } } : {}),
+        loras: loras.filter(l => l.name).map(l => ({ name: l.name, strength: l.strength })), character: activeCharacter || null,
+      }
       const payload = JSON.stringify({
         body, head, prompt, loras,
         ...(M.qualityOption && quality !== 'auto' ? { quality } : {}),
@@ -532,7 +550,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       if (!output && data.job_id) ({ image: output, seed, seconds, warnings } = await pollJob(backend, data.job_id, progress))
       if (!output) throw new Error('The backend finished without returning an image or job ID')
       progress(98)
-      await saveResult(output)
+      await saveResult(output, { ...meta, seed: seed ?? null, seconds: seconds ?? null })
       job.finish()
       if (seed != null) setLastSeed(seed)
       const r = doneRef.current
@@ -551,15 +569,6 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     }
   }
 
-  function toggleSelected(id) {
-    setSelectedIds(previous => {
-      const next = new Set(previous)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   async function deleteSelected() {
     const n = selectedIds.size
     if (!n) return
@@ -574,8 +583,17 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     })
     db.close()
     if (lightboxIndex >= 0) setLightboxIndex(-1)
+    setSelectedIds(new Set())
     await loadGallery()
   }
+
+  // Folders (the same as the Image Generator's gallery)
+  async function changeFolders(ids, change) {
+    const updates = await changeFoldersInDb(() => openGalleryDb(M.db), GALLERY_STORE, ids, change)
+    setGallery(prev => prev.map(item => (item.id in updates ? { ...item, folders: updates[item.id] } : item)))
+  }
+  const folderActions = useFolderActions({ items: gallery, folders, change: changeFolders, say: setStatusMsg,
+    clearSelection: () => { setSelectedIds(new Set()); setFolderMenu(false) } })
 
   function toggleAll() {
     setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(item => item.id)))
@@ -589,7 +607,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   }
 
   function previous() { setLightboxIndex(index => Math.max(0, index - 1)) }
-  function next() { setLightboxIndex(index => Math.min(gallery.length - 1, index + 1)) }
+  function next() { setLightboxIndex(index => Math.min(shown.length - 1, index + 1)) }
   useLightboxKeys(lightboxIndex >= 0, { prev: previous, next, close: () => setLightboxIndex(-1), enabled: active })
 
   if (!active) return null
@@ -770,9 +788,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       {result && <div className="headswap-latest-result"><h3>Latest result</h3><img src={result} alt={`Latest ${M.name} result`} /></div>}
 
       <div className="gallery-header headswap-gallery-header">
-        <h3>{M.name} Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <h3>{folders.activeFolder || `${M.name} Gallery`} {shown.length > 0 && <span className="muted">· {shown.length} image{shown.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+          <FolderButtons selectedIds={selectedIds} folders={folders} actions={folderActions}
+            open={folderMenu} setOpen={setFolderMenu} anchorRef={folderAddRef} />
           {gallery.length > 0 && (<>
             <label className="gallery-control" title="Thumbnail size">
               <span>Size</span>
@@ -785,14 +805,16 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           </>)}
         </div>
       </div>
-      {gallery.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
+      <FolderBar total={gallery.length} folders={folders} actions={folderActions} />
+      {shown.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · Shift+click to select a range · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryWrapRef}>
         {gallery.length === 0 ? <div className="empty-msg">{M.name} results will be saved here, separately from the Image Generator gallery.</div> : (() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (item, index, cell) => (
             <div key={item.id} className={`gallery-item ${selectedIds.has(item.id) ? 'selected' : ''}`} style={cell}
-              onClick={() => toggleSelected(item.id)} onDoubleClick={() => setLightboxIndex(index)}>
+              onClick={e => clickImage(e, item.id)} onDoubleClick={() => setLightboxIndex(index)}
+              onMouseDown={e => { if (e.shiftKey) e.preventDefault() }}>
               <img src={item.url} alt="" loading="lazy" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
                 onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget
                   if (w && h && !ratios[item.id]) setRatios(r => ({ ...r, [item.id]: w / h })) }} />
@@ -800,7 +822,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
               <div className="gallery-overlay">
                 <button className="magnify-btn" title="View full size" onClick={event => { event.stopPropagation(); setLightboxIndex(index) }}><ZoomIcon /></button>
               </div>
-              <button className="info-btn" title="Download image" onClick={event => { event.stopPropagation(); download(item) }}>↓</button>
+              <button className="info-btn" title="Info" onClick={event => { event.stopPropagation(); setInfoItem(item) }}>i</button>
             </div>
           )
           if (!fitImages) {
@@ -822,24 +844,71 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       </div>
       <SeeMore pager={pager} total={gallery.length} noun="images" />
 
-      {lightboxIndex >= 0 && gallery[lightboxIndex] && <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
+      {lightboxIndex >= 0 && shown[lightboxIndex] && <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
         <div className="lb-image-wrap" onClick={event => event.stopPropagation()}>
           <button className="lb-btn left" title="Close (Esc)" onClick={() => setLightboxIndex(-1)}><CloseIcon /></button>
           <button className="lb-btn nav-left" title="Previous (←)" onClick={previous} disabled={lightboxIndex === 0}><ChevronLeftIcon /></button>
-          <img src={gallery[lightboxIndex].url} alt={`${M.name} result`} />
-          <button className="lb-btn nav-right" title="Next (→)" onClick={next} disabled={lightboxIndex === gallery.length - 1}><ChevronRightIcon /></button>
+          <img src={shown[lightboxIndex].url} alt={`${M.name} result`} />
+          <button className="lb-btn nav-right" title="Next (→)" onClick={next} disabled={lightboxIndex === shown.length - 1}><ChevronRightIcon /></button>
         </div>
         <div className="lb-bar" onClick={event => event.stopPropagation()}>
-          <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
-          <span className="lb-caption">{gallery[lightboxIndex].prompt || `${M.name} result`}</span>
-          <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
-          <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = gallery[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: M.name } })) }}>Send to Upscale</button>
-          <button className="secondary" onClick={() => download(gallery[lightboxIndex])}>Download</button>
+          <span className="lb-count">{lightboxIndex + 1} / {shown.length}</span>
+          <span className="lb-caption">{shown[lightboxIndex].prompt || `${M.name} result`}</span>
+          <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}>Save to Characters</button>
+          <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: M.name } })) }}>Send to Upscale</button>
+          <button className="secondary" onClick={() => setInfoItem(shown[lightboxIndex])}>Info</button>
+          <button className="secondary" title="Put this image in a folder" onClick={() => {
+            setSelectedIds(new Set([shown[lightboxIndex].id])); setLightboxIndex(-1); setFolderMenu(true)
+            setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+          }}>Add to folder</button>
+          <button className="secondary" onClick={() => download(shown[lightboxIndex])}>Download</button>
         </div>
         <div className="lb-help">← → browse · Esc to close</div>
       </div>}
+      {infoItem && <SwapInfo item={infoItem} name={M.name} onClose={() => setInfoItem(null)}
+        onUsePrompt={() => { setPrompt(infoItem.prompt || ''); setInfoItem(null); setStatusMsg('Prompt loaded', 'ok') }}
+        onUseSeed={infoItem.meta?.seed != null ? () => { set({ seed: infoItem.meta.seed }); setInfoItem(null); setStatusMsg(`Seed ${infoItem.meta.seed} loaded`, 'ok') } : null}
+        onDownload={() => download(infoItem)} />}
       {saveCharSrc && <SaveToCharacter src={saveCharSrc} onClose={() => setSaveCharSrc(null)} say={setStatusMsg} />}
 
+    </div>
+  )
+}
+
+// The "i" popup of a Head Swap / Face Swap picture: what it was made with
+function SwapInfo({ item, name, onClose, onUsePrompt, onUseSeed, onDownload }) {
+  const m = item.meta || {}
+  const [dims, setDims] = useState(null)
+  useEffect(() => {
+    const img = new Image()
+    img.onload = () => setDims([img.naturalWidth, img.naturalHeight])
+    img.src = item.url
+  }, [item])
+  const REGION = { all: 'whole face', mouth: 'mouth only', eyes: 'eyes only' }
+  return (
+    <div className="prompt-popup-overlay" onClick={onClose}>
+      <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+        <h3>{name} info</h3>
+        <p><strong>Prompt:</strong><br />{item.prompt || '(none)'}</p>
+        <div className="meta-info">
+          Size: {dims ? `${dims[0]} × ${dims[1]}` : '…'}
+          {m.steps != null && <><br />Steps: {m.fast ? '8 (Speed LoRA)' : m.steps}{m.cfg != null && !m.fast ? ` | CFG: ${m.cfg}` : ''}{m.seed != null ? ` | Seed: ${m.seed}` : ''}</>}
+          {m.resolution && <><br />Generated at: ~{m.resolution} px</>}
+          {m.quality && <><br />Quality: {m.quality}</>}
+          {m.expression && <><br />Expression from body photo: strength {m.expression.strength}, {REGION[m.expression.region] || m.expression.region}</>}
+          {m.character && <><br />Character: {m.character}</>}
+          {(m.loras || []).map((l, i) => <span key={i}><br />LoRA: {l.name.split('/').pop()} · strength {l.strength}</span>)}
+          {m.seconds != null && <><br />Took: {m.seconds} s on the GPU</>}
+          {item.created && <><br />Made: {new Date(item.created).toLocaleString()}</>}
+          {!item.meta && <><br /><span className="muted">Made before details were saved — only the prompt is known.</span></>}
+        </div>
+        <div className="row" style={{ marginTop: 16 }}>
+          <button onClick={onUsePrompt}>Use prompt</button>
+          {onUseSeed && <button className="secondary" onClick={onUseSeed}>Use seed</button>}
+          <button className="secondary" onClick={onDownload}>Download</button>
+          <button className="secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   )
 }

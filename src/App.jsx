@@ -17,6 +17,7 @@ import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
+import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import DetailTools, { loadDetail, detailPayload, detailSummary, detailRecord, detailLines, detailFromRecord, UPSCALER_NAMES } from './DetailTools.jsx'
 import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
@@ -201,19 +202,9 @@ export default function App({ active = true }) {
   const [maxRefImages, setMaxRefImages] = useState(MAX_REFS)
 
   const [selectedIds, setSelectedIds] = useState(new Set())
-  // Folders: an image can be in any number of named folders (saved on the image, backed up with it).
-  // "All images" (null) shows everything; picking a folder shows only its images.
-  const [activeFolder, setActiveFolderState] = useState(localStorage.getItem('gallery_folder') || null)
+  // Folders (shared with every gallery): see GalleryFolders.jsx
   const [folderMenu, setFolderMenu] = useState(false)
-  const [newFolderName, setNewFolderName] = useState('')
-  const [renaming, setRenaming] = useState(null)      // { from, to } while a folder's name is being edited
   const folderAddRef = useRef(null)
-  const setActiveFolder = name => {
-    setActiveFolderState(name)
-    if (name) localStorage.setItem('gallery_folder', name); else localStorage.removeItem('gallery_folder')
-    setSelectedIds(new Set())
-    setLightboxIndex(-1)
-  }
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
   const [editingNameIndex, setEditingNameIndex] = useState(null)
   const [editingNameValue, setEditingNameValue] = useState('')
@@ -326,75 +317,22 @@ export default function App({ active = true }) {
     return () => window.removeEventListener('paste', handlePaste)
   }, [])
 
-  const folderCounts = {}
-  for (const item of gallery) for (const f of item.folders || []) folderCounts[f] = (folderCounts[f] || 0) + 1
-  const folderNames = Object.keys(folderCounts).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-  const folderOk = !activeFolder || folderCounts[activeFolder]
-  const shown = activeFolder && folderOk ? gallery.filter(item => (item.folders || []).includes(activeFolder)) : gallery
+  const folderHook = useGalleryFolders(gallery, 'gallery_folder')
+  const setActiveFolder = name => { folderHook.setActiveFolder(name); setSelectedIds(new Set()); setLightboxIndex(-1) }
+  const folders = { ...folderHook, setActiveFolder }
+  const { activeFolder, shown } = folders
   const pager = useSeeMore(60, activeFolder)
   const visible = shown.slice(0, pager.limit)   // only these are built on the page
 
   // Changes the folders of some images (in the gallery database, then on screen) and backs it up
   async function changeFolders(ids, change) {
-    const db = await openDB()
-    const now = Date.now()
-    const updates = {}
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction('images', 'readwrite')
-      const store = tx.objectStore('images')
-      for (const id of ids) {
-        const req = store.get(id)
-        req.onsuccess = () => {
-          const rec = req.result
-          if (!rec) return
-          const folders = [...new Set(change(rec.folders || []))]
-          updates[id] = folders
-          store.put({ ...rec, folders, foldersAt: now })
-        }
-      }
-      tx.oncomplete = resolve
-      tx.onerror = () => reject(tx.error)
-    })
+    const updates = await changeFoldersInDb(openDB, 'images', ids, change)
     setGallery(prev => prev.map(item => (item.id in updates ? { ...item, folders: updates[item.id] } : item)))
     queueSync('images')
   }
 
-  async function addSelectedToFolder(name) {
-    name = (name || '').trim().slice(0, 60)
-    if (!name || !selectedIds.size) return
-    const n = selectedIds.size
-    await changeFolders([...selectedIds], f => [...f, name])
-    setFolderMenu(false)
-    setNewFolderName('')
-    setSelectedIds(new Set())
-    setStatusMsg(`Added ${n} image${n === 1 ? '' : 's'} to the folder "${name}"`, 'ok')
-  }
-
-  async function removeSelectedFromFolder() {
-    if (!activeFolder || !selectedIds.size) return
-    const n = selectedIds.size
-    await changeFolders([...selectedIds], f => f.filter(x => x !== activeFolder))
-    setSelectedIds(new Set())
-    setStatusMsg(`Removed ${n} image${n === 1 ? '' : 's'} from "${activeFolder}" (they're still in All images)`, 'ok')
-  }
-
-  async function renameFolder(oldName, newName) {
-    setRenaming(null)
-    const name = (newName || '').trim().slice(0, 60)
-    if (!name || name === oldName) return
-    await changeFolders(gallery.filter(i => (i.folders || []).includes(oldName)).map(i => i.id),
-      f => f.map(x => (x === oldName ? name : x)))
-    if (activeFolder === oldName) setActiveFolder(name)
-    setStatusMsg(`Folder renamed to "${name}"`, 'ok')
-  }
-
-  async function deleteFolder(name) {
-    const ids = gallery.filter(i => (i.folders || []).includes(name)).map(i => i.id)
-    if (!(await askConfirm({ title: `Delete the folder "${name}"?`, message: `Only the folder goes away — its ${ids.length} image${ids.length === 1 ? '' : 's'} stay in All images (and in any other folders).`, yes: 'Delete folder' }))) return
-    await changeFolders(ids, f => f.filter(x => x !== name))
-    if (activeFolder === name) setActiveFolder(null)
-    setStatusMsg(`Folder "${name}" deleted — its images are still in All images`, 'ok')
-  }
+  const folderActions = useFolderActions({ items: gallery, folders, change: changeFolders, say: setStatusMsg,
+    clearSelection: () => { setSelectedIds(new Set()); setFolderMenu(false) } })
 
   // "Open in Image Generator" on the Gallery tab: show that folder (or All images) here
   useEffect(() => {
@@ -941,19 +879,7 @@ export default function App({ active = true }) {
   }
 
   // Click: select / unselect one image. Shift+click: also select every image between the last clicked one and this one.
-  const lastClickRef = useRef(null)
-  function clickImage(e, id) {
-    const ids = visible.map(item => item.id)
-    const from = ids.indexOf(lastClickRef.current)
-    const to = ids.indexOf(id)
-    if (e.shiftKey && from >= 0 && to >= 0 && from !== to) {
-      const [a, b] = from < to ? [from, to] : [to, from]
-      setSelectedIds(prev => new Set([...prev, ...ids.slice(a, b + 1)]))
-    } else {
-      toggleSelect(id)
-    }
-    lastClickRef.current = id
-  }
+  const clickImage = useShiftSelect(visible.map(item => item.id), setSelectedIds)
 
   function toggleSelect(id) {
     setSelectedIds(prev => {
@@ -1622,28 +1548,11 @@ export default function App({ active = true }) {
       )}
 
       <div className="gallery-header">
-        <h3>{activeFolder && folderOk ? activeFolder : 'Gallery'} {shown.length > 0 && <span className="muted">· {shown.length} image{shown.length === 1 ? '' : 's'}</span>}</h3>
+        <h3>{activeFolder || 'Gallery'} {shown.length > 0 && <span className="muted">· {shown.length} image{shown.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
-          {selectedIds.size > 0 && (
-            <div className="folder-add" ref={folderAddRef}>
-              <button className="secondary" onClick={() => setFolderMenu(m => !m)} aria-expanded={folderMenu}>Add to folder ({selectedIds.size}) ▾</button>
-              {folderMenu && (
-                <div className="folder-menu" role="menu">
-                  {folderNames.map(f => (
-                    <button key={f} className="folder-menu-item" onClick={() => addSelectedToFolder(f)}>{f} <span className="muted">{folderCounts[f]}</span></button>
-                  ))}
-                  <form className="folder-new" onSubmit={e => { e.preventDefault(); addSelectedToFolder(newFolderName) }}>
-                    <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="New folder name" maxLength={60} />
-                    <button type="submit" disabled={!newFolderName.trim()}>+ New folder</button>
-                  </form>
-                </div>
-              )}
-            </div>
-          )}
-          {selectedIds.size > 0 && activeFolder && folderOk && (
-            <button className="secondary" onClick={removeSelectedFromFolder} title="Take them out of this folder (they stay in All images)">Remove from folder</button>
-          )}
+          <FolderButtons selectedIds={selectedIds} folders={folders} actions={folderActions}
+            open={folderMenu} setOpen={setFolderMenu} anchorRef={folderAddRef} />
           {shown.length > 0 && (<>
             <label className="gallery-control" title="Thumbnail size">
               <span>Size</span>
@@ -1656,28 +1565,7 @@ export default function App({ active = true }) {
           </>)}
         </div>
       </div>
-      {folderNames.length > 0 && (
-        <div className="folder-bar" role="tablist" aria-label="Gallery folders">
-          <button className={`chip ${!activeFolder || !folderOk ? 'active' : ''}`} onClick={() => setActiveFolder(null)}>All images <span className="folder-count">{gallery.length}</span></button>
-          {folderNames.map(f => (
-            <span key={f} className={`folder-chip ${activeFolder === f ? 'active' : ''}`}>
-              <button className={`chip ${activeFolder === f ? 'active' : ''}`} onClick={() => setActiveFolder(f)} title={`Show the folder "${f}"`}>📁 {f} <span className="folder-count">{folderCounts[f]}</span></button>
-              {activeFolder === f && renaming?.from === f && (
-                <form className="folder-rename" onSubmit={e => { e.preventDefault(); renameFolder(f, renaming.to) }}>
-                  <input autoFocus value={renaming.to} maxLength={60} onChange={e => setRenaming({ from: f, to: e.target.value })}
-                    onKeyDown={e => e.key === 'Escape' && setRenaming(null)} aria-label="New folder name" />
-                  <button type="submit" className="chip active">Save</button>
-                  <button type="button" className="chip" onClick={() => setRenaming(null)}>Cancel</button>
-                </form>
-              )}
-              {activeFolder === f && renaming?.from !== f && (<>
-                <button className="chip folder-tool" title="Rename this folder" onClick={() => setRenaming({ from: f, to: f })}>✎</button>
-                <button className="chip folder-tool" title="Delete this folder (the images stay)" onClick={() => deleteFolder(f)}>×</button>
-              </>)}
-            </span>
-          ))}
-        </div>
-      )}
+      <FolderBar total={gallery.length} folders={folders} actions={folderActions} />
       {shown.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · Shift+click to select a range · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryRef}>

@@ -9,6 +9,7 @@ import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
+import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import { trackJob } from './favicon.js'
@@ -98,10 +99,17 @@ export default function Video({ active }) {
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)          // { url, ... } of the latest video
   const [gallery, setGallery] = useState([])
-  const pager = useSeeMore(24)   // only the newest 24 are built; See more for the rest
-  const visible = gallery.slice(0, pager.limit)
-  const [viewIndex, setViewIndex] = useState(-1)      // full-screen viewer (index into gallery)
+  const [viewIndex, setViewIndex] = useState(-1)      // full-screen viewer (index into the shown folder)
   const [selectedIds, setSelectedIds] = useState(new Set())
+  // Folders, like the Image Generator's gallery (saved on each video, backed up with it)
+  const folderHook = useGalleryFolders(gallery, 'video_gallery_folder')
+  const folders = { ...folderHook, setActiveFolder: name => { folderHook.setActiveFolder(name); setSelectedIds(new Set()); setViewIndex(-1) } }
+  const shown = folders.shown
+  const pager = useSeeMore(24, folders.activeFolder)   // only the newest 24 are built; See more for the rest
+  const visible = shown.slice(0, pager.limit)
+  const [folderMenu, setFolderMenu] = useState(false)
+  const folderAddRef = useRef(null)
+  const clickVideo = useShiftSelect(visible.map(v => v.id), setSelectedIds)
   const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('video_thumb') || 220))
   const [fitVideos, setFitVideos] = useState(() => localStorage.getItem('video_fit') === '1')
   const [infoItem, setInfoItem] = useState(null)
@@ -338,8 +346,10 @@ export default function Video({ active }) {
     refreshGallery()
   }
 
-  function toggleSelect(id) {
-    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  async function changeFolders(ids, change) {
+    const updates = await changeFoldersInDb(openVideoDB, 'videos', ids, change)
+    setGallery(prev => prev.map(v => (v.id in updates ? { ...v, folders: updates[v.id] } : v)))
+    queueSync('videos')
   }
   function selectAll() {
     setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(v => v.id)))
@@ -351,9 +361,12 @@ export default function Video({ active }) {
     say('Prompt loaded', 'ok')
   }
 
-  const viewing = viewIndex >= 0 ? gallery[viewIndex] : null
+  const folderActions = useFolderActions({ items: gallery, folders, change: changeFolders, say, noun: 'video',
+    clearSelection: () => { setSelectedIds(new Set()); setFolderMenu(false) } })
+
+  const viewing = viewIndex >= 0 ? shown[viewIndex] : null
   const goPrev = () => setViewIndex(i => Math.max(0, i - 1))
-  const goNext = () => setViewIndex(i => Math.min(gallery.length - 1, i + 1))
+  const goNext = () => setViewIndex(i => Math.min(shown.length - 1, i + 1))
   useLightboxKeys(viewIndex >= 0, { prev: goPrev, next: goNext, close: () => setViewIndex(-1), enabled: active && !infoItem })
 
   const fps = info?.fps || 16
@@ -489,9 +502,11 @@ export default function Video({ active }) {
       )}
 
       <div className="gallery-header">
-        <h3>Videos {gallery.length > 0 && <span className="muted">· {gallery.length} video{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <h3>{folders.activeFolder || 'Videos'} {shown.length > 0 && <span className="muted">· {shown.length} video{shown.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+          <FolderButtons selectedIds={selectedIds} folders={folders} actions={folderActions}
+            open={folderMenu} setOpen={setFolderMenu} anchorRef={folderAddRef} />
           {gallery.length > 0 && (<>
             <label className="gallery-control" title="Thumbnail size">
               <span>Size</span>
@@ -504,16 +519,18 @@ export default function Video({ active }) {
           </>)}
         </div>
       </div>
+      <FolderBar total={gallery.length} folders={folders} actions={folderActions} allLabel="All videos" />
       {gallery.length === 0
         ? <div className="empty-msg">No videos yet.</div>
-        : <div className="gallery-hint"><span className="hint-mouse">Hover to play · click to select · magnifier or double-click to watch full size · ← → to browse</span><span className="hint-touch">Tap a video to select it · tap the magnifier to watch it full size</span></div>}
+        : <div className="gallery-hint"><span className="hint-mouse">Hover to play · click to select · Shift+click to select a range · magnifier or double-click to watch full size · ← → to browse</span><span className="hint-touch">Tap a video to select it · tap the magnifier to watch it full size</span></div>}
 
       <div ref={galleryRef}>
         {(() => {
           const layout = galleryLayout(galleryWidth, thumbSize)
           const tile = (v, i, cell) => (
             <div key={v.id} className={`gallery-item video-tile ${selectedIds.has(v.id) ? 'selected' : ''}`} style={cell}
-              onClick={() => toggleSelect(v.id)} onDoubleClick={() => setViewIndex(i)}
+              onClick={e => clickVideo(e, v.id)} onDoubleClick={() => setViewIndex(i)}
+              onMouseDown={e => { if (e.shiftKey) e.preventDefault() }}
               onMouseEnter={e => e.currentTarget.querySelector('video')?.play().catch(() => {})}
               onMouseLeave={e => e.currentTarget.querySelector('video')?.pause()}>
               <video src={v.src + '#t=0.1'} muted loop playsInline preload="metadata"
@@ -553,14 +570,18 @@ export default function Video({ active }) {
             <button className="lb-btn left" title="Close (Esc)" onClick={() => setViewIndex(-1)}><CloseIcon /></button>
             <button className="lb-btn nav-left" onClick={goPrev} disabled={viewIndex === 0} title="Previous (←)"><ChevronLeftIcon /></button>
             <video key={viewing.id} src={viewing.src} controls autoPlay loop playsInline className="lb-video" />
-            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === gallery.length - 1} title="Next (→)"><ChevronRightIcon /></button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={viewIndex === shown.length - 1} title="Next (→)"><ChevronRightIcon /></button>
           </div>
           <div className="lb-bar" onClick={e => e.stopPropagation()}>
-            <span className="lb-count">{viewIndex + 1} / {gallery.length}</span>
+            <span className="lb-count">{viewIndex + 1} / {shown.length}</span>
             <span className="lb-caption" title={viewing.prompt}>{viewing.prompt || '(no prompt)'}</span>
             <span className="lb-meta">{viewing.seconds} s · {viewing.width}×{viewing.height}{viewing.sound ? ' · 🔊 sound' : ''}</span>
             <button className="secondary" onClick={() => setInfoItem(viewing)}>Info</button>
             <button className="secondary" onClick={() => usePrompt(viewing)}>Use prompt</button>
+            <button className="secondary" title="Put this video in a folder" onClick={() => {
+              setSelectedIds(new Set([viewing.id])); setViewIndex(-1); setFolderMenu(true)
+              setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+            }}>Add to folder</button>
             <button className="secondary" onClick={() => continueFrom(viewing)} title="Start the next clip from this clip's last frame">Continue</button>
             <button className="secondary" title="Upscale to 720p / 1080p, sound kept (Upscale tab)" onClick={() => { const src = viewing.src; setViewIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'Image to Video' } })) }}>Send to Upscale</button>
             <a className="secondary video-download small" href={viewing.src} download={`video-${viewing.created}.mp4`}>Download</a>

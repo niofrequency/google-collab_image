@@ -63,12 +63,19 @@ export default function Library({ active }) {
     const imgs = data.images
     const folders = {}
     for (const it of imgs) for (const f of it.folders || []) (folders[f] ||= []).push(it)
-    const list = [{ id: 'images', title: 'All images', sub: 'Image Generator', items: imgs, source: SOURCES[0] }]
+    const list = imgs.length || !SOURCES.slice(1).some(src => data[src.key].length)
+      ? [{ id: 'images', title: 'All images', sub: 'Image Generator', items: imgs, source: SOURCES[0] }] : []
     for (const name of Object.keys(folders).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))) {
       list.push({ id: 'folder:' + name, title: name, sub: 'Folder', folder: name, items: folders[name], source: SOURCES[0] })
     }
     for (const s of SOURCES.slice(1)) {
-      if (data[s.key].length) list.push({ id: s.key, title: s.label, sub: 'Gallery', items: data[s.key], source: s })
+      if (!data[s.key].length) continue
+      list.push({ id: s.key, title: s.label, sub: 'Gallery', items: data[s.key], source: s })
+      const fs = {}
+      for (const it of data[s.key]) for (const f of it.folders || []) (fs[f] ||= []).push(it)
+      for (const name of Object.keys(fs).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))) {
+        list.push({ id: `${s.key}:folder:${name}`, title: name, sub: `${s.label} folder`, folder: name, items: fs[name], source: s })
+      }
     }
     return list
   }, [data])
@@ -102,6 +109,10 @@ export default function Library({ active }) {
   function openInTab(c) {
     window.dispatchEvent(new CustomEvent('go-to-tab', { detail: c.source.tab }))
     if (c.source.key === 'images') window.dispatchEvent(new CustomEvent('open-image-folder', { detail: c.folder || null }))
+    else {
+      const key = { headswap: 'headswap_gallery_folder', faceswap: 'faceswap_gallery_folder', upscale: 'upscale_gallery_folder', videos: 'video_gallery_folder' }[c.source.key]
+      window.dispatchEvent(new CustomEvent('set-gallery-folder', { detail: { key, folder: c.folder || null } }))
+    }
   }
 
   function download(item) {
@@ -158,7 +169,7 @@ export default function Library({ active }) {
   }
 
   // ---- all collections
-  const total = collections.reduce((n, c) => n + (c.id.startsWith('folder:') ? 0 : c.items.length), 0)
+  const total = collections.reduce((n, c) => n + (c.folder ? 0 : c.items.length), 0)
   return (
     <div className="container library">
       <h1>Gallery</h1>
