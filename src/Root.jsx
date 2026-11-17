@@ -10,7 +10,7 @@ import HeadSwap from './HeadSwap.jsx'
 import FaceSwap from './FaceSwap.jsx'
 import Characters from './Characters.jsx'
 import Upscale from './Upscale.jsx'
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon } from './icons.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
@@ -33,6 +33,13 @@ export default function Root() {
   function toggleSidebar() {
     setCollapsed(c => { localStorage.setItem('sidebar_collapsed', c ? '0' : '1'); return !c })
   }
+  // Hide images: blurs every picture and video on the site (privacy), but they're still there — uploads, masks,
+  // generating and saving all keep working.
+  const [hideImages, setHideImages] = useState(localStorage.getItem('hide_images') === '1')
+  useEffect(() => {
+    document.documentElement.classList.toggle('hide-images', hideImages)
+    localStorage.setItem('hide_images', hideImages ? '1' : '0')
+  }, [hideImages])
   function pick(id) {
     setTab(id)
     localStorage.setItem('tab', id)
@@ -56,6 +63,12 @@ export default function Root() {
             <span className="nav-short">{t.short}</span>
           </button>
         ))}
+        <button className={`nav-item privacy-toggle ${hideImages ? 'active' : ''}`} onClick={() => setHideImages(h => !h)}
+          title={hideImages ? 'Show images' : 'Hide images (they stay usable, just blurred)'} aria-pressed={hideImages}>
+          {hideImages ? <EyeOffIcon /> : <EyeIcon />}
+          <span className="nav-label">{hideImages ? 'Show images' : 'Hide images'}</span>
+          <span className="nav-short">{hideImages ? 'Show' : 'Hide'}</span>
+        </button>
         <button className="nav-item sidebar-toggle" onClick={toggleSidebar}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}>
           {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}

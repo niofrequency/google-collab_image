@@ -68,3 +68,9 @@ export function CharactersIcon(props) {
 export function UpscaleIcon(props) {
   return <NavSvg {...props}><rect x="3" y="11" width="10" height="10" rx="1.5" /><path d="M13 3h8v8" /><path d="M21 3l-9 9" /></NavSvg>
 }
+export function EyeIcon(props) {
+  return <NavSvg {...props}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></NavSvg>
+}
+export function EyeOffIcon(props) {
+  return <NavSvg {...props}><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.4 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.1M6.6 6.6A17.4 17.4 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /><line x1="3" y1="3" x2="21" y2="21" /></NavSvg>
+}
