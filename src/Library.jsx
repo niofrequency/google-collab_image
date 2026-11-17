@@ -7,6 +7,7 @@ import { changeFoldersInDb, useShiftSelect } from './GalleryFolders.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { cloudForget, queueSync } from './cloud.js'
 import { detailLines, UPSCALER_NAMES } from './DetailTools.jsx'
+import { removeDuplicates } from './dedupe.js'
 
 // Gallery tab: every folder and gallery on this site in one place. Inside a folder it works like the Image Generator's
 // gallery (select, Shift+click, select all, delete, folders, info, full-size viewer, sizes); "Open in …" jumps to the
@@ -73,14 +74,27 @@ export default function Library({ active }) {
   const say = (text, type = '') => setMsg({ text, type })
   const gridRef = useRef(null)
 
-  async function load() {
+  const [dupNote, setDupNote] = useState('')
+  const deduping = useRef(false)
+  async function load(dedupe = false) {
+    if (dedupe && !deduping.current) {   // exact duplicates are removed automatically (see dedupe.js)
+      deduping.current = true
+      try {
+        const removed = []
+        for (const s of SOURCES) {
+          const n = await removeDuplicates(s, CLOUD_KIND[s.key] || null)
+          if (n) { removed.push(`${n} in ${s.label}`); window.dispatchEvent(new CustomEvent('gallery-changed', { detail: s.key })) }
+        }
+        setDupNote(removed.length ? `Removed duplicate copies: ${removed.join(', ')}.` : '')
+      } finally { deduping.current = false }
+    }
     const out = {}
     for (const s of SOURCES) out[s.key] = (await readStore(s)).filter(r => r.blob).sort(newestFirst)
     setData(out)
   }
-  useEffect(() => { if (active) load() }, [active])
+  useEffect(() => { if (active) load(true) }, [active])
   useEffect(() => {
-    const again = () => { if (active) load() }
+    const again = () => { if (active) load(true) }
     window.addEventListener('cloud-synced', again)
     return () => window.removeEventListener('cloud-synced', again)
   }, [active])
@@ -319,6 +333,7 @@ export default function Library({ active }) {
   return (
     <div className="container library">
       <h1>Gallery</h1>
+      {dupNote && <div className="status ok">{dupNote}</div>}
       <p className="muted">Everything you've made, by folder and gallery — {total} item{total === 1 ? '' : 's'}. Make folders in the Image Generator's gallery (select pictures → <b>Add to folder</b>).</p>
       {collections.length === 0 || total === 0 ? <div className="empty-msg">Nothing yet — make something in one of the tabs.</div> : (
         <div className="lib-folders">
