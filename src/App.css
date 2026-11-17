@@ -1162,3 +1162,8 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .lib-badge { position: absolute; right: 6px; bottom: 6px; font-size: 11px; padding: 2px 6px; border-radius: 6px; background: rgba(0,0,0,0.6); }
 .lib-view-video { max-width: 100%; max-height: 80vh; }
 @media (max-width: 700px) { .lib-folders { grid-template-columns: repeat(2, 1fr); gap: 10px; } .lib-grid { grid-template-columns: repeat(3, 1fr); gap: 4px; } }
+
+/* Head Swap: expression from the body photo */
+.headswap-expression { flex-wrap: wrap; align-items: center; gap: 10px; }
+.headswap-expression select { width: auto; min-width: 0; }
+.headswap-expression .inline-label input { width: 70px; }

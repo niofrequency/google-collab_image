@@ -154,6 +154,19 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   Strength about 0.6–0.9. Its models (~4.2 GB) download the first time you use it — on a T4 use it on its own.
 - Characters and Face reference now take **up to 5 photos**.
 
+## Head Swap: expression from the body photo
+
+The head swap LoRA brings the whole head across — including the **head photo's expression**. Turn on
+**Expression from body photo** on the Head Swap tab and a last step (**LivePortrait**) copies the body photo's facial
+expression — open mouth, smile, raised brows, squint, gaze — onto the new face, keeping the new identity and the head's
+angle: it reads both faces' 3D keypoints, takes the expression part from the body photo, re-renders the face and pastes
+it back with a soft mask.
+
+- **Strength** 1 = the body photo's expression · 0.5 halfway · up to 1.5 a bit stronger.
+- **Whole face / Mouth only / Eyes only**.
+- Adds a second or two; its models (~680 MB, `KlingTeam/LivePortrait`) download the first time. If no face is found it
+  keeps the swap and says so. LivePortrait's code is MIT; its face detector (InsightFace) is for non-commercial use.
+
 ## Detail tools for realistic photos (BigLust)
 
 Under Face fix in the Image Generator. Each is a switch; models download on first use.

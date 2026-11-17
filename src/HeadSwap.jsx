@@ -40,7 +40,7 @@ export const SWAP_MODES = {
     baseLoraNote: 'head swap',
     loraModel: 'Qwen-Image 2.1',
     // Generation settings this backend takes (Qwen-Image 2.1 has one sampler and always makes a new image)
-    controls: { steps: [8, 60, 40], resolution: [768, 1024, 1280, 1536], defaultResolution: 1024, cfg: true, fast: true },
+    controls: { steps: [8, 60, 40], resolution: [768, 1024, 1280, 1536], defaultResolution: 1024, cfg: true, fast: true, expression: true },
     settingPresets: [
       { name: 'Default', info: '40 steps at ~1024 px, CFG 1: the official settings, best quality.', s: { steps: 40, resolution: 1024, cfg: 1, fast: false } },
       { name: 'Fast (8 steps)', info: 'PrunaAI\'s 8-step speed LoRA (the one the BFS author\'s own workflow uses): about 5x faster, a little less fine detail in skin and hair. Compare it with Default on your pictures.', s: { resolution: 1024, cfg: 1, fast: true } },
@@ -175,7 +175,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [savedPrompts, storeSavedPrompts] = useSavedPrompts(`${M.storage}_prompts`)
   const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
   const C = M.controls
-  const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1, fast: false }
+  const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1, fast: false,
+    expression: false, expressionStrength: 1, expressionRegion: 'all' }
+  const [supportsExpression, setSupportsExpression] = useState(false)   // the notebook has the LivePortrait step
   const [settings, setSettings] = useState(() => {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
@@ -280,6 +282,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       const files = Array.isArray(data.lora_files) ? data.lora_files : []
       setLoraFiles(files)
       setBaseLora(data.base_lora || '')
+      setSupportsExpression(!!data.supports_expression)
       setLoras(previous => previous.filter(lora => files.includes(lora.name)))
     } catch { /* backend not reachable yet */ }
   }, [backendUrl])
@@ -444,7 +447,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         if (data.status === 'error' || data.error) throw new JobError(data.error || `${M.name} job failed`)
         const image = data.image || data.output || data.result
         if ((data.status === 'done' || data.status === 'completed' || image) && image) {
-          return { image, seed: data.seed ?? null, seconds: data.seconds ?? null }
+          return { image, seed: data.seed ?? null, seconds: data.seconds ?? null, warnings: data.warnings || [] }
         }
         if (lastWasDown) { setStatusMsg(''); lastWasDown = false }
         // only ever forward: the server's own percentage, else its step counter
@@ -501,6 +504,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(C.resolution ? { resolution: +settings.resolution || C.defaultResolution } : {}),
         ...(C.cfg ? { true_cfg_scale: Math.min(10, Math.max(1, +settings.cfg || 1)), negative_prompt: settings.negative || '' } : {}),
         ...(C.fast ? { fast: !!settings.fast } : {}),
+        ...(C.expression && supportsExpression && settings.expression ? {
+          expression_from_target: true, expression_strength: +settings.expressionStrength || 1, expression_region: settings.expressionRegion || 'all',
+        } : {}),
       })
       let response
       for (let attempt = 1; ; attempt++) {
@@ -522,8 +528,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       }
       if (!response.ok || data.error) throw new Error(data.error || data.detail || `Server error ${response.status}`)
       let output = data.image || data.output || data.result
-      let seed = data.seed ?? null, seconds = data.seconds ?? null
-      if (!output && data.job_id) ({ image: output, seed, seconds } = await pollJob(backend, data.job_id, progress))
+      let seed = data.seed ?? null, seconds = data.seconds ?? null, warnings = []
+      if (!output && data.job_id) ({ image: output, seed, seconds, warnings } = await pollJob(backend, data.job_id, progress))
       if (!output) throw new Error('The backend finished without returning an image or job ID')
       progress(98)
       await saveResult(output)
@@ -532,7 +538,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       const r = doneRef.current
       r.count++
       r.last = `Done — saved to the ${M.name} gallery` + (seed != null ? ` (seed ${seed})` : '') + (seconds != null ? ` · ${seconds} s` : '')
-      if (swapJobs.idle()) setStatusMsg(r.count > 1 ? `Done — ${r.count} ${M.name} images saved to the gallery` : r.last, 'ok')
+      if (warnings?.length) r.warnings = [...new Set([...(r.warnings || []), ...warnings])]
+      if (swapJobs.idle()) {
+        const msg = r.count > 1 ? `Done — ${r.count} ${M.name} images saved to the gallery` : r.last
+        setStatusMsg(r.warnings?.length ? `${msg}. ${r.warnings.join(' ')}` : msg, r.warnings?.length ? 'error' : 'ok')
+      }
       finish(true)
     } catch (error) {
       job.finish()
@@ -675,6 +685,26 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         onApply={p => { set({ ...p.s }); setStatusMsg(`Preset "${p.name}" applied`, 'ok') }}
         getCurrent={() => ({ s: { steps: +settings.steps, ...(C.resolution ? { resolution: +settings.resolution } : {}), ...(C.cfg ? { cfg: +settings.cfg, negative: settings.negative } : {}), ...(C.fast ? { fast: !!settings.fast } : {}) } })}
         help="One click sets the steps and other settings below. Save your own with '+ Save current as preset'." />
+      {C.expression && (
+        <div className="inline headswap-fast headswap-expression">
+          <button className={`toggle ${settings.expression && supportsExpression ? 'on' : ''}`} disabled={!supportsExpression}
+            title={supportsExpression ? 'Copy the facial expression of the body photo onto the new face' : 'Needs the updated Head Swap notebook — open it fresh from the Notebooks tab'}
+            onClick={() => set({ expression: !settings.expression })}>
+            Expression from body photo: {settings.expression && supportsExpression ? 'On' : 'Off'}
+          </button>
+          {settings.expression && supportsExpression && (<>
+            <label className="inline-label">Strength
+              <input type="number" step="0.1" min="0.1" max="1.5" value={settings.expressionStrength} onChange={e => set({ expressionStrength: e.target.value })} />
+            </label>
+            <select value={settings.expressionRegion} onChange={e => set({ expressionRegion: e.target.value })} title="Which part of the expression to copy">
+              <option value="all">Whole face (mouth, eyes, brows)</option>
+              <option value="mouth">Mouth only</option>
+              <option value="eyes">Eyes only</option>
+            </select>
+          </>)}
+          <Info text={<>The head swap brings the whole head across — including the <b>head photo's expression</b>. With this on, a last step (LivePortrait) copies the <b>body photo's expression</b> — open mouth, smile, raised brows, squint, gaze — onto the new face, keeping the new person's identity and the head's angle.<br /><br /><b>Strength</b>: 1 = the body photo's expression · 0.5 = halfway between · up to 1.5 = a bit stronger.<br /><b>Mouth only / Eyes only</b>: copy just that part (e.g. keep the head photo's eyes but open the mouth like the body photo).<br /><br />It adds a second or two; its models (~680 MB) download the first time. Works best when both faces are clearly visible.{!supportsExpression && <><br /><br />Not available: open the Head Swap notebook fresh from the Notebooks tab (cell 1 installs it).</>}</>} />
+        </div>
+      )}
       {C.fast && (
         <div className="inline headswap-fast">
           <button className={`toggle ${settings.fast ? 'on' : ''}`} onClick={() => set({ fast: !settings.fast })}>
