@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 
 export const CHAR_KEY = 'face_characters'
-export const MAX_CHARACTER_IMAGES = 3
+export const MAX_CHARACTER_IMAGES = 5
 
 export function loadCharacters() {
   try {

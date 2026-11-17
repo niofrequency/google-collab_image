@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useCharacters } from './characters.js'
+import { useCharacters, MAX_CHARACTER_IMAGES } from './characters.js'
 
 // Collapsible "Saved faces" bar shown at the top of the Image Generator, Face Swap, Head Swap and Image to Video tabs.
 // onPick(character, images): images is [Primary] or all of the character's pictures, depending on the
@@ -45,7 +45,7 @@ export default function CharacterBar({ storageKey, allAngles = false, active, on
             <div className="char-bar-options">
               <button className={`toggle small ${useAll ? 'on' : ''}`} onClick={toggleAll}
                 title="Primary only: just the main picture. All angles: the main picture and the extra angles.">
-                {useAll ? 'All angles (up to 3)' : 'Primary only (1)'}
+                {useAll ? `All angles (up to ${MAX_CHARACTER_IMAGES})` : 'Primary only (1)'}
               </button>
               {hint && <span className="muted small-note">{hint}</span>}
             </div>

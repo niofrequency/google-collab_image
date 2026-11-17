@@ -25,6 +25,7 @@ const NGROK_HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 }
 
+const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID' }
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
 
@@ -98,7 +99,7 @@ export default function App({ active = true }) {
   const [faceRefImages, setFaceRefImages] = useState(savedFaceRef.images || [])
   const [faceRefStrength, setFaceRefStrength] = useState(savedFaceRef.strength ?? 0.8)
   // FaceID or PuLID; each method remembers its own strength (they feel different at the same number)
-  const [faceRefMethod, setFaceRefMethod] = useState(['pulid', 'both'].includes(savedFaceRef.method) ? savedFaceRef.method : 'faceid')
+  const [faceRefMethod, setFaceRefMethod] = useState(['portrait', 'pulid', 'both', 'instantid'].includes(savedFaceRef.method) ? savedFaceRef.method : 'faceid')
   const [faceRefStrength2, setFaceRefStrength2] = useState(savedFaceRef.strength2 ?? 0.5)   // "both": PuLID's strength
   const [faceRefStrengths, setFaceRefStrengths] = useState(savedFaceRef.strengths || {})
   const [faceRefMethods, setFaceRefMethods] = useState([])
@@ -1576,7 +1577,7 @@ export default function App({ active = true }) {
                 <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
               ))}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
-              {infoItem.faceRef && <><br/>Face reference: {infoItem.faceRef.method === 'both' ? 'FaceID + PuLID' : infoItem.faceRef.method === 'pulid' ? 'PuLID' : 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
+              {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
                 {infoItem.refPicture.mode === 'img2img'
                   ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)

@@ -140,6 +140,20 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   strong likeness*, *Fast draft*. Save your own with *+ Save current as preset*
   (kept in your browser). Presets don't change your prompt.
 
+### FaceID Portrait and InstantID (more face methods)
+
+- **Portrait** — IP-Adapter FaceID Portrait (SDXL). Made for **several photos of the same person at once** (up to 5:
+  front, both sides, smiling…); their identities are joined, so more angles give a steadier likeness. No LoRA.
+  Strength about 0.6–1.0. Its model (~0.7 GB) downloads the first time you use it.
+- **InstantID** — the strongest likeness: the identity (antelopev2) plus a ControlNet that follows the face's
+  **landmarks** (eyes, nose, mouth). Landmarks fix the face's angle, so they never come from your reference photo:
+  - **Face fix** (turn it on, 0.35–0.45): every face is redrawn following *its own* landmarks — full likeness,
+    the head's angle and expression kept. This is where InstantID shines.
+  - **Main image**: landmarks from your pose / img2img / inpaint picture when it shows a face; otherwise the
+    identity only.
+  Strength about 0.6–0.9. Its models (~4.2 GB) download the first time you use it — on a T4 use it on its own.
+- Characters and Face reference now take **up to 5 photos**.
+
 ## Prompt enhancer (LoRA training tags)
 
 Under the BigLust prompt, **✨ Enhance with LoRA tags** suggests tags from the LoRAs you've added. LoRAs trained with
