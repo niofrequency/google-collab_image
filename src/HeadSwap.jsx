@@ -259,6 +259,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     setSelectedIds(new Set())
     db.close()
   }, [])
+  useEffect(() => {   // the Gallery tab deleted / re-foldered some of these pictures
+    const on = e => { if (e.detail === M.storage) { setSelectedIds(new Set()); setLightboxIndex(-1); loadGallery() } }
+    window.addEventListener('gallery-changed', on)
+    return () => window.removeEventListener('gallery-changed', on)
+  }, [loadGallery])   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadGallery().catch(error => setStatusMsg(`Could not load the ${M.name} gallery: ${error.message}`, 'error'))

@@ -79,6 +79,11 @@ export default function Upscale({ active = true }) {
     setItems(prev => { prev.forEach(i => URL.revokeObjectURL(i.src)); return list.map(i => ({ ...i, src: URL.createObjectURL(i.blob) })) })
   }
   useEffect(() => { refresh() }, [])
+  useEffect(() => {   // the Gallery tab deleted / re-foldered some items
+    const on = e => { if (e.detail === 'upscale') { setSelectedIds(new Set()); setViewIndex(-1); refresh() } }
+    window.addEventListener('gallery-changed', on)
+    return () => window.removeEventListener('gallery-changed', on)
+  })
   useEffect(() => {
     if (!active || !galleryRef.current) return
     const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))

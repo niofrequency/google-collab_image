@@ -1168,3 +1168,4 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .headswap-expression select { width: auto; min-width: 0; }
 .headswap-expression .inline-label input { width: 70px; }
 .gen-seed { min-width: 200px; }
+.lib-sub { font-size: 13px; font-weight: 400; margin: 0; }

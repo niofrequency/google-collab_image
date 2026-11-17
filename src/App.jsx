@@ -379,6 +379,11 @@ export default function App({ active = true }) {
     window.addEventListener('open-image-folder', onOpen)
     return () => window.removeEventListener('open-image-folder', onOpen)
   })
+  useEffect(() => {   // the Gallery tab deleted / re-foldered some images
+    const on = e => { if (e.detail === 'images') { setSelectedIds(new Set()); setLightboxIndex(-1); loadGallery() } }
+    window.addEventListener('gallery-changed', on)
+    return () => window.removeEventListener('gallery-changed', on)
+  })
 
   async function loadGallery() {
     const db = await openDB()

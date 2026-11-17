@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { useLightboxKeys } from './useLightboxKeys.js'
-import { ChevronLeftIcon, ChevronRightIcon, CloseIcon } from './icons.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, CloseIcon, ZoomIcon } from './icons.jsx'
+import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
+import { changeFoldersInDb, useShiftSelect } from './GalleryFolders.jsx'
+import { askConfirm } from './ConfirmDialog.jsx'
+import { cloudForget, queueSync } from './cloud.js'
+import { detailLines, UPSCALER_NAMES } from './DetailTools.jsx'
 
-// Gallery tab: every folder and gallery on this site in one place. It only READS the galleries (each tab still
-// owns its pictures); "Open in …" jumps to the tab that has all the tools for a picture.
+// Gallery tab: every folder and gallery on this site in one place. Inside a folder it works like the Image Generator's
+// gallery (select, Shift+click, select all, delete, folders, info, full-size viewer, sizes); "Open in …" jumps to the
+// tab with all the tools for a picture. Changes are written to that tab's gallery and the tab is told to refresh.
 const SOURCES = [
   { key: 'images', db: 'ImageGallery', store: 'images', label: 'Image Generator', tab: 'generate', noun: 'images' },
   { key: 'headswap', db: 'HeadSwapGallery', store: 'images', label: 'Head Swap', tab: 'headswap', noun: 'images' },
@@ -30,6 +36,17 @@ function readStore({ db, store }) {
   })
 }
 
+// Opens a gallery for changes (it exists: it has the items being changed)
+function openStore({ db }) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(db, 1)
+    req.onupgradeneeded = () => req.transaction.abort()
+    req.onerror = () => reject(req.error)
+    req.onsuccess = () => resolve(req.result)
+  })
+}
+const CLOUD_KIND = { images: 'images', videos: 'videos' }   // galleries that cloud backup syncs
+
 const isVideo = item => item.kind === 'video' || (item.blob?.type || '').startsWith('video/')
 const newestFirst = (a, b) => (b.created || 0) - (a.created || 0)
 
@@ -44,6 +61,17 @@ export default function Library({ active }) {
   const [data, setData] = useState(null)        // { images: [...], headswap: [...], ... }
   const [open, setOpen] = useState(null)        // { source, folder? } — the collection being looked at
   const [viewIndex, setViewIndex] = useState(-1)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [infoItem, setInfoItem] = useState(null)
+  const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('library_thumb') || 200))
+  const [fitImages, setFitImages] = useState(() => localStorage.getItem('library_fit') === '1')
+  const [ratios, setRatios] = useState({})
+  const [galleryWidth, setGalleryWidth] = useState(1000)
+  const [folderMenu, setFolderMenu] = useState(false)
+  const [newFolder, setNewFolder] = useState('')
+  const [msg, setMsg] = useState({ text: '', type: '' })
+  const say = (text, type = '') => setMsg({ text, type })
+  const gridRef = useRef(null)
 
   async function load() {
     const out = {}
@@ -84,6 +112,57 @@ export default function Library({ active }) {
   const items = current?.items || []
   const pager = useSeeMore(60, open)
   const visible = items.slice(0, pager.limit)
+  const clickItem = useShiftSelect(visible.map(i => i.id), setSelectedIds)
+  useEffect(() => { setSelectedIds(new Set()); setFolderMenu(false); setMsg({ text: '', type: '' }) }, [open])
+  useEffect(() => {
+    if (!active || !current || !gridRef.current) return
+    const ro = new ResizeObserver(entries => setGalleryWidth(entries[0].contentRect.width))
+    ro.observe(gridRef.current)
+    return () => ro.disconnect()
+  }, [active, open, !!current])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Changes go to the item's own gallery; then this view reloads and that tab refreshes
+  const changed = key => { window.dispatchEvent(new CustomEvent('gallery-changed', { detail: key })); load() }
+  async function deleteSelected() {
+    const n = selectedIds.size
+    const src = current.source
+    if (!n || !(await askConfirm({ title: `Delete ${n} ${src.noun.replace(/s$/, '')}${n === 1 ? '' : 's'}?`,
+      message: `They are removed from the ${src.label} gallery${CLOUD_KIND[src.key] ? ' (and from your cloud backup, if it is on)' : ''}. This can't be undone.`, yes: 'Delete' }))) return
+    const ids = [...selectedIds]
+    if (CLOUD_KIND[src.key]) await cloudForget(CLOUD_KIND[src.key], ids)
+    const db = await openStore(src)
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(src.store, 'readwrite')
+      for (const id of ids) tx.objectStore(src.store).delete(id)
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+    setSelectedIds(new Set()); setViewIndex(-1)
+    say(`Deleted ${n}`, 'ok')
+    changed(src.key)
+  }
+  async function changeFolders(ids, change) {
+    const src = current.source
+    await changeFoldersInDb(() => openStore(src), src.store, ids, change)
+    if (CLOUD_KIND[src.key]) queueSync(CLOUD_KIND[src.key])
+    changed(src.key)
+  }
+  async function addToFolder(name) {
+    name = (name || '').trim().slice(0, 60)
+    if (!name || !selectedIds.size) return
+    const n = selectedIds.size
+    await changeFolders([...selectedIds], f => [...f, name])
+    setSelectedIds(new Set()); setFolderMenu(false); setNewFolder('')
+    say(`Added ${n} to the folder "${name}"`, 'ok')
+  }
+  async function removeFromFolder() {
+    const n = selectedIds.size
+    await changeFolders([...selectedIds], f => f.filter(x => x !== current.folder))
+    setSelectedIds(new Set())
+    say(`Removed ${n} from "${current.folder}" (still in ${current.source.label})`, 'ok')
+  }
+  const folderNamesOf = src => [...new Set((data?.[src.key] || []).flatMap(i => i.folders || []))].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
 
   // Object URLs only for what is on screen (the covers, or the open collection's page) — made once per page
   const urls = useMemo(() => {
@@ -124,28 +203,93 @@ export default function Library({ active }) {
 
   if (!data) return <div className="container"><h1>Gallery</h1><div className="muted">Loading…</div></div>
 
-  // ---- one collection
+  // ---- one collection: the same gallery as the Image Generator's
   if (current) {
     const v = viewItem
+    const src = current.source
+    const layout = galleryLayout(galleryWidth, thumbSize)
+    const tile = (it, i, cell) => (
+      <div key={it.id} className={`gallery-item ${isVideo(it) ? 'video-tile' : ''} ${selectedIds.has(it.id) ? 'selected' : ''}`} style={cell}
+        onClick={e => clickItem(e, it.id)} onDoubleClick={() => setViewIndex(i)}
+        onMouseDown={e => { if (e.shiftKey) e.preventDefault() }}
+        onMouseEnter={e => e.currentTarget.querySelector('video')?.play().catch(() => {})}
+        onMouseLeave={e => e.currentTarget.querySelector('video')?.pause()}>
+        {isVideo(it)
+          ? <video src={(urls.get(it) || '') + '#t=0.1'} muted loop playsInline preload="metadata" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
+              onLoadedMetadata={e => { const { videoWidth: w, videoHeight: h } = e.currentTarget; if (w && h && !ratios[it.id]) setRatios(r => ({ ...r, [it.id]: w / h })) }} />
+          : <img src={urls.get(it)} alt="" loading="lazy" style={cell ? { height: '100%' } : { height: layout.tile + 'px' }}
+              onLoad={e => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h && !ratios[it.id]) setRatios(r => ({ ...r, [it.id]: w / h })) }} />}
+        {selectedIds.has(it.id) && <span className="selected-badge">✓</span>}
+        {isVideo(it) && <span className="video-badge">▶{it.seconds ? ` ${it.seconds} s` : ''}</span>}
+        <div className="gallery-overlay">
+          <button className="magnify-btn" title="View full size" onClick={e => { e.stopPropagation(); setViewIndex(i) }}><ZoomIcon /></button>
+        </div>
+        <button className="info-btn" onClick={e => { e.stopPropagation(); setInfoItem(it) }}>i</button>
+      </div>
+    )
+    const otherFolders = folderNamesOf(src)
     return (
       <div className="container library">
         <div className="lib-head">
           <button className="secondary lib-back" onClick={() => { setOpen(null); setViewIndex(-1) }}><ChevronLeftIcon size={18} /> All folders</button>
           <h1>{current.folder ? `📁 ${current.title}` : current.title} <span className="muted lib-count">· {items.length}</span></h1>
           <button className="secondary" onClick={() => openInTab(current)}
-            title="Open it in its own tab, with all the tools (select, folders, delete, inpaint, upscale…)">Open in {current.source.label}</button>
+            title="Open it in its own tab, with all its tools (inpaint, upscale, use prompt…)">Open in {src.label}</button>
         </div>
-        {items.length === 0 ? <div className="empty-msg">Nothing here yet.</div> : (
-          <div className="lib-grid">
-            {visible.map((it, i) => (
-              <button key={it.id} className="lib-tile" onClick={() => setViewIndex(i)} title={it.positive || it.prompt || ''}>
-                <Media item={it} url={urls.get(it)} className="lib-thumb" />
-                {isVideo(it) && <span className="lib-badge">▶</span>}
-              </button>
-            ))}
+
+        <div className="gallery-header">
+          <h3 className="muted lib-sub">{current.sub}</h3>
+          <div className="gallery-actions">
+            {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
+            {selectedIds.size > 0 && (
+              <div className="folder-add">
+                <button className="secondary" onClick={() => setFolderMenu(m => !m)} aria-expanded={folderMenu}>Add to folder ({selectedIds.size}) ▾</button>
+                {folderMenu && (
+                  <div className="folder-menu" role="menu">
+                    {otherFolders.map(f => <button key={f} className="folder-menu-item" onClick={() => addToFolder(f)}>{f}</button>)}
+                    <form className="folder-new" onSubmit={e => { e.preventDefault(); addToFolder(newFolder) }}>
+                      <input autoFocus value={newFolder} onChange={e => setNewFolder(e.target.value)} placeholder="New folder name" maxLength={60} />
+                      <button type="submit" disabled={!newFolder.trim()}>+ New folder</button>
+                    </form>
+                  </div>
+                )}
+              </div>
+            )}
+            {selectedIds.size > 0 && current.folder && <button className="secondary" onClick={removeFromFolder}>Remove from folder</button>}
+            {items.length > 0 && (<>
+              <label className="gallery-control" title="Thumbnail size">
+                <span>Size</span>
+                <input type="range" min="120" max="420" step="10" value={thumbSize}
+                  onChange={e => { setThumbSize(+e.target.value); localStorage.setItem('library_thumb', e.target.value) }} />
+              </label>
+              <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole pictures instead of cropped squares"
+                onClick={() => setFitImages(f => { localStorage.setItem('library_fit', f ? '0' : '1'); return !f })}>Full images</button>
+              <div className={`select-all-box ${selectedIds.size === visible.length && visible.length > 0 ? 'checked' : ''}`} title="Select all shown"
+                onClick={() => setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(i => i.id)))} />
+            </>)}
           </div>
-        )}
-        <SeeMore pager={pager} total={items.length} noun={current.source.noun} />
+        </div>
+        {msg.text && <div className={`status ${msg.type}`}>{msg.text}</div>}
+        {items.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click to select · Shift+click to select a range · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap to select · tap the magnifier to view full size</span></div>}
+
+        <div ref={gridRef}>
+          {items.length === 0 ? <div className="empty-msg">Nothing here yet.</div> : !fitImages
+            ? <div className="gallery" style={layout.grid}>{visible.map((it, i) => tile(it, i))}</div>
+            : (() => {
+              const gap = layout.narrow ? 6 : 12
+              const rows = justifyRows(visible, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
+              return (
+                <div className="gallery-justified" style={{ gap }}>
+                  {rows.map((row, r) => (
+                    <div key={r} className="gallery-row" style={{ gap, height: Math.round(row.height) }}>
+                      {row.cells.map(cell => tile(cell.item, cell.index, cellStyle(row, cell)))}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+        </div>
+        <SeeMore pager={pager} total={items.length} noun={src.noun} />
 
         {v && (
           <div className="lightbox" onClick={() => setViewIndex(-1)}>
@@ -159,11 +303,13 @@ export default function Library({ active }) {
               <span className="lb-count">{viewIndex + 1} / {items.length}</span>
               <span className="lb-caption" title={v.positive || v.prompt || ''}>{v.positive || v.prompt || v.from || ''}</span>
               {v.width ? <span className="lb-meta">{v.width}×{v.height}</span> : null}
+              <button className="secondary" onClick={() => setInfoItem(v)}>Info</button>
               <button className="secondary" onClick={() => download(v)}>Download</button>
-              <button className="secondary" onClick={() => { setViewIndex(-1); openInTab(current) }}>Open in {current.source.label}</button>
+              <button className="secondary" onClick={() => { setViewIndex(-1); openInTab(current) }}>Open in {src.label}</button>
             </div>
           </div>
         )}
+        {infoItem && <ItemInfo item={infoItem} source={src} url={urlOf(infoItem) || urls.get(infoItem)} onClose={() => setInfoItem(null)} onDownload={() => download(infoItem)} />}
       </div>
     )
   }
@@ -189,6 +335,68 @@ export default function Library({ active }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// The "i" popup in the Gallery tab: what a picture / video was made with (whatever its tab saved)
+function ItemInfo({ item, source, url, onClose, onDownload }) {
+  const [dims, setDims] = useState(null)
+  useEffect(() => {
+    if (!url || isVideo(item)) return
+    const img = new Image()
+    img.onload = () => setDims([img.naturalWidth, img.naturalHeight])
+    img.src = url
+  }, [url, item])
+  const m = item.meta || {}
+  const lines = []
+  const add = (k, v) => { if (v !== undefined && v !== null && v !== '') lines.push([k, v]) }
+  const w = item.width || dims?.[0], h = item.height || dims?.[1]
+  add('Size', w ? `${w} × ${h}` : null)
+  if (source.key === 'images') {
+    add('Steps / CFG', item.steps ? `${item.steps} / ${item.cfg}` : null)
+    add('Seed', item.seed)
+    add('Sampler', item.sampler ? `${item.sampler} / ${item.scheduler}` : null)
+    add('Checkpoint', item.checkpoint ? item.checkpoint.split('/').pop() : null)
+    if (item.faceFix) add('Face fix', `strength ${item.faceStrength}${item.detail?.facePasses === 2 ? ', 2 passes' : ''}`)
+    for (const l of item.loras || []) if (l.name) add('LoRA', `${l.name.split('/').pop()} · ${l.strength}`)
+    for (const [k, v] of detailLines(item.detail)) add(k, v)
+    if (item.faceRef) add('Face reference', `${{ faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID' }[item.faceRef.method] || 'FaceID'} · ${item.faceRef.character || `${item.faceRef.count} picture(s)`} · ${item.faceRef.strength}`)
+    if (item.refPicture) add('Pose / style picture', `${item.refPicture.mode}${item.refPicture.denoise != null ? `, denoise ${item.refPicture.denoise}` : `, strength ${item.refPicture.strength}`}`)
+    if (item.refiner) add('Refiner', `×${item.refiner.upscale}, strength ${item.refiner.strength}${item.refiner.upscaler ? ` · ${UPSCALER_NAMES[item.refiner.upscaler] || item.refiner.upscaler}` : ''}`)
+  } else if (source.key === 'headswap' || source.key === 'faceswap') {
+    add('Steps / CFG', m.steps != null && m.method !== 'insightface' ? `${m.fast ? '8 (Speed LoRA)' : m.steps}${m.cfg != null ? ` / ${m.cfg}` : ''}` : null)
+    add('Seed', m.seed)
+    add('Swap method', m.method && m.method !== 'bfs' ? (m.method === 'insightface' ? 'InsightFace face swap' : 'head swap + InsightFace') : null)
+    add('Expression from body photo', m.expression ? `strength ${m.expression.strength}, ${m.expression.region}` : null)
+    add('Face restore', m.restore ? `${m.restore.model}, visibility ${m.restore.visibility}` : null)
+    for (const l of m.loras || []) add('LoRA', `${l.name.split('/').pop()} · ${l.strength}`)
+    add('Took', m.seconds != null ? `${m.seconds} s` : null)
+  } else if (source.key === 'upscale') {
+    add('From', item.from)
+    add('Upscaler', m.model ? (UPSCALER_NAMES[m.model] || m.model) : null)
+    add('Face restore', m.faces ? `on (${m.faceStrength})` : (item.meta ? 'off' : null))
+  } else if (source.key === 'videos') {
+    add('Length', item.seconds ? `${item.seconds} s${item.frames ? ` (${item.frames} frames @ ${item.fps} fps)` : ''}` : null)
+    add('Seed', item.seed)
+    add('Model', item.model)
+    add('Sound', item.sound ? (item.soundPrompt || 'yes') : null)
+  }
+  if (item.folders?.length) add('Folders', item.folders.join(', '))
+  add('Made', item.created ? new Date(item.created).toLocaleString() : null)
+  const prompt = item.positive ?? item.prompt
+  return (
+    <div className="prompt-popup-overlay" onClick={onClose}>
+      <div className="prompt-popup" onClick={e => e.stopPropagation()}>
+        <h3>{source.label} info</h3>
+        {prompt != null && <p><strong>Prompt:</strong><br />{prompt || '(none)'}</p>}
+        {item.negative ? <p><strong>Negative:</strong><br />{item.negative}</p> : null}
+        <div className="meta-info">{lines.map(([k, v], i) => <span key={i}>{i > 0 && <br />}{k}: {String(v)}</span>)}</div>
+        <div className="row" style={{ marginTop: 16 }}>
+          <button className="secondary" onClick={onDownload}>Download</button>
+          <button className="secondary" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   )
 }

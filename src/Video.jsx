@@ -146,6 +146,11 @@ export default function Video({ active }) {
       return items.map(v => ({ ...v, src: URL.createObjectURL(v.blob) }))
     })
   }
+  useEffect(() => {   // the Gallery tab deleted / re-foldered some videos
+    const on = e => { if (e.detail === 'videos') { setSelectedIds(new Set()); setViewIndex(-1); refreshGallery() } }
+    window.addEventListener('gallery-changed', on)
+    return () => window.removeEventListener('gallery-changed', on)
+  })
   useEffect(() => {
     refreshGallery()
     const onSynced = e => { if (e.detail?.kind === 'videos') refreshGallery() }
