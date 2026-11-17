@@ -4,6 +4,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
+import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import './App.css'
 import { askConfirm } from './ConfirmDialog.jsx'
 import SavedPrompts, { useSavedPrompts, savePromptAs } from './SavedPrompts.jsx'
@@ -196,6 +197,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [statusType, setStatusType] = useState('')
   const [progress, setProgress] = useState(0)
   const [gallery, setGallery] = useState([])
+  const pager = useSeeMore(60)   // only the newest 60 are built; See more for the rest
+  const visible = gallery.slice(0, pager.limit)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [lightboxIndex, setLightboxIndex] = useState(-1)
   const [loraFiles, setLoraFiles] = useState([])        // extra LoRAs downloaded on the backend
@@ -565,7 +568,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   }
 
   function toggleAll() {
-    setSelectedIds(selectedIds.size === gallery.length ? new Set() : new Set(gallery.map(item => item.id)))
+    setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(item => item.id)))
   }
 
   function download(item) {
@@ -748,7 +751,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
             </label>
             <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
               onClick={() => setFitImages(fit => { localStorage.setItem(`${M.storage}_gallery_fit`, fit ? '0' : '1'); return !fit })}>Full images</button>
-            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={toggleAll} title="Select all images" />
+            <div className={`select-all-box ${selectedIds.size === visible.length && visible.length > 0 ? 'checked' : ''}`} onClick={toggleAll} title="Select all images" />
           </>)}
         </div>
       </div>
@@ -771,11 +774,11 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
+            return <div className="gallery" style={layout.grid}>{visible.map((item, i) => tile(item, i))}</div>
           }
           // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
           const gap = layout.narrow ? 6 : 12
-          const rows = justifyRows(gallery, it => ratios[it.id], galleryWidth, justifiedHeight(layout, thumbSize), gap)
+          const rows = justifyRows(visible, it => ratios[it.id], galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
             <div className="gallery-justified" style={{ gap }}>
               {rows.map((row, r) => (
@@ -787,6 +790,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           )
         })()}
       </div>
+      <SeeMore pager={pager} total={gallery.length} noun="images" />
 
       {lightboxIndex >= 0 && gallery[lightboxIndex] && <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
         <div className="lb-image-wrap" onClick={event => event.stopPropagation()}>

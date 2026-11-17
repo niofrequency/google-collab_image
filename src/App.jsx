@@ -16,6 +16,7 @@ import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
+import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import DetailTools, { loadDetail, detailPayload, detailSummary } from './DetailTools.jsx'
 import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
@@ -323,6 +324,8 @@ export default function App({ active = true }) {
   const folderNames = Object.keys(folderCounts).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
   const folderOk = !activeFolder || folderCounts[activeFolder]
   const shown = activeFolder && folderOk ? gallery.filter(item => (item.folders || []).includes(activeFolder)) : gallery
+  const pager = useSeeMore(60, activeFolder)
+  const visible = shown.slice(0, pager.limit)   // only these are built on the page
 
   // Changes the folders of some images (in the gallery database, then on screen) and backs it up
   async function changeFolders(ids, change) {
@@ -921,7 +924,7 @@ export default function App({ active = true }) {
   // Click: select / unselect one image. Shift+click: also select every image between the last clicked one and this one.
   const lastClickRef = useRef(null)
   function clickImage(e, id) {
-    const ids = shown.map(item => item.id)
+    const ids = visible.map(item => item.id)
     const from = ids.indexOf(lastClickRef.current)
     const to = ids.indexOf(id)
     if (e.shiftKey && from >= 0 && to >= 0 && from !== to) {
@@ -943,8 +946,8 @@ export default function App({ active = true }) {
   }
 
   function selectAll() {
-    if (selectedIds.size === shown.length) setSelectedIds(new Set())
-    else setSelectedIds(new Set(shown.map(item => item.id)))
+    if (selectedIds.size === visible.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(visible.map(item => item.id)))   // what's on screen, never hidden pictures
   }
 
   function togglePromptSelect(i) {
@@ -1605,7 +1608,7 @@ export default function App({ active = true }) {
             </label>
             <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
               onClick={() => { setFitImages(f => { localStorage.setItem('gallery_fit', f ? '0' : '1'); return !f }) }}>Full images</button>
-            <div className={`select-all-box ${selectedIds.size === shown.length && shown.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
+            <div className={`select-all-box ${selectedIds.size === visible.length && visible.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images shown" />
           </>)}
         </div>
       </div>
@@ -1651,11 +1654,11 @@ export default function App({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={layout.grid}>{shown.map((item, i) => tile(item, i))}</div>
+            return <div className="gallery" style={layout.grid}>{visible.map((item, i) => tile(item, i))}</div>
           }
           // Whole images in justified rows: each row has one height, wide pictures get more width than tall ones
           const gap = layout.narrow ? 6 : 12
-          const rows = justifyRows(shown, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
+          const rows = justifyRows(visible, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
             <div className="gallery-justified" style={{ gap }}>
               {rows.map((row, r) => (
@@ -1667,6 +1670,8 @@ export default function App({ active = true }) {
           )
         })()}
       </div>
+
+      <SeeMore pager={pager} total={shown.length} />
 
       {lightboxIndex >= 0 && shown[lightboxIndex] && (
         <div className="lightbox" onClick={() => setLightboxIndex(-1)}>

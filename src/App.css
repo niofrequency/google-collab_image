@@ -1130,3 +1130,9 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .nb-open { display: inline-block; padding: 7px 12px; font-size: 13px; border-radius: 8px; background: var(--accent); color: #fff; text-decoration: none; }
 .nb-open:hover { filter: brightness(1.15); }
 .nb-older summary { cursor: pointer; color: var(--muted); margin-bottom: 10px; }
+
+/* "See more" under the galleries */
+.see-more { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; margin: 18px 0 8px; }
+.see-more button { width: auto; padding: 9px 18px; }
+.see-more .see-all { padding: 9px 14px; opacity: 0.85; }
+.see-more .small-note { flex-basis: 100%; text-align: center; }

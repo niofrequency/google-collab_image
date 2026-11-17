@@ -8,6 +8,7 @@ import { queueSync, cloudForget } from './cloud.js'
 import CharacterShot from './CharacterShot.jsx'
 import VideoLoras from './VideoLoras.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
+import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import { trackJob } from './favicon.js'
@@ -97,6 +98,8 @@ export default function Video({ active }) {
   const [msg, setMsg] = useState({ text: '', type: '' })
   const [result, setResult] = useState(null)          // { url, ... } of the latest video
   const [gallery, setGallery] = useState([])
+  const pager = useSeeMore(24)   // only the newest 24 are built; See more for the rest
+  const visible = gallery.slice(0, pager.limit)
   const [viewIndex, setViewIndex] = useState(-1)      // full-screen viewer (index into gallery)
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [thumbSize, setThumbSize] = useState(() => +(localStorage.getItem('video_thumb') || 220))
@@ -339,7 +342,7 @@ export default function Video({ active }) {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
   function selectAll() {
-    setSelectedIds(selectedIds.size === gallery.length ? new Set() : new Set(gallery.map(v => v.id)))
+    setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(v => v.id)))
   }
 
   function usePrompt(v) {
@@ -497,7 +500,7 @@ export default function Video({ active }) {
             </label>
             <button className={`toggle small ${fitVideos ? 'on' : ''}`} title="Show whole videos instead of cropped tiles"
               onClick={() => setFitVideos(f => { localStorage.setItem('video_fit', f ? '0' : '1'); return !f })}>Full videos</button>
-            <div className={`select-all-box ${selectedIds.size === gallery.length ? 'checked' : ''}`} onClick={selectAll} title="Select all videos" />
+            <div className={`select-all-box ${selectedIds.size === visible.length && visible.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all videos" />
           </>)}
         </div>
       </div>
@@ -526,11 +529,11 @@ export default function Video({ active }) {
             </div>
           )
           if (!fitVideos) {
-            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
+            return <div className="gallery" style={layout.grid}>{visible.map((item, i) => tile(item, i))}</div>
           }
           // Whole pictures in justified rows: each row has one height, wide ones get more width than tall ones
           const gap = layout.narrow ? 6 : 12
-          const rows = justifyRows(gallery, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
+          const rows = justifyRows(visible, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
             <div className="gallery-justified" style={{ gap }}>
               {rows.map((row, r) => (
@@ -542,6 +545,7 @@ export default function Video({ active }) {
           )
         })()}
       </div>
+      <SeeMore pager={pager} total={gallery.length} noun="videos" />
 
       {viewing && (
         <div className="lightbox" onClick={() => setViewIndex(-1)}>

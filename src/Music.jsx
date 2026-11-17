@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import Info from './Info.jsx'
 import { queueSync, cloudForget } from './cloud.js'
 import PresetBar from './PresetBar.jsx'
@@ -57,6 +58,7 @@ async function dbDelete(id) {
 }
 
 export default function Music() {
+  const pager = useSeeMore(20)   // only the newest 20 are built; See more for the rest
   const [url, setUrl] = useState(load('url', ''))
   const [info, setInfo] = useState(null)
   const [tags, setTags] = useState(load('tags', ''))
@@ -294,7 +296,7 @@ export default function Music() {
       <div className="gallery-header"><h3>Songs</h3></div>
       {songs.length === 0 && <div className="empty-msg">No songs yet.</div>}
       <div className="song-list">
-        {songs.map(s => (
+        {songs.slice(0, pager.limit).map(s => (
           <div key={s.id} className="song-card">
             <div className="song-title" title={s.tags}>{s.instrumental ? '🎹' : '🎤'} {s.tags || '(no style)'}</div>
             <div className="video-meta">{s.seconds} s · {s.bpm} BPM · {s.key}{s.instrumental ? ' · instrumental' : ''}</div>
@@ -307,6 +309,7 @@ export default function Music() {
           </div>
         ))}
       </div>
+      <SeeMore pager={pager} total={songs.length} noun="songs" />
     </div>
   )
 }

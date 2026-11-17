@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import Info from './Info.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
@@ -37,6 +38,7 @@ const blobToDataUrl = blob => new Promise((resolve, reject) => { const r = new F
 const dataUrlToBlob = async url => (await fetch(url)).blob()
 
 export default function Upscale({ active = true }) {
+  const pager = useSeeMore(24)   // only the newest 24 are built; See more for the rest
   const [url, setUrl] = useState(load('url', ''))
   const [info, setInfo] = useState(null)
   const [input, setInput] = useState(null)        // { kind: 'image' | 'video', src (object URL), blob, w, h }
@@ -240,7 +242,7 @@ export default function Upscale({ active = true }) {
       <div className="gallery-header"><h3>Upscaled <span className="muted">· {items.length}</span></h3></div>
       {items.length === 0 && <div className="empty-msg">Upscaled pictures and videos are kept here, in this browser.</div>}
       <div className="upscale-list">
-        {items.map(i => (
+        {items.slice(0, pager.limit).map(i => (
           <div key={i.id} className="upscale-card">
             {i.kind === 'video' ? <video src={i.src} controls playsInline preload="metadata" /> : <img src={i.src} alt="" loading="lazy" />}
             <div className="video-meta">{i.from} → {i.width}×{i.height}{i.fps ? ` · ${i.fps} fps` : ''}</div>
@@ -251,6 +253,7 @@ export default function Upscale({ active = true }) {
           </div>
         ))}
       </div>
+      <SeeMore pager={pager} total={items.length} noun="upscales" />
     </div>
   )
 }
