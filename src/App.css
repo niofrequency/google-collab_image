@@ -1185,3 +1185,6 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .variation-row .inline-label input { width: 70px; }
 .variation-row .headswap-seed { width: auto; }
 .variation-row .headswap-seed input { width: 120px; }
+
+/* "loaded, except …" — not an error */
+.status.warn { background: #2a2312; color: #f0b44c; padding: 12px 16px; border-radius: 10px; border: 1px solid #5a4a22; }

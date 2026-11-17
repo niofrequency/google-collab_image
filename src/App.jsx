@@ -1206,8 +1206,17 @@ export default function App({ active = true }) {
       if (item.faceRef?.character) {
         const c = loadCharacters().find(x => x.name === item.faceRef.character)
         if (c?.images?.length) { setFaceRefImages(c.images.slice(0, MAX_FACE_REFS)); setFaceRefCharacter(c.name) }
-        else notes.push(`the character "${item.faceRef.character}" isn't saved any more — add the face pictures again`)
-      } else if (item.faceRef && !faceRefImages.length) notes.push('add the face reference pictures again (they aren\'t saved with images)')
+        else {
+          // the character isn't on this computer: everything else is loaded; face reference waits (Off) for pictures,
+          // and pictures of another character aren't left in (they'd give the wrong face)
+          if (faceRefCharacter !== item.faceRef.character) { setFaceRefImages([]); setFaceRefCharacter('') }
+          setFaceRefOn(false)
+          notes.push(`the character "${item.faceRef.character}" isn't saved on this computer, so Face reference is Off — pick or add the face pictures and turn it On (its method and strength are set)`)
+        }
+      } else if (item.faceRef && !faceRefImages.length) {
+        setFaceRefOn(false)
+        notes.push('Face reference is Off — add the face pictures again and turn it On (they aren\'t saved with images)')
+      }
     }
     // Pose / style picture: its settings (the picture itself isn't saved with images)
     if (item.refPicture !== undefined) {
@@ -1220,7 +1229,7 @@ export default function App({ active = true }) {
     }
     if (item.inpaint) notes.push('inpainting isn\'t restored (open the picture in Inpaint / outpaint again)')
     setInfoItem(null)
-    setStatusMsg('Full workflow loaded' + (item.seed != null ? ` (seed ${item.seed})` : '') + (notes.length ? ` — ${notes.join('; ')}` : ''), notes.length ? 'error' : 'ok')
+    setStatusMsg('Full workflow loaded' + (item.seed != null ? ` (seed ${item.seed})` : '') + (notes.length ? ` — except: ${notes.join('; ')}` : ''), notes.length ? 'warn' : 'ok')
   }
 
   function loadPromptOnly(item) {
