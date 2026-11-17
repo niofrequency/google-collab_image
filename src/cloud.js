@@ -169,9 +169,20 @@ export async function syncKind(kind) {
       if (rec.cloudId && rec.cloudUid && rec.cloudUid !== uid) continue   // backed up to a different account: leave it
       if (rec.cloudId && rec.cloudUid === uid) {
         known.add(rec.cloudId)
-        if (!cloud.has(rec.cloudId)) {   // deleted on another device
+        const c = cloud.get(rec.cloudId)
+        if (!c) {   // deleted on another device
           await idb(local, k.store, 'readwrite', s => s.delete(rec.id))
           removed++
+        } else if ((rec.foldersAt || 0) !== (c.foldersAt || 0)) {
+          // folders (gallery folders) changed on one side since the last sync: the newer change wins
+          try {
+            if ((rec.foldersAt || 0) > (c.foldersAt || 0)) {
+              await fs.updateDoc(fs.doc(col, rec.cloudId), { folders: rec.folders || [], foldersAt: rec.foldersAt })
+            } else {
+              await idb(local, k.store, 'readwrite', s => s.put({ ...rec, folders: c.folders || [], foldersAt: c.foldersAt }))
+              down++
+            }
+          } catch (e) { failed++; lastError = e; console.warn('Folder sync failed', e) }
         }
         continue
       }

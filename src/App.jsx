@@ -193,6 +193,19 @@ export default function App({ active = true }) {
   const [maxRefImages, setMaxRefImages] = useState(MAX_REFS)
 
   const [selectedIds, setSelectedIds] = useState(new Set())
+  // Folders: an image can be in any number of named folders (saved on the image, backed up with it).
+  // "All images" (null) shows everything; picking a folder shows only its images.
+  const [activeFolder, setActiveFolderState] = useState(localStorage.getItem('gallery_folder') || null)
+  const [folderMenu, setFolderMenu] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [renaming, setRenaming] = useState(null)      // { from, to } while a folder's name is being edited
+  const folderAddRef = useRef(null)
+  const setActiveFolder = name => {
+    setActiveFolderState(name)
+    if (name) localStorage.setItem('gallery_folder', name); else localStorage.removeItem('gallery_folder')
+    setSelectedIds(new Set())
+    setLightboxIndex(-1)
+  }
   const [selectedPromptIndices, setSelectedPromptIndices] = useState(new Set())
   const [editingNameIndex, setEditingNameIndex] = useState(null)
   const [editingNameValue, setEditingNameValue] = useState('')
@@ -305,6 +318,74 @@ export default function App({ active = true }) {
     return () => window.removeEventListener('paste', handlePaste)
   }, [])
 
+  const folderCounts = {}
+  for (const item of gallery) for (const f of item.folders || []) folderCounts[f] = (folderCounts[f] || 0) + 1
+  const folderNames = Object.keys(folderCounts).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+  const folderOk = !activeFolder || folderCounts[activeFolder]
+  const shown = activeFolder && folderOk ? gallery.filter(item => (item.folders || []).includes(activeFolder)) : gallery
+
+  // Changes the folders of some images (in the gallery database, then on screen) and backs it up
+  async function changeFolders(ids, change) {
+    const db = await openDB()
+    const now = Date.now()
+    const updates = {}
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('images', 'readwrite')
+      const store = tx.objectStore('images')
+      for (const id of ids) {
+        const req = store.get(id)
+        req.onsuccess = () => {
+          const rec = req.result
+          if (!rec) return
+          const folders = [...new Set(change(rec.folders || []))]
+          updates[id] = folders
+          store.put({ ...rec, folders, foldersAt: now })
+        }
+      }
+      tx.oncomplete = resolve
+      tx.onerror = () => reject(tx.error)
+    })
+    setGallery(prev => prev.map(item => (item.id in updates ? { ...item, folders: updates[item.id] } : item)))
+    queueSync('images')
+  }
+
+  async function addSelectedToFolder(name) {
+    name = (name || '').trim().slice(0, 60)
+    if (!name || !selectedIds.size) return
+    const n = selectedIds.size
+    await changeFolders([...selectedIds], f => [...f, name])
+    setFolderMenu(false)
+    setNewFolderName('')
+    setSelectedIds(new Set())
+    setStatusMsg(`Added ${n} image${n === 1 ? '' : 's'} to the folder "${name}"`, 'ok')
+  }
+
+  async function removeSelectedFromFolder() {
+    if (!activeFolder || !selectedIds.size) return
+    const n = selectedIds.size
+    await changeFolders([...selectedIds], f => f.filter(x => x !== activeFolder))
+    setSelectedIds(new Set())
+    setStatusMsg(`Removed ${n} image${n === 1 ? '' : 's'} from "${activeFolder}" (they're still in All images)`, 'ok')
+  }
+
+  async function renameFolder(oldName, newName) {
+    setRenaming(null)
+    const name = (newName || '').trim().slice(0, 60)
+    if (!name || name === oldName) return
+    await changeFolders(gallery.filter(i => (i.folders || []).includes(oldName)).map(i => i.id),
+      f => f.map(x => (x === oldName ? name : x)))
+    if (activeFolder === oldName) setActiveFolder(name)
+    setStatusMsg(`Folder renamed to "${name}"`, 'ok')
+  }
+
+  async function deleteFolder(name) {
+    const ids = gallery.filter(i => (i.folders || []).includes(name)).map(i => i.id)
+    if (!(await askConfirm({ title: `Delete the folder "${name}"?`, message: `Only the folder goes away — its ${ids.length} image${ids.length === 1 ? '' : 's'} stay in All images (and in any other folders).`, yes: 'Delete folder' }))) return
+    await changeFolders(ids, f => f.filter(x => x !== name))
+    if (activeFolder === name) setActiveFolder(null)
+    setStatusMsg(`Folder "${name}" deleted — its images are still in All images`, 'ok')
+  }
+
   async function loadGallery() {
     const db = await openDB()
     const tx = db.transaction('images', 'readonly')
@@ -331,6 +412,7 @@ export default function App({ active = true }) {
       faceStrength: item.faceStrength || 0,
       refiner: item.refiner || null,
       faceRef: item.faceRef || null,
+      folders: item.folders || [],
       refPicture: item.refPicture || null,
       detailTools: item.detailTools || null,
       inpaint: item.inpaint || null,
@@ -846,8 +928,8 @@ export default function App({ active = true }) {
   }
 
   function selectAll() {
-    if (selectedIds.size === gallery.length) setSelectedIds(new Set())
-    else setSelectedIds(new Set(gallery.map(item => item.id)))
+    if (selectedIds.size === shown.length) setSelectedIds(new Set())
+    else setSelectedIds(new Set(shown.map(item => item.id)))
   }
 
   function togglePromptSelect(i) {
@@ -959,7 +1041,7 @@ export default function App({ active = true }) {
   }
 
   function goNext() {
-    if (lightboxIndex < gallery.length - 1) {
+    if (lightboxIndex < shown.length - 1) {
       setLightboxIndex(lightboxIndex + 1)
       setIsZoomed(false)
       setPan({ x: 0, y: 0 })
@@ -1478,10 +1560,29 @@ export default function App({ active = true }) {
       )}
 
       <div className="gallery-header">
-        <h3>Gallery {gallery.length > 0 && <span className="muted">· {gallery.length} image{gallery.length === 1 ? '' : 's'}</span>}</h3>
+        <h3>{activeFolder && folderOk ? activeFolder : 'Gallery'} {shown.length > 0 && <span className="muted">· {shown.length} image{shown.length === 1 ? '' : 's'}</span>}</h3>
         <div className="gallery-actions">
           {selectedIds.size > 0 && <button className="danger delete-selected" onClick={deleteSelected}>Delete Selected ({selectedIds.size})</button>}
-          {gallery.length > 0 && (<>
+          {selectedIds.size > 0 && (
+            <div className="folder-add" ref={folderAddRef}>
+              <button className="secondary" onClick={() => setFolderMenu(m => !m)} aria-expanded={folderMenu}>Add to folder ({selectedIds.size}) ▾</button>
+              {folderMenu && (
+                <div className="folder-menu" role="menu">
+                  {folderNames.map(f => (
+                    <button key={f} className="folder-menu-item" onClick={() => addSelectedToFolder(f)}>{f} <span className="muted">{folderCounts[f]}</span></button>
+                  ))}
+                  <form className="folder-new" onSubmit={e => { e.preventDefault(); addSelectedToFolder(newFolderName) }}>
+                    <input autoFocus value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="New folder name" maxLength={60} />
+                    <button type="submit" disabled={!newFolderName.trim()}>+ New folder</button>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+          {selectedIds.size > 0 && activeFolder && folderOk && (
+            <button className="secondary" onClick={removeSelectedFromFolder} title="Take them out of this folder (they stay in All images)">Remove from folder</button>
+          )}
+          {shown.length > 0 && (<>
             <label className="gallery-control" title="Thumbnail size">
               <span>Size</span>
               <input type="range" min="130" max="360" step="10" value={thumbSize}
@@ -1489,11 +1590,33 @@ export default function App({ active = true }) {
             </label>
             <button className={`toggle small ${fitImages ? 'on' : ''}`} title="Show whole images instead of cropped squares"
               onClick={() => { setFitImages(f => { localStorage.setItem('gallery_fit', f ? '0' : '1'); return !f }) }}>Full images</button>
-            <div className={`select-all-box ${selectedIds.size === gallery.length && gallery.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
+            <div className={`select-all-box ${selectedIds.size === shown.length && shown.length > 0 ? 'checked' : ''}`} onClick={selectAll} title="Select all images" />
           </>)}
         </div>
       </div>
-      {gallery.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
+      {folderNames.length > 0 && (
+        <div className="folder-bar" role="tablist" aria-label="Gallery folders">
+          <button className={`chip ${!activeFolder || !folderOk ? 'active' : ''}`} onClick={() => setActiveFolder(null)}>All images <span className="folder-count">{gallery.length}</span></button>
+          {folderNames.map(f => (
+            <span key={f} className={`folder-chip ${activeFolder === f ? 'active' : ''}`}>
+              <button className={`chip ${activeFolder === f ? 'active' : ''}`} onClick={() => setActiveFolder(f)} title={`Show the folder "${f}"`}>📁 {f} <span className="folder-count">{folderCounts[f]}</span></button>
+              {activeFolder === f && renaming?.from === f && (
+                <form className="folder-rename" onSubmit={e => { e.preventDefault(); renameFolder(f, renaming.to) }}>
+                  <input autoFocus value={renaming.to} maxLength={60} onChange={e => setRenaming({ from: f, to: e.target.value })}
+                    onKeyDown={e => e.key === 'Escape' && setRenaming(null)} aria-label="New folder name" />
+                  <button type="submit" className="chip active">Save</button>
+                  <button type="button" className="chip" onClick={() => setRenaming(null)}>Cancel</button>
+                </form>
+              )}
+              {activeFolder === f && renaming?.from !== f && (<>
+                <button className="chip folder-tool" title="Rename this folder" onClick={() => setRenaming({ from: f, to: f })}>✎</button>
+                <button className="chip folder-tool" title="Delete this folder (the images stay)" onClick={() => deleteFolder(f)}>×</button>
+              </>)}
+            </span>
+          ))}
+        </div>
+      )}
+      {shown.length > 0 && <div className="gallery-hint"><span className="hint-mouse">Click an image to select it · magnifier or double-click to view full size · ← → to browse</span><span className="hint-touch">Tap a picture to select it · tap the magnifier to view it full size</span></div>}
 
       <div ref={galleryRef}>
         {(() => {
@@ -1512,11 +1635,11 @@ export default function App({ active = true }) {
             </div>
           )
           if (!fitImages) {
-            return <div className="gallery" style={layout.grid}>{gallery.map((item, i) => tile(item, i))}</div>
+            return <div className="gallery" style={layout.grid}>{shown.map((item, i) => tile(item, i))}</div>
           }
           // Whole images in justified rows: each row has one height, wide pictures get more width than tall ones
           const gap = layout.narrow ? 6 : 12
-          const rows = justifyRows(gallery, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
+          const rows = justifyRows(shown, it => (it.width && it.height ? it.width / it.height : ratios[it.id]), galleryWidth, justifiedHeight(layout, thumbSize), gap)
           return (
             <div className="gallery-justified" style={{ gap }}>
               {rows.map((row, r) => (
@@ -1529,14 +1652,14 @@ export default function App({ active = true }) {
         })()}
       </div>
 
-      {lightboxIndex >= 0 && gallery[lightboxIndex] && (
+      {lightboxIndex >= 0 && shown[lightboxIndex] && (
         <div className="lightbox" onClick={() => setLightboxIndex(-1)}>
           <div className="lb-image-wrap" onClick={e => e.stopPropagation()}>
             <button className="lb-btn left" title="Close (Esc)" onClick={() => setLightboxIndex(-1)}><CloseIcon /></button>
             <button className="lb-btn nav-left" onClick={goPrev} disabled={lightboxIndex === 0} title="Previous (←)"><ChevronLeftIcon /></button>
             <img
               ref={imageRef}
-              src={gallery[lightboxIndex].url}
+              src={shown[lightboxIndex].url}
               alt=""
               className={isZoomed ? 'zoomed' : ''}
               style={{transform: isZoomed ? `scale(2) translate(${pan.x/2}px, ${pan.y/2}px)` : 'none'}}
@@ -1546,28 +1669,32 @@ export default function App({ active = true }) {
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
             />
-            <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === gallery.length - 1} title="Next (→)"><ChevronRightIcon /></button>
+            <button className="lb-btn nav-right" onClick={goNext} disabled={lightboxIndex === shown.length - 1} title="Next (→)"><ChevronRightIcon /></button>
           </div>
           <div className="lb-bar" onClick={e => e.stopPropagation()}>
-            <span className="lb-count">{lightboxIndex + 1} / {gallery.length}</span>
-            <span className="lb-caption" title={gallery[lightboxIndex].positive}>{gallery[lightboxIndex].positive || '(no prompt)'}</span>
-            <span className="lb-meta">{gallery[lightboxIndex].width}×{gallery[lightboxIndex].height}</span>
-            <button className="secondary" onClick={() => setInfoItem(gallery[lightboxIndex])}>Info</button>
-            <button className="secondary" onClick={() => loadPromptOnly(gallery[lightboxIndex])}>Use prompt</button>
-            <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(gallery[lightboxIndex])}>Use as face</button>
+            <span className="lb-count">{lightboxIndex + 1} / {shown.length}</span>
+            <span className="lb-caption" title={shown[lightboxIndex].positive}>{shown[lightboxIndex].positive || '(no prompt)'}</span>
+            <span className="lb-meta">{shown[lightboxIndex].width}×{shown[lightboxIndex].height}</span>
+            <button className="secondary" onClick={() => setInfoItem(shown[lightboxIndex])}>Info</button>
+            <button className="secondary" onClick={() => loadPromptOnly(shown[lightboxIndex])}>Use prompt</button>
+            <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(shown[lightboxIndex])}>Use as face</button>
             {backendType === 'sdxl' && refModes.length > 0 && (
               <button className="secondary" title="Use this image as the pose / structure / style picture (BigLust)"
-                onClick={async () => { setRefPicture(await shrinkImage(gallery[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}>Use as pose / style</button>
+                onClick={async () => { setRefPicture(await shrinkImage(shown[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}>Use as pose / style</button>
             )}
-            <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(gallery[lightboxIndex], 'start')}>Video start</button>
-            <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(gallery[lightboxIndex], 'end')}>Video end</button>
-            <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(gallery[lightboxIndex].url)}>Inpaint / outpaint</button>
-            <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(gallery[lightboxIndex].url)}>Save to Characters</button>
-            <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = gallery[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
-            <button className="secondary" onClick={() => downloadImage(gallery[lightboxIndex])}>Download</button>
+            <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(shown[lightboxIndex], 'start')}>Video start</button>
+            <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(shown[lightboxIndex], 'end')}>Video end</button>
+            <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(shown[lightboxIndex].url)}>Inpaint / outpaint</button>
+            <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}>Save to Characters</button>
+            <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
+            <button className="secondary" title="Put this image in a folder (a separate gallery)" onClick={() => {
+              setSelectedIds(new Set([shown[lightboxIndex].id])); setLightboxIndex(-1); setFolderMenu(true)
+              setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+            }}>Add to folder</button>
+            <button className="secondary" onClick={() => downloadImage(shown[lightboxIndex])}>Download</button>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
-          {[gallery[lightboxIndex - 1], gallery[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}
+          {[shown[lightboxIndex - 1], shown[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}
         </div>
       )}
 

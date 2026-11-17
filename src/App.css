@@ -1095,3 +1095,22 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .detail-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .detail-item .inline-label input { width: 70px; }
 .toggle.small { width: auto; padding: 6px 10px; font-size: 12px; }
+
+/* Gallery folders */
+.folder-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 10px; }
+.folder-chip { display: inline-flex; gap: 4px; align-items: center; }
+.folder-count { margin-left: 4px; font-size: 11px; opacity: 0.65; }
+.folder-tool { padding: 5px 8px; }
+.folder-rename { display: inline-flex; gap: 4px; align-items: center; }
+.folder-rename input { width: 160px; padding: 5px 8px; font-size: 12px; }
+.folder-add { position: relative; }
+.folder-add > button { width: auto; }
+.folder-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 240px; max-height: 320px; overflow: auto;
+  padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: #141414; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  display: flex; flex-direction: column; gap: 4px; }
+.folder-menu-item { width: 100%; text-align: left; display: flex; justify-content: space-between; padding: 8px 10px; background: transparent; border: none; border-radius: 6px; }
+.folder-menu-item:hover { background: rgba(255,255,255,0.07); }
+.folder-new { display: flex; gap: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
+.folder-new input { flex: 1; min-width: 0; padding: 6px 8px; font-size: 13px; }
+.folder-new button { width: auto; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+@media (max-width: 700px) { .folder-menu { right: auto; left: 0; min-width: 220px; } }
