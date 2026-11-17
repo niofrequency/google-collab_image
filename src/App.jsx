@@ -16,6 +16,7 @@ import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
+import DetailTools, { loadDetail, detailPayload, detailSummary } from './DetailTools.jsx'
 import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
 
@@ -84,6 +85,9 @@ export default function App({ active = true }) {
   const [faceFix, setFaceFix] = useState(false)          // BigLust: redraw faces at full resolution (like ADetailer)
   const [faceStrength, setFaceStrength] = useState(0.4)
   const [supportsFaceFix, setSupportsFaceFix] = useState(false)
+  const [detail, setDetail] = useState(loadDetail)          // BigLust detail tools (hand fix, PAG, CodeFormer, ...)
+  const [detailTools, setDetailTools] = useState(null)      // which of them the notebook has
+  const [poseReader, setPoseReader] = useState('openpose')
   const [supportsLoraTargets, setSupportsLoraTargets] = useState(false)  // BigLust: LoRA for main image / face fix only
   // Refiner (BigLust): enlarge + lightly redraw for more detail; optional separate checkpoint
   const savedRefiner = (() => { try { return JSON.parse(localStorage.getItem('refiner')) || {} } catch { return {} } })()
@@ -328,6 +332,7 @@ export default function App({ active = true }) {
       refiner: item.refiner || null,
       faceRef: item.faceRef || null,
       refPicture: item.refPicture || null,
+      detailTools: item.detailTools || null,
       inpaint: item.inpaint || null,
       denoise: item.denoise ?? null
     })))
@@ -362,6 +367,7 @@ export default function App({ active = true }) {
         height: meta.height || 0, loras: meta.loras || [],
         faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
         faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
+        detailTools: meta.detailTools || null,
         denoise: meta.denoise ?? null
       })
       req.onsuccess = resolve
@@ -512,6 +518,8 @@ export default function App({ active = true }) {
       setRefModes(Array.isArray(data.supports_ref_modes) ? data.supports_ref_modes : [])
       setSupportsInpaint(!!data.supports_inpaint)
       setSupportsLoraTags(!!data.supports_lora_tags)
+      setDetailTools(data.supports_detail_tools || null)
+      setPoseReader(data.pose_reader || 'openpose')
       setQwenModels(Array.isArray(data.qwen_models) ? data.qwen_models : [])
       setGpuInfo(data.gpu || null)
       setMaxRefImages(data.max_reference_images || (data.model_type === 'qwen_image_edit' ? 1 : MAX_REFS))
@@ -671,6 +679,7 @@ export default function App({ active = true }) {
       reference_images: refImages.slice(1),         // Pictures 2 and 3
       face_fix: backendType === 'sdxl' && faceFix,
       face_fix_strength: +faceStrength,
+      ...(backendType === 'sdxl' ? detailPayload(detail, detailTools, { faceFix, refinerOn: supportsRefiner && refinerOn }) : {}),
       refiner: backendType === 'sdxl' && supportsRefiner && refinerOn,
       refiner_checkpoint: refinerCkpt || null,
       refiner_strength: +refinerStrength,
@@ -744,6 +753,7 @@ export default function App({ active = true }) {
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
+        detailTools: detailSummary(payload),
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
           ...(faceRefMethod === 'both' ? { strength2: +faceRefStrength2 } : {}) } : null,
@@ -1024,6 +1034,7 @@ export default function App({ active = true }) {
     }
     if (s.faceFix != null) setFaceFix(s.faceFix && supportsFaceFix)
     if (s.faceStrength != null) setFaceStrength(s.faceStrength)
+    if (s.detail) setDetail(prev => { const next = { ...prev, ...s.detail }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
     if (s.faceRef != null) setFaceRefOn(s.faceRef && supportsFaceRef)
     if (s.faceRefMethod) { setFaceRefStrengths(prev => ({ ...prev, [faceRefMethod]: +faceRefStrength })); setFaceRefMethod(s.faceRefMethod) }
     if (s.faceRefStrength != null) setFaceRefStrength(s.faceRefStrength)
@@ -1040,6 +1051,7 @@ export default function App({ active = true }) {
       steps: +steps, cfg: +cfg, sampler, scheduler, denoise: +denoise, batch: +batchSize,
       ...(backendType === 'qwen_image_edit' ? {} : { width: +width, height: +height }),
       faceFix, faceStrength: +faceStrength,
+      ...(detailTools ? { detail } : {}),
       ...(supportsFaceRef ? { faceRef: faceRefOn, faceRefStrength: +faceRefStrength, faceRefMethod,
         ...(faceRefMethod === 'both' ? { faceRefStrength2: +faceRefStrength2 } : {}) } : {}),
       ...(loras.length ? { loraStrength: loras[0].strength } : {}),
@@ -1233,6 +1245,11 @@ export default function App({ active = true }) {
           )}
           <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (it installs the face detector in cell 1).</>}</>} />
         </div>
+      )}
+
+      {backendType === 'sdxl' && (
+        <DetailTools value={detail} setValue={setDetail} tools={detailTools} faceFix={faceFix}
+          refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} />
       )}
 
       {backendType === 'sdxl' && (
@@ -1576,6 +1593,7 @@ export default function App({ active = true }) {
               {(infoItem.loras || []).filter(l => l.name).map((l, i) => (
                 <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
               ))}
+              {infoItem.detailTools?.length > 0 && <><br/>Detail tools: {infoItem.detailTools.join(' · ')}</>}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
               {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}

@@ -1087,3 +1087,11 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 .privacy-toggle { margin-top: auto; }
 .sidebar .privacy-toggle + .sidebar-toggle, .sidebar .privacy-toggle + .sidebar-toggle:hover:not(:disabled) { margin-top: 0; }
 html.hide-images img, html.hide-images video, html.hide-images canvas { opacity: 0 !important; }
+
+/* BigLust detail tools */
+.detail-tools { margin-top: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.02); }
+.detail-title { font-size: 13px; }
+.detail-grid { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 8px; }
+.detail-item { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.detail-item .inline-label input { width: 70px; }
+.toggle.small { width: auto; padding: 6px 10px; font-size: 12px; }

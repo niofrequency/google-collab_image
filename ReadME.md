@@ -154,6 +154,30 @@ Run cells **1–3** (or *Run all*); cell 3 prints the URL once BigLust has loade
   Strength about 0.6–0.9. Its models (~4.2 GB) download the first time you use it — on a T4 use it on its own.
 - Characters and Face reference now take **up to 5 photos**.
 
+## Detail tools for realistic photos (BigLust)
+
+Under Face fix in the Image Generator. Each is a switch; models download on first use.
+
+| Tool | What it does | Good values |
+|---|---|---|
+| **Face fix 2 passes** | a second, lighter face fix — more likeness, fewer seams (great with InstantID) | face fix 0.35–0.45 |
+| **Eye detail** | the eye area of each face redrawn lightly at full size: sharp iris, catchlights | 0.25–0.35 |
+| **Hand fix** | hands found (ADetailer hand detector) and redrawn at full size | 0.35–0.5 |
+| **PAG** | Perturbed-Attention Guidance: sharper structure, ~30% slower per step | 1.5–3 |
+| **Tile detail** | with the Refiner: xinsir Tile ControlNet holds the picture so the refiner adds pores, hair strands, fabric without changing the face — raise refiner strength to 0.4–0.5 | 0.5–0.7 |
+| **CodeFormer** | last step: cleans up eyes, teeth, skin; partly blended so it stays natural (non-commercial licence) | fidelity 0.7, mix 40% |
+
+Pose pictures are now read with **DWPose** (much better hands and fingers), falling back to OpenPose.
+
+## Model cache in Google Drive (BigLust)
+
+Models download from the internet the first time; then a copy is kept in `MyDrive/ComfyUI/models_cache/biglust`
+(in the background), and every later session **links** to it instead of downloading — much faster for the Civitai
+checkpoint and for InstantID, the ControlNets, PuLID, CodeFormer… Rules: never files over **10 GB**, nothing when
+Drive has under 2 GB free, and without Drive everything downloads like before. `CACHE_MODELS_ON_DRIVE = False` in
+cell 1 turns it off; deleting the folder frees the space (everything is re-downloaded when needed). With every tool
+used it holds about 25 GB.
+
 ## Prompt enhancer (LoRA training tags)
 
 Under the BigLust prompt, **✨ Enhance with LoRA tags** suggests tags from the LoRAs you've added. LoRAs trained with
