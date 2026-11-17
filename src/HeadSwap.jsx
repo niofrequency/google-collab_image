@@ -177,8 +177,9 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
   const [quality, setQuality] = useState(() => localStorage.getItem(`${M.storage}_quality`) || 'auto')
   const C = M.controls
   const defaultSettings = { steps: C.steps[2], resolution: C.defaultResolution || null, cfg: 1, negative: '', seed: -1, fast: false,
-    expression: false, expressionStrength: 1, expressionRegion: 'all' }
+    expression: false, expressionStrength: 1, expressionRegion: 'all', sharpen: false }
   const [supportsExpression, setSupportsExpression] = useState(false)   // the notebook has the LivePortrait step
+  const [supportsSharpen, setSupportsSharpen] = useState(false)         // … and "Sharper enlarging" (4x-UltraSharp)
   const [settings, setSettings] = useState(() => {
     try { return { ...defaultSettings, ...JSON.parse(localStorage.getItem(`${M.storage}_settings`)) } } catch { return defaultSettings }
   })
@@ -294,6 +295,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
       setLoraFiles(files)
       setBaseLora(data.base_lora || '')
       setSupportsExpression(!!data.supports_expression)
+      setSupportsSharpen(!!data.supports_sharpen)
       setLoras(previous => previous.filter(lora => files.includes(lora.name)))
     } catch { /* backend not reachable yet */ }
   }, [backendUrl])
@@ -512,6 +514,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(C.cfg ? { cfg: Math.min(10, Math.max(1, +settings.cfg || 1)) } : {}), ...(C.fast && settings.fast ? { fast: true } : {}),
         ...(M.qualityOption && quality !== 'auto' ? { quality } : {}),
         ...(C.expression && supportsExpression && settings.expression ? { expression: { strength: +settings.expressionStrength || 1, region: settings.expressionRegion || 'all' } } : {}),
+        ...(C.expression && supportsSharpen && settings.sharpen ? { sharpen: true } : {}),
         loras: loras.filter(l => l.name).map(l => ({ name: l.name, strength: l.strength })), character: activeCharacter || null,
       }
       const payload = JSON.stringify({
@@ -522,6 +525,7 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
         ...(C.resolution ? { resolution: +settings.resolution || C.defaultResolution } : {}),
         ...(C.cfg ? { true_cfg_scale: Math.min(10, Math.max(1, +settings.cfg || 1)), negative_prompt: settings.negative || '' } : {}),
         ...(C.fast ? { fast: !!settings.fast } : {}),
+        ...(C.expression && supportsSharpen && settings.sharpen ? { sharpen: true } : {}),
         ...(C.expression && supportsExpression && settings.expression ? {
           expression_from_target: true, expression_strength: +settings.expressionStrength || 1, expression_region: settings.expressionRegion || 'all',
         } : {}),
@@ -723,6 +727,15 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           <Info text={<>The head swap brings the whole head across — including the <b>head photo's expression</b>. With this on, a last step (LivePortrait) copies the <b>body photo's expression</b> — open mouth, smile, raised brows, squint, gaze — onto the new face, keeping the new person's identity and the head's angle.<br /><br /><b>Strength</b>: 1 = the body photo's expression · 0.5 = halfway between · up to 1.5 = a bit stronger.<br /><b>Mouth only / Eyes only</b>: copy just that part (e.g. keep the head photo's eyes but open the mouth like the body photo).<br /><br />It adds a second or two; its models (~680 MB) download the first time. Works best when both faces are clearly visible.{!supportsExpression && <><br /><br />Not available: open the Head Swap notebook fresh from the Notebooks tab (cell 1 installs it).</>}</>} />
         </div>
       )}
+      {C.expression && supportsSharpen && (
+        <div className="inline headswap-fast">
+          <button className={`toggle ${settings.sharpen ? 'on' : ''}`} onClick={() => set({ sharpen: !settings.sharpen })}
+            title="Enlarge the result to the body photo's size with 4x-UltraSharp instead of plain resizing">
+            Sharper enlarging (4x-UltraSharp): {settings.sharpen ? 'On' : 'Off'}
+          </button>
+          <span className="muted small-note">{settings.sharpen ? 'Crisper on big body photos; can look over-sharpened on some faces.' : 'Off = plain resizing (the original look).'}</span>
+        </div>
+      )}
       {C.fast && (
         <div className="inline headswap-fast">
           <button className={`toggle ${settings.fast ? 'on' : ''}`} onClick={() => set({ fast: !settings.fast })}>
@@ -896,6 +909,7 @@ function SwapInfo({ item, name, onClose, onUsePrompt, onUseSeed, onDownload }) {
           {m.resolution && <><br />Generated at: ~{m.resolution} px</>}
           {m.quality && <><br />Quality: {m.quality}</>}
           {m.expression && <><br />Expression from body photo: strength {m.expression.strength}, {REGION[m.expression.region] || m.expression.region}</>}
+          {m.sharpen && <><br />Enlarged with 4x-UltraSharp</>}
           {m.character && <><br />Character: {m.character}</>}
           {(m.loras || []).map((l, i) => <span key={i}><br />LoRA: {l.name.split('/').pop()} · strength {l.strength}</span>)}
           {m.seconds != null && <><br />Took: {m.seconds} s on the GPU</>}
