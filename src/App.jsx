@@ -16,6 +16,7 @@ import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
+import { loadCharacters } from './characters.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import DetailTools, { loadDetail, detailPayload, detailSummary, detailRecord, detailLines, detailFromRecord, UPSCALER_NAMES } from './DetailTools.jsx'
@@ -89,6 +90,9 @@ export default function App({ active = true }) {
   const [width, setWidth] = useState(1024)
   const [height, setHeight] = useState(1024)
   const [batchSize, setBatchSize] = useState(1)
+  const [seed, setSeedState] = useState(() => +(localStorage.getItem('gen_seed') ?? -1))   // -1 = a new seed every time
+  const setSeed = v => { const n = v === '' || v == null || isNaN(+v) ? -1 : Math.floor(+v); setSeedState(n); localStorage.setItem('gen_seed', String(n)) }
+  const [lastSeed, setLastSeed] = useState(null)
   const [denoise, setDenoise] = useState(1.0)
   const [faceFix, setFaceFix] = useState(false)          // BigLust: redraw faces at full resolution (like ADetailer)
   const [faceStrength, setFaceStrength] = useState(0.4)
@@ -748,6 +752,7 @@ export default function App({ active = true }) {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
       denoise: +denoise, batch_size: count,
+      ...(+seed >= 0 ? { seed: +seed } : {}),
       loras, positive, negative,
       reference_image: refImages[0] || null,        // Picture 1
       reference_images: refImages.slice(1),         // Pictures 2 and 3
@@ -838,6 +843,7 @@ export default function App({ active = true }) {
           : { mode: data.ref_mode, strength: +refSettings.strength, end: +refSettings.end }) : null,
       }
       if (data.ref_map) setRefMap(data.ref_map)
+      if (data.seed != null) setLastSeed(data.seed)
       if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: backendType === 'sdxl' ? +inpaintSettings.denoise : null }
 
       // Prefer the images array if present, fall back to single image
@@ -1153,10 +1159,43 @@ export default function App({ active = true }) {
     setFaceFix(!!item.faceFix)
     if (item.faceStrength) setFaceStrength(item.faceStrength)
     if (item.detail !== undefined) setDetail(prev => { const next = { ...prev, ...detailFromRecord(item.detail) }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
-    if (item.faceRef?.method) { setFaceRefMethod(item.faceRef.method); setFaceRefStrength(item.faceRef.strength) }
-    if (item.faceRef?.strength2 != null) setFaceRefStrength2(item.faceRef.strength2)
+    if (item.denoise != null) setDenoise(item.denoise)
+    if (item.seed != null) setSeed(item.seed)
+    const notes = []
+    // Refiner
+    if (item.refiner !== undefined) {
+      setRefinerOn(!!item.refiner)
+      if (item.refiner) {
+        setRefinerCkpt(item.refiner.checkpoint && item.refiner.checkpoint !== 'same as main' ? item.refiner.checkpoint : '')
+        if (item.refiner.strength != null) setRefinerStrength(item.refiner.strength)
+        if (item.refiner.upscale != null) setRefinerUpscale(item.refiner.upscale)
+        if (item.refiner.steps != null) setRefinerSteps(item.refiner.steps)
+        if (item.refiner.upscaler) setRefinerUpscaler(item.refiner.upscaler)
+      }
+    }
+    // Face reference: on/off, method, strengths, and the character's photos when it was made with one
+    if (item.faceRef !== undefined) {
+      setFaceRefOn(!!item.faceRef)
+      if (item.faceRef?.method) { setFaceRefMethod(item.faceRef.method); setFaceRefStrength(item.faceRef.strength) }
+      if (item.faceRef?.strength2 != null) setFaceRefStrength2(item.faceRef.strength2)
+      if (item.faceRef?.character) {
+        const c = loadCharacters().find(x => x.name === item.faceRef.character)
+        if (c?.images?.length) { setFaceRefImages(c.images.slice(0, MAX_FACE_REFS)); setFaceRefCharacter(c.name) }
+        else notes.push(`the character "${item.faceRef.character}" isn't saved any more — add the face pictures again`)
+      } else if (item.faceRef && !faceRefImages.length) notes.push('add the face reference pictures again (they aren\'t saved with images)')
+    }
+    // Pose / style picture: its settings (the picture itself isn't saved with images)
+    if (item.refPicture !== undefined) {
+      if (item.refPicture) {
+        const r = item.refPicture
+        setRefSettings(prev => ({ ...prev, mode: r.mode, ...(r.strength != null ? { strength: r.strength } : {}),
+          ...(r.end != null ? { end: r.end } : {}), ...(r.denoise != null ? { denoise: r.denoise } : {}) }))
+        if (!refPicture) notes.push(`add the ${REF_MODE_NAMES[r.mode] || r.mode} picture again`)
+      } else if (refPicture) { setRefPicture(null); setRefMap(null) }
+    }
+    if (item.inpaint) notes.push('inpainting isn\'t restored (open the picture in Inpaint / outpaint again)')
     setInfoItem(null)
-    setStatusMsg('Full workflow loaded', 'ok')
+    setStatusMsg('Full workflow loaded' + (item.seed != null ? ` (seed ${item.seed})` : '') + (notes.length ? ` — ${notes.join('; ')}` : ''), notes.length ? 'error' : 'ok')
   }
 
   function loadPromptOnly(item) {
@@ -1313,6 +1352,14 @@ export default function App({ active = true }) {
         <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
         <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
         <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
+        <div className="gen-seed">
+          <label>Seed</label>
+          <div className="headswap-seed">
+            <input type="number" value={seed} onChange={e => setSeed(e.target.value)} title="-1 = a new seed every time. The same seed + settings = the same picture" />
+            <button className="secondary" title="New seed every time" onClick={() => setSeed(-1)}>🎲</button>
+            <button className="secondary" title={lastSeed != null ? `Reuse the last seed (${lastSeed})` : 'No image yet'} disabled={lastSeed == null} onClick={() => setSeed(lastSeed)}>♻</button>
+          </div>
+        </div>
       </div>
 
       {backendType !== 'qwen_image_edit' && (
