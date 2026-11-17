@@ -258,6 +258,15 @@ export async function cloudForget(kind, localIds) {
 }
 
 // ---------------------------------------------------------------- settings (characters, prompts, presets)
+// One file, users/<uid>/settings.json. Every sync reads the cloud copy first and merges it with this browser's
+// (it used to only merge at sign-in and then overwrite the cloud copy every 20 s — so a computer without your
+// characters could wipe them from the cloud). Lists ({name, ...} items) are merged item by item:
+//   - added on either computer -> kept on both
+//   - changed on one computer  -> the newest change wins
+//   - deleted on one computer  -> deleted on both (remembered as "deleted at <time>", so it doesn't come back)
+const SYNC_STATE = 'settings_sync_state'   // { key: { name: { t, del } } }: when each item was last changed / deleted
+const SYNC_PREV = 'settings_sync_prev'     // { key: { name: hash } }: what this browser had at the last sync
+
 function localSettings() {
   const out = {}
   for (let i = 0; i < localStorage.length; i++) {
@@ -266,39 +275,144 @@ function localSettings() {
   }
   return out
 }
-function mergeLists(local, cloud) {
-  if (!Array.isArray(local) || !Array.isArray(cloud)) return local ?? cloud
-  const names = new Set(local.map(x => x?.name))
-  return [...local, ...cloud.filter(x => !names.has(x?.name))]
+const readJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback } catch { return fallback } }
+function hashOf(value) {   // a quick fingerprint of one item (FNV-1a over its JSON)
+  const str = JSON.stringify(value)
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193) }
+  return (h >>> 0).toString(36) + ':' + str.length
 }
-let lastSettingsJson = ''
+const isList = v => Array.isArray(v) && v.every(x => x && typeof x === 'object' && typeof x.name === 'string')
+// Each item's identity. Characters: the name (one character per name, so an edit replaces it on every computer).
+// Prompts and presets: name + content — two different "Untitled" prompts are two prompts (an edit = delete + add).
+function idsOf(list, key) {
+  const seen = {}
+  return (list || []).map(x => {
+    const base = key === 'face_characters' ? x.name : `${x.name}|${hashOf(x)}`
+    seen[base] = (seen[base] || 0) + 1
+    return seen[base] > 1 ? `${base} #${seen[base]}` : base
+  })
+}
+// The same content in any order (each computer keeps its own order, so order alone never causes an upload)
+function canonical(settings, state) {
+  const out = {}
+  for (const key of Object.keys(settings).sort()) {
+    const v = settings[key]
+    out[key] = isList(v) ? v.map(hashOf).sort() : v
+  }
+  const st = {}
+  for (const key of Object.keys(state || {}).sort()) {
+    st[key] = Object.keys(state[key]).sort().map(n => [n, state[key][n].t, !!state[key][n].del])
+  }
+  return JSON.stringify([out, st])
+}
+const later = (a, b) => (!a ? b : !b ? a : (b.t > a.t ? b : a))
 
-export async function syncSettings({ merge = false } = {}) {
-  if (!currentUser) return
+// What changed in this browser since the last sync: new / edited items get "changed now", missing ones "deleted now"
+function noteLocalChanges(local, state, prev) {
+  const now = Date.now()
+  for (const key of new Set([...Object.keys(local), ...Object.keys(prev)])) {
+    const list = local[key]
+    if (list !== undefined && !isList(list)) continue
+    const before = prev[key] || {}
+    const items = {}
+    const ids = idsOf(list, key)
+    for (const [i, item] of (list || []).entries()) items[ids[i]] = hashOf(item)
+    state[key] = state[key] || {}
+    for (const [name, h] of Object.entries(items)) {
+      if (before[name] !== h || state[key][name]?.del) state[key][name] = { t: now, del: false }
+    }
+    for (const name of Object.keys(before)) if (!(name in items)) state[key][name] = { t: now, del: true }
+  }
+}
+
+function mergeSettings(local, localState, cloud, cloudState) {
+  const merged = {}, state = {}
+  for (const key of new Set([...Object.keys(local), ...Object.keys(cloud)])) {
+    const L = local[key], C = cloud[key]
+    if (!isList(L ?? []) || !isList(C ?? [])) { merged[key] = L ?? C; continue }   // not a list: this browser's wins
+    const ls = localState[key] || {}, cs = cloudState[key] || {}
+    state[key] = {}
+    for (const name of new Set([...Object.keys(ls), ...Object.keys(cs)])) state[key][name] = later(ls[name], cs[name])
+    const byName = new Map()
+    const lIds = idsOf(L, key), cIds = idsOf(C, key)
+    for (const [i, item] of (C || []).entries()) byName.set(cIds[i], { item, from: 'cloud' })
+    for (const [i, item] of (L || []).entries()) {
+      const id = lIds[i]
+      // both have it: take the side whose last change is newer (this browser's on a tie)
+      if (!byName.has(id) || !((cs[id]?.t || 0) > (ls[id]?.t || 0))) byName.set(id, { item, from: 'local' })
+    }
+    // keep this browser's order, then what's new from the cloud; drop deleted items
+    const order = [...lIds, ...cIds]
+    const seen = new Set()
+    merged[key] = order.filter(n => !seen.has(n) && seen.add(n) && !state[key][n]?.del).map(n => byName.get(n).item)
+  }
+  return { merged, state }
+}
+
+let lastCloudMd5 = null
+let lastLocalJson = null
+let settingsBusy = null
+
+export function syncSettings() {   // one at a time (the 20 s timer and "Sync now" can overlap)
+  if (!currentUser) return Promise.resolve()
+  if (!settingsBusy) settingsBusy = runSettingsSync().finally(() => { settingsBusy = null })
+  return settingsBusy
+}
+async function runSettingsSync() {
   const { storage, st } = await firebase()
   const ref = st.ref(storage, `users/${currentUser.uid}/settings.json`)
-  let settings = localSettings()
-  if (merge) {   // on sign-in: bring in what the cloud has (e.g. characters saved on another device)
-    try {
-      const cloud = JSON.parse(await (await st.getBlob(ref)).text())
-      for (const [key, value] of Object.entries(cloud)) {
-        const merged = mergeLists(settings[key], value)
-        if (JSON.stringify(merged) !== JSON.stringify(settings[key])) {
-          localStorage.setItem(key, JSON.stringify(merged))
-          settings[key] = merged
-        }
+  const local = localSettings()
+  const localJson = JSON.stringify(local)
+  // nothing changed here or in the cloud since the last sync: nothing to do (only the small metadata is read)
+  let md5 = null
+  try { md5 = (await st.getMetadata(ref)).md5Hash || null } catch (e) { if (e?.code !== 'storage/object-not-found') throw e }
+  if (localJson === lastLocalJson && md5 === lastCloudMd5) return
+
+  const state = readJson(SYNC_STATE, {})
+  noteLocalChanges(local, state, readJson(SYNC_PREV, {}))
+  let cloud = {}, cloudState = {}
+  if (md5) {
+    const data = JSON.parse(await (await st.getBlob(ref)).text())
+    cloudState = data.__sync_state || {}
+    delete data.__sync_state
+    cloud = data
+  }
+  const { merged, state: newState } = mergeSettings(local, state, cloud, cloudState)
+  // keep "deleted" notes for 90 days, so a computer that was off for a while still deletes them
+  const old = Date.now() - 90 * 24 * 3600 * 1000
+  for (const key of Object.keys(newState)) for (const [n, v] of Object.entries(newState[key])) if (v.del && v.t < old) delete newState[key][n]
+
+  let changedHere = false
+  const kept = {}   // what this browser really has now
+  for (const [key, value] of Object.entries(merged)) {
+    kept[key] = value
+    if (canonical({ k: value }) !== canonical({ k: local[key] })) {
+      try { localStorage.setItem(key, JSON.stringify(value)); changedHere = true } catch {
+        kept[key] = local[key]   // browser storage full: the old list stays (what's missing is NOT treated as deleted)
       }
-      window.dispatchEvent(new CustomEvent('cloud-settings'))
-    } catch (e) {
-      if (e?.code !== 'storage/object-not-found') throw e
     }
   }
-  const json = JSON.stringify(settings)
-  if (json === lastSettingsJson) return
-  await st.uploadBytes(ref, new Blob([json], { type: 'application/json' }), { contentType: 'application/json' })
-  lastSettingsJson = json
+  const prev = {}
+  for (const [key, value] of Object.entries(kept)) {
+    if (isList(value)) { const ids = idsOf(value, key); prev[key] = Object.fromEntries(value.map((x, i) => [ids[i], hashOf(x)])) }
+  }
+  localStorage.setItem(SYNC_STATE, JSON.stringify(newState))
+  localStorage.setItem(SYNC_PREV, JSON.stringify(prev))
+  if (changedHere) {
+    window.dispatchEvent(new CustomEvent('cloud-settings'))
+    window.dispatchEvent(new Event('characters-changed'))
+  }
+
+  const out = JSON.stringify({ ...merged, __sync_state: newState })
+  if (!md5 || canonical(merged, newState) !== canonical(cloud, cloudState)) {
+    await st.uploadBytes(ref, new Blob([out], { type: 'application/json' }), { contentType: 'application/json' })
+    try { md5 = (await st.getMetadata(ref)).md5Hash || null } catch { md5 = null }
+  }
+  lastCloudMd5 = md5
+  lastLocalJson = JSON.stringify(localSettings())
 }
-// Settings changes are picked up every 20 s while signed in
+// Changes on this computer or another one are picked up every 20 s while signed in
 setInterval(() => { if (currentUser) syncSettings().catch(() => {}) }, 20000)
 
 export async function syncEverything() {
@@ -307,7 +421,7 @@ export async function syncEverything() {
     const totals = { up: 0, down: 0, removed: 0, failed: 0 }
     let lastError = null
     // Settings first, but a failure there doesn't stop the pictures, videos and songs
-    try { await syncSettings({ merge: true }) } catch (e) { totals.failed++; lastError = e; console.warn('Settings sync failed', e) }
+    try { await syncSettings() } catch (e) { totals.failed++; lastError = e; console.warn('Settings sync failed', e) }
     for (const kind of Object.keys(KINDS)) {
       const r = await syncKind(kind)
       totals.up += r.up; totals.down += r.down; totals.removed += r.removed; totals.failed += r.failed
