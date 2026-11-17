@@ -195,6 +195,12 @@ Under Face fix in the Image Generator. Each is a switch; models download on firs
 
 Pose pictures are now read with **DWPose** (much better hands and fingers), falling back to OpenPose.
 
+## Seed and variation seed (BigLust)
+
+- **Seed**: -1 (🎲) = a new picture every time. Every picture saves the exact seed it was made with (in a batch: seed, seed+1, …), shown in the "i" info; **Load Full** puts it back, so the same settings remake the same picture. ♻ reuses the last seed.
+- **Variation** (needs the updated notebook): derivatives of the same picture. Keep its seed and pick *Subtle 0.1*, *Medium 0.2* or *Strong 0.35*: a second "variation seed" is blended into the starting noise (as in Automatic1111 / Forge). 0.05–0.15 = small changes (hands, hair, folds, expression), 0.2–0.35 = same scene and pose with new details, 0.5+ = drifts to a new picture. With Batch 4 you get 4 derivatives of the same picture. The variation seed and strength are saved with each picture, and Load Full restores them (on a plain picture it switches Variation off).
+- Works best with dpmpp_2m / euler; with "ancestral" or "sde" samplers even small amounts change more.
+
 ## Model cache in Google Drive (BigLust)
 
 Models download from the internet the first time; then a copy is kept in `MyDrive/ComfyUI/models_cache/biglust`

@@ -438,6 +438,7 @@ function ItemInfo({ item, source, character, url, onClose, onDownload, onOpen })
   if (source.key === 'images') {
     add('Steps / CFG', item.steps ? `${item.steps} / ${item.cfg}` : null)
     add('Seed', item.seed)
+    add('Variation', item.variation ? `seed ${item.variation.seed} at ${item.variation.strength}` : null)
     add('Sampler', item.sampler ? `${item.sampler} / ${item.scheduler}` : null)
     add('Checkpoint', item.checkpoint ? item.checkpoint.split('/').pop() : null)
     if (item.faceFix) add('Face fix', `strength ${item.faceStrength}${item.detail?.facePasses === 2 ? ', 2 passes' : ''}`)

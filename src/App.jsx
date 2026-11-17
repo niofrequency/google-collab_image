@@ -93,6 +93,12 @@ export default function App({ active = true }) {
   const [seed, setSeedState] = useState(() => +(localStorage.getItem('gen_seed') ?? -1))   // -1 = a new seed every time
   const setSeed = v => { const n = v === '' || v == null || isNaN(+v) ? -1 : Math.floor(+v); setSeedState(n); localStorage.setItem('gen_seed', String(n)) }
   const [lastSeed, setLastSeed] = useState(null)
+  // Variation seed: the same picture (same seed), slightly different — a second seed's noise is blended in
+  const [varStrength, setVarStrengthState] = useState(() => +(localStorage.getItem('gen_var_strength') || 0))
+  const setVarStrength = v => { const n = Math.max(0, Math.min(1, +v || 0)); setVarStrengthState(n); localStorage.setItem('gen_var_strength', String(n)) }
+  const [varSeed, setVarSeedState] = useState(() => +(localStorage.getItem('gen_var_seed') ?? -1))
+  const setVarSeed = v => { const n = v === '' || v == null || isNaN(+v) ? -1 : Math.floor(+v); setVarSeedState(n); localStorage.setItem('gen_var_seed', String(n)) }
+  const [lastVarSeed, setLastVarSeed] = useState(null)
   const [denoise, setDenoise] = useState(1.0)
   const [faceFix, setFaceFix] = useState(false)          // BigLust: redraw faces at full resolution (like ADetailer)
   const [faceStrength, setFaceStrength] = useState(0.4)
@@ -416,6 +422,7 @@ export default function App({ active = true }) {
       detailTools: item.detailTools || null,
       detail: item.detail || null,
       seed: item.seed ?? null,
+      variation: item.variation || null,
       inpaint: item.inpaint || null,
       denoise: item.denoise ?? null
     })))
@@ -451,6 +458,7 @@ export default function App({ active = true }) {
         faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
         faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
         detailTools: meta.detailTools || null, detail: meta.detail || null, seed: meta.seed ?? null,
+        variation: meta.variation || null,
         character: meta.character || null,
         denoise: meta.denoise ?? null
       })
@@ -759,6 +767,8 @@ export default function App({ active = true }) {
       steps: +steps, cfg: +cfg, width: +width, height: +height,
       denoise: +denoise, batch_size: count,
       ...(+seed >= 0 ? { seed: +seed } : {}),
+      ...(backendType === 'sdxl' && detailTools?.variation_seed && +varStrength > 0
+        ? { variation_strength: +varStrength, ...(+varSeed >= 0 ? { variation_seed: +varSeed } : {}) } : {}),
       loras, positive, negative,
       reference_image: refImages[0] || null,        // Picture 1
       reference_images: refImages.slice(1),         // Pictures 2 and 3
@@ -852,6 +862,7 @@ export default function App({ active = true }) {
       }
       if (data.ref_map) setRefMap(data.ref_map)
       if (data.seed != null) setLastSeed(data.seed)
+      if (data.variation_seeds?.length) setLastVarSeed(data.variation_seeds[0])
       if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: backendType === 'sdxl' ? +inpaintSettings.denoise : null }
 
       // Prefer the images array if present, fall back to single image
@@ -860,9 +871,12 @@ export default function App({ active = true }) {
         : (data.image ? [data.image] : [])
 
       if (imageList.length > 0) {
-        for (const imgData of imageList) {
+        for (const [k, imgData] of imageList.entries()) {
           const blob = base64ToBlob(imgData)
-          await saveImage(blob, meta)
+          // each picture's own seed (in a batch: seed, seed+1, … — or the same seed with its own variation seed)
+          const own = Array.isArray(data.seeds) ? data.seeds[k] : (data.seed != null && backendType === 'sdxl' ? data.seed + k : data.seed)
+          const variation = Array.isArray(data.variation_seeds) ? { seed: data.variation_seeds[k], strength: data.variation_strength } : null
+          await saveImage(blob, { ...meta, seed: own ?? null, variation })
         }
         await loadGallery()
         queueSync('images')
@@ -1169,6 +1183,9 @@ export default function App({ active = true }) {
     if (item.detail !== undefined) setDetail(prev => { const next = { ...prev, ...detailFromRecord(item.detail) }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
     if (item.denoise != null) setDenoise(item.denoise)
     if (item.seed != null) setSeed(item.seed)
+    if (item.seed != null) {   // a variation is part of the picture: restore it (or switch it off for a plain one)
+      if (item.variation) { setVarSeed(item.variation.seed); setVarStrength(item.variation.strength) } else setVarStrength(0)
+    }
     const notes = []
     // Refiner
     if (item.refiner !== undefined) {
@@ -1369,6 +1386,32 @@ export default function App({ active = true }) {
           </div>
         </div>
       </div>
+
+      {backendType === 'sdxl' && (
+        <div className="variation-row">
+          <span className="chips-label">Variation</span>
+          <Info text={<>Make <b>derivatives of the same picture</b>: keep its <b>Seed</b> (♻ or Load Full) and turn Variation up. A second seed's noise is blended into the picture's own, so the result stays the same picture with changes.<br /><br />
+            <b>0</b> = off (exactly the seed's picture) · <b>0.05–0.15</b> small changes (hands, hair, folds, expression) · <b>0.2–0.35</b> same scene and pose, new details · <b>0.5+</b> drifts toward a new picture.<br /><br />
+            With <b>Batch</b> 4 you get 4 different derivatives. The variation seed (🎲 = new each time) is saved with every picture, so Load Full remakes that exact one.<br />
+            Works best with non-ancestral samplers (dpmpp_2m, euler); with "ancestral" / "sde" ones even small amounts change more.</>} />
+          {[0, 0.1, 0.2, 0.35].map(v => (
+            <button key={v} className={`chip ${+varStrength === v ? 'active' : ''}`} disabled={!detailTools?.variation_seed}
+              onClick={() => setVarStrength(v)}>{v === 0 ? 'Off' : v === 0.1 ? 'Subtle 0.1' : v === 0.2 ? 'Medium 0.2' : 'Strong 0.35'}</button>
+          ))}
+          <label className="inline-label">Strength
+            <input type="number" step="0.05" min="0" max="1" value={varStrength} disabled={!detailTools?.variation_seed} onChange={e => setVarStrength(e.target.value)} />
+          </label>
+          {+varStrength > 0 && detailTools?.variation_seed && (
+            <div className="headswap-seed">
+              <input type="number" value={varSeed} onChange={e => setVarSeed(e.target.value)} title="Variation seed: -1 = a new one every time" aria-label="Variation seed" />
+              <button className="secondary" title="New variation every time" onClick={() => setVarSeed(-1)}>🎲</button>
+              <button className="secondary" title={lastVarSeed != null ? `Reuse the last variation seed (${lastVarSeed})` : 'No variation yet'} disabled={lastVarSeed == null} onClick={() => setVarSeed(lastVarSeed)}>♻</button>
+            </div>
+          )}
+          {!detailTools?.variation_seed && <span className="muted small-note">needs the updated BigLust notebook</span>}
+          {detailTools?.variation_seed && +varStrength > 0 && +seed < 0 && <span className="muted small-note">set a Seed (♻ or Load Full) to vary one picture — with 🎲 every picture is new anyway</span>}
+        </div>
+      )}
 
       {backendType !== 'qwen_image_edit' && (
         <div className="chips size-presets" role="group" aria-label="Image size">
@@ -1754,6 +1797,7 @@ export default function App({ active = true }) {
                 ? `${infoItem.width} × ${infoItem.height}` + (infoDims && (infoDims[0] !== infoItem.width || infoDims[1] !== infoItem.height) ? ` → saved at ${infoDims[0]} × ${infoDims[1]}` : '')
                 : infoDims ? `${infoDims[0]} × ${infoDims[1]}` : '…'}<br/>
               Steps: {infoItem.steps} | CFG: {infoItem.cfg}{infoItem.seed != null && <> | Seed: {String(infoItem.seed)}</>}<br/>
+              {infoItem.variation && <>Variation: seed {String(infoItem.variation.seed)} at {infoItem.variation.strength}<br/></>}
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {(infoItem.checkpoint || infoItem.faceFix) && <><br/>Checkpoint: {infoItem.checkpoint ? infoItem.checkpoint.split('/').pop() : 'default'}</>}
               {infoItem.faceFix && (() => {
