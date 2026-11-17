@@ -17,7 +17,7 @@ import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
-import DetailTools, { loadDetail, detailPayload, detailSummary, UPSCALER_NAMES } from './DetailTools.jsx'
+import DetailTools, { loadDetail, detailPayload, detailSummary, detailRecord, detailLines, detailFromRecord, UPSCALER_NAMES } from './DetailTools.jsx'
 import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
 
@@ -425,6 +425,8 @@ export default function App({ active = true }) {
       folders: item.folders || [],
       refPicture: item.refPicture || null,
       detailTools: item.detailTools || null,
+      detail: item.detail || null,
+      seed: item.seed ?? null,
       inpaint: item.inpaint || null,
       denoise: item.denoise ?? null
     })))
@@ -459,7 +461,7 @@ export default function App({ active = true }) {
         height: meta.height || 0, loras: meta.loras || [],
         faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
         faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
-        detailTools: meta.detailTools || null,
+        detailTools: meta.detailTools || null, detail: meta.detail || null, seed: meta.seed ?? null,
         denoise: meta.denoise ?? null
       })
       req.onsuccess = resolve
@@ -846,8 +848,10 @@ export default function App({ active = true }) {
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
-        detailTools: detailSummary(payload),
-        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale } : null,
+        detail: detailRecord(payload),
+        seed: data.seed ?? null,
+        refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale,
+          steps: +refinerSteps, upscaler: payload.refiner_upscaler || 'lanczos' } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
           ...(faceRefMethod === 'both' ? { strength2: +faceRefStrength2 } : {}) } : null,
         refPicture: data.ref_mode ? (data.ref_mode === 'img2img' ? { mode: 'img2img', denoise: +refSettings.denoise }
@@ -1180,6 +1184,9 @@ export default function App({ active = true }) {
     if (item.loras && item.loras.length) setLoras(item.loras)
     setFaceFix(!!item.faceFix)
     if (item.faceStrength) setFaceStrength(item.faceStrength)
+    if (item.detail !== undefined) setDetail(prev => { const next = { ...prev, ...detailFromRecord(item.detail) }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
+    if (item.faceRef?.method) { setFaceRefMethod(item.faceRef.method); setFaceRefStrength(item.faceRef.strength) }
+    if (item.faceRef?.strength2 != null) setFaceRefStrength2(item.faceRef.strength2)
     setInfoItem(null)
     setStatusMsg('Full workflow loaded', 'ok')
   }
@@ -1761,17 +1768,19 @@ export default function App({ active = true }) {
               Size: {infoItem.width
                 ? `${infoItem.width} × ${infoItem.height}` + (infoDims && (infoDims[0] !== infoItem.width || infoDims[1] !== infoItem.height) ? ` → saved at ${infoDims[0]} × ${infoDims[1]}` : '')
                 : infoDims ? `${infoDims[0]} × ${infoDims[1]}` : '…'}<br/>
-              Steps: {infoItem.steps} | CFG: {infoItem.cfg}<br/>
+              Steps: {infoItem.steps} | CFG: {infoItem.cfg}{infoItem.seed != null && <> | Seed: {String(infoItem.seed)}</>}<br/>
               Sampler: {infoItem.sampler} / {infoItem.scheduler}
               {(infoItem.checkpoint || infoItem.faceFix) && <><br/>Checkpoint: {infoItem.checkpoint ? infoItem.checkpoint.split('/').pop() : 'default'}</>}
               {infoItem.faceFix && (() => {
                 const used = (infoItem.loras || []).filter(l => l.name && +l.strength !== 0 && (l.target || 'all') !== 'main')
-                return <><br/>Face fix: on (strength {infoItem.faceStrength}) · {used.length ? `LoRA: ${used.map(l => `${l.name.split('/').pop()} ${l.strength}`).join(', ')}` : 'no LoRA'}</>
+                return <><br/>Face fix: on (strength {infoItem.faceStrength}{infoItem.detail?.facePasses === 2 ? ', 2 passes' : ''}) · {used.length ? `LoRA: ${used.map(l => `${l.name.split('/').pop()} ${l.strength}`).join(', ')}` : 'no LoRA'}</>
               })()}
               {(infoItem.loras || []).filter(l => l.name).map((l, i) => (
                 <span key={i}><br/>LoRA: {l.name.split('/').pop()} · strength {l.strength}{` · ${LORA_TARGET_NAMES[l.target] || LORA_TARGET_NAMES.all}`}{+l.strength === 0 ? ' (off)' : ''}</span>
               ))}
-              {infoItem.detailTools?.length > 0 && <><br/>Detail tools: {infoItem.detailTools.join(' · ')}</>}
+              {infoItem.detail
+                ? detailLines(infoItem.detail).map(([name, value]) => <span key={name}><br/>{name}: {value}</span>)
+                : infoItem.detailTools?.length > 0 && <><br/>Detail tools: {infoItem.detailTools.join(' · ')}</>}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
               {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
@@ -1779,7 +1788,7 @@ export default function App({ active = true }) {
                   ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)
                   : <>, strength {infoItem.refPicture.strength}{infoItem.refPicture.end != null && <> (until {Math.round(infoItem.refPicture.end * 100)}% of the steps)</>}</>}</>}
               {infoItem.inpaint && <><br/>Inpaint / outpaint{infoItem.inpaint.area ? `: ${infoItem.inpaint.area}` : ''}{infoItem.inpaint.denoise != null && `, denoise ${infoItem.inpaint.denoise}`}</>}
-              {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}</>}
+              {infoItem.refiner && <><br/>Refiner: {infoItem.refiner.checkpoint}, ×{infoItem.refiner.upscale}, strength {infoItem.refiner.strength}{infoItem.refiner.steps ? `, ${infoItem.refiner.steps} steps` : ''}{infoItem.refiner.upscaler ? ` · enlarged with ${UPSCALER_NAMES[infoItem.refiner.upscaler] || infoItem.refiner.upscaler}` : ''}</>}
             </div>
             <div className="row" style={{marginTop:16}}>
               <button onClick={() => loadFullWorkflow(infoItem)}>Load Full</button>

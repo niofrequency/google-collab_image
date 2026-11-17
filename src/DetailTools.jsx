@@ -31,7 +31,47 @@ export function detailPayload(d, tools, { faceFix, refinerOn }) {
   }
 }
 
-// A short summary for the gallery's info (what was used)
+// What was used, saved with each image (for the gallery's info and "Load Full")
+export function detailRecord(p) {
+  const r = {}
+  if (p.face_fix_passes === 2) r.facePasses = 2
+  if (p.eye_fix) r.eye = +p.eye_fix_strength
+  if (p.hand_fix) r.hand = +p.hand_fix_strength
+  if (p.pag_scale) r.pag = +p.pag_scale
+  if (p.detail_daemon) r.dd = +p.detail_daemon
+  if (p.refiner && p.refiner_tile) r.tile = +p.refiner_tile_strength
+  if (p.refiner && p.refiner_upscaler) r.upscaler = p.refiner_upscaler
+  if (p.face_restore) r.restore = { fidelity: +p.face_restore_fidelity, mix: +p.face_restore_blend }
+  return Object.keys(r).length ? r : null
+}
+
+// One line per tool for the gallery's info
+export function detailLines(r) {
+  if (!r) return []
+  const out = []
+  if (r.eye != null) out.push(['Eye detail', `strength ${r.eye}`])
+  if (r.hand != null) out.push(['Hand fix', `strength ${r.hand}`])
+  if (r.pag != null) out.push(['PAG', `scale ${r.pag}`])
+  if (r.dd != null) out.push(['Detail Daemon', `amount ${r.dd}`])
+  if (r.tile != null) out.push(['Tile detail', `strength ${r.tile}`])
+  if (r.restore) out.push(['CodeFormer', `fidelity ${r.restore.fidelity}, mix ${Math.round(r.restore.mix * 100)}%`])
+  return out
+}
+
+// Settings for the Detail tools box from a saved record ("Load Full")
+export function detailFromRecord(r) {
+  return {
+    facePasses: r?.facePasses === 2 ? 2 : 1,
+    eye: r?.eye != null, ...(r?.eye != null ? { eyeStrength: r.eye } : {}),
+    hand: r?.hand != null, ...(r?.hand != null ? { handStrength: r.hand } : {}),
+    pag: r?.pag != null, ...(r?.pag != null ? { pagScale: r.pag } : {}),
+    dd: r?.dd != null, ...(r?.dd != null ? { ddAmount: r.dd } : {}),
+    tile: r?.tile != null, ...(r?.tile != null ? { tileStrength: r.tile } : {}),
+    restore: !!r?.restore, ...(r?.restore ? { restoreFidelity: r.restore.fidelity, restoreBlend: r.restore.mix } : {}),
+  }
+}
+
+// A short summary for the gallery's info (what was used) — older images
 export function detailSummary(p) {
   const out = []
   if (p.face_fix_passes === 2) out.push('face fix 2 passes')
