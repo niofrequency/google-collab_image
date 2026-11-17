@@ -1169,3 +1169,12 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 .headswap-expression .inline-label input { width: 70px; }
 .gen-seed { min-width: 200px; }
 .lib-sub { font-size: 13px; font-weight: 400; margin: 0; }
+
+/* Gallery tab: search + folders / characters menu */
+.lib-search { display: flex; gap: 8px; margin: 6px 0 10px; }
+.lib-search input { flex: 1; font-size: 15px; padding: 10px 14px; border-radius: 10px; }
+.lib-search button { width: auto; }
+.lib-menu { display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px; }
+.lib-menu .folder-bar { margin: 4px 0; }
+.lib-tag { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; padding: 2px 7px; border-radius: 8px; background: rgba(0,0,0,0.6); color: #fff; pointer-events: none; }

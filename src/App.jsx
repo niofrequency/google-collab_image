@@ -451,6 +451,7 @@ export default function App({ active = true }) {
         faceFix: !!meta.faceFix, faceStrength: meta.faceStrength || 0, refiner: meta.refiner || null,
         faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
         detailTools: meta.detailTools || null, detail: meta.detail || null, seed: meta.seed ?? null,
+        character: meta.character || null,
         denoise: meta.denoise ?? null
       })
       req.onsuccess = resolve
@@ -840,6 +841,8 @@ export default function App({ active = true }) {
         faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
         detail: detailRecord(payload),
         seed: data.seed ?? null,
+        // the character used (for the Gallery tab's character tags / search)
+        character: (backendType === 'sdxl' ? (data.face_ref ? faceRefCharacter : '') : qwenCharacter) || null,
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale,
           steps: +refinerSteps, upscaler: payload.refiner_upscaler || 'lanczos' } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
