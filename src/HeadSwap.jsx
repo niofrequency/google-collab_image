@@ -4,6 +4,7 @@ import { useLightboxKeys } from './useLightboxKeys'
 import { withCivitaiToken } from './civitai.js'
 import { shrinkImage } from './FaceRef.jsx'
 import { galleryLayout, justifyRows, cellStyle, justifiedHeight } from './galleryLayout.js'
+import { loadCharacters } from './characters.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import './App.css'
@@ -612,6 +613,15 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
     setSelectedIds(selectedIds.size === visible.length ? new Set() : new Set(visible.map(item => item.id)))
   }
 
+  // Send a result to the Image Generator for an InstantID face refine (BigLust), with the head photo / character as the face
+  function refineWithInstantId(item) {
+    const character = activeCharacter && loadCharacters().find(c => c.name === activeCharacter)
+    const faces = character?.images?.length ? character.images : (headImage ? [headImage] : [])
+    setLightboxIndex(-1)
+    window.dispatchEvent(new CustomEvent('go-to-tab', { detail: 'generate' }))
+    window.dispatchEvent(new CustomEvent('refine-with-instantid', { detail: { src: item.url, faces, character: character?.name || '', from: M.name } }))
+  }
+
   function download(item) {
     const link = document.createElement('a')
     link.href = item.url
@@ -907,6 +917,8 @@ export function SwapTab({ active = true, mode: modeId = 'headswap' }) {
           <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}>Save to Characters</button>
           <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: M.name } })) }}>Send to Upscale</button>
           <button className="secondary" onClick={() => setInfoItem(shown[lightboxIndex])}>Info</button>
+          <button className="secondary" title="Redraw the face with your identity in the Image Generator (BigLust + InstantID + face fix), keeping this shot"
+            onClick={() => refineWithInstantId(shown[lightboxIndex])}>Refine with InstantID</button>
           <button className="secondary" title="Put this image in a folder" onClick={() => {
             setSelectedIds(new Set([shown[lightboxIndex].id])); setLightboxIndex(-1); setFolderMenu(true)
             setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)

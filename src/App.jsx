@@ -334,6 +334,41 @@ export default function App({ active = true }) {
   const folderActions = useFolderActions({ items: gallery, folders, change: changeFolders, say: setStatusMsg,
     clearSelection: () => { setSelectedIds(new Set()); setFolderMenu(false) } })
 
+  // "Refine with InstantID" from Head Swap / Face Swap: redraw a swap's face with BigLust + InstantID, keeping the shot.
+  // The swap becomes an img2img picture (low denoise: same pose, light and expression), the head photo / character the
+  // Face reference (InstantID — its landmarks come from that picture), and face fix redraws the face at full size.
+  useEffect(() => {
+    const onRefine = async e => {
+      const { src, faces = [], character = '', from = 'Head Swap' } = e.detail || {}
+      if (!src) return
+      const pic = await shrinkImage(src, 1344)
+      setRefPicture(pic); setRefMap(null)
+      setRefSettings(prev => ({ ...prev, mode: 'img2img', denoise: 0.35 }))
+      const img = new Image()
+      img.onload = () => {   // the SDXL size closest to the picture's shape (no two-panel pictures)
+        const r = img.naturalWidth / img.naturalHeight
+        const [, w, h] = SIZE_PRESETS.reduce((a, b) => (Math.abs(Math.log((a[1] / a[2]) / r)) <= Math.abs(Math.log((b[1] / b[2]) / r)) ? a : b))
+        setWidth(w); setHeight(h)
+      }
+      img.src = pic
+      if (faces.length) {
+        setFaceRefImages(await Promise.all(faces.slice(0, MAX_FACE_REFS).map(f => shrinkImage(f, 1024))))
+        setFaceRefCharacter(character || '')
+      }
+      setFaceRefOn(true)
+      if (faceRefMethods.includes('instantid') || !faceRefMethods.length) switchFaceRefMethod('instantid')
+      setFaceFix(true)
+      if (!(+faceStrength >= 0.3 && +faceStrength <= 0.5)) setFaceStrength(0.4)
+      setDetail(prev => { const next = { ...prev, facePasses: 2 }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
+      if (!positive.trim()) setPositive('RAW photo, photorealistic, natural skin texture, visible pores, sharp focus on the eyes')
+      setStatusMsg(`${from} result loaded for an InstantID refine: img2img 0.35 + Face reference (InstantID) + face fix. ` +
+        'Connect the BigLust notebook and press Generate.' + (faces.length ? '' : ' Add your face under Face reference (or pick your character) first.'), 'ok')
+      window.scrollTo(0, 0)
+    }
+    window.addEventListener('refine-with-instantid', onRefine)
+    return () => window.removeEventListener('refine-with-instantid', onRefine)
+  })
+
   // "Open in Image Generator" on the Gallery tab: show that folder (or All images) here
   useEffect(() => {
     const onOpen = e => { setActiveFolder(e.detail || null); setTimeout(() => galleryRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80) }
