@@ -6,9 +6,12 @@ export const DEFAULT_DETAIL = {
   hand: false, handStrength: 0.4,
   eye: false, eyeStrength: 0.3,
   pag: false, pagScale: 2,
+  dd: false, ddAmount: 0.2,
   tile: false, tileStrength: 0.6,
   restore: false, restoreFidelity: 0.7, restoreBlend: 0.4,
 }
+
+export const UPSCALER_NAMES = { lanczos: 'Simple resize', ultrasharp: '4x-UltraSharp', nomos8kdat: '4xNomos8kDAT' }
 
 export function loadDetail() {
   try { return { ...DEFAULT_DETAIL, ...(JSON.parse(localStorage.getItem('detail_tools')) || {}) } } catch { return { ...DEFAULT_DETAIL } }
@@ -22,6 +25,7 @@ export function detailPayload(d, tools, { faceFix, refinerOn }) {
     ...(tools.hand_fix && d.hand ? { hand_fix: true, hand_fix_strength: +d.handStrength } : {}),
     ...(tools.eye_fix && d.eye ? { eye_fix: true, eye_fix_strength: +d.eyeStrength } : {}),
     ...(tools.pag && d.pag ? { pag_scale: +d.pagScale } : {}),
+    ...(tools.detail_daemon && d.dd ? { detail_daemon: +d.ddAmount } : {}),
     ...(tools.refiner_tile && d.tile && refinerOn ? { refiner_tile: true, refiner_tile_strength: +d.tileStrength } : {}),
     ...(tools.face_restore && d.restore ? { face_restore: true, face_restore_fidelity: +d.restoreFidelity, face_restore_blend: +d.restoreBlend } : {}),
   }
@@ -34,6 +38,8 @@ export function detailSummary(p) {
   if (p.eye_fix) out.push(`eye detail ${p.eye_fix_strength}`)
   if (p.hand_fix) out.push(`hand fix ${p.hand_fix_strength}`)
   if (p.pag_scale) out.push(`PAG ${p.pag_scale}`)
+  if (p.detail_daemon) out.push(`Detail Daemon ${p.detail_daemon}`)
+  if (p.refiner && p.refiner_upscaler && p.refiner_upscaler !== 'lanczos') out.push(`enlarged with ${UPSCALER_NAMES[p.refiner_upscaler] || p.refiner_upscaler}`)
   if (p.refiner_tile) out.push(`tile detail ${p.refiner_tile_strength}`)
   if (p.face_restore) out.push(`CodeFormer ${p.face_restore_fidelity} / ${Math.round(p.face_restore_blend * 100)}%`)
   return out
@@ -65,6 +71,7 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
           <b>Eye detail</b>: the eye area of each face redrawn lightly at full size — sharp iris, catchlights. 0.25–0.35.<br />
           <b>Hand fix</b>: finds the hands and redraws them at full size (like face fix) — fewer extra / fused fingers. 0.35–0.5.<br />
           <b>PAG</b> (Perturbed-Attention Guidance): sharper structure, fewer mushy details; each step ~30% slower. 1.5–3.<br />
+          <b>Detail Daemon</b>: in the middle steps the model is told there's a bit less noise, so it keeps more fine detail (skin, hair, fabric) instead of smoothing it away. No extra time. 0.1 subtle · 0.2 default · 0.3–0.4 strong (too high looks gritty).<br />
           <b>Tile detail</b> (with the Refiner on): the Tile ControlNet holds the picture so the refiner can add real detail — skin pores, hair strands, fabric — without changing the face. Raise the refiner's strength to 0.4–0.5 with it. Tile 0.5–0.7.<br />
           <b>CodeFormer</b>: the last step — cleans up eyes, teeth and skin of every face. <i>Fidelity</i> 0 = strongest cleanup … 1 = closest to the face (0.7). <i>Mix</i> = how much of it is blended in (40% keeps it natural).<br /><br />
           Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>} />
@@ -87,6 +94,10 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
         <div className="detail-item">
           {T('pag', d.pag, 'PAG', () => set({ pag: !d.pag }), 'Sharper structure')}
           {d.pag && tools?.pag && <Num label="Scale" value={d.pagScale} min={0.5} max={5} step={0.25} onChange={v => set({ pagScale: v })} />}
+        </div>
+        <div className="detail-item">
+          {T('detail_daemon', d.dd, 'Detail Daemon', () => set({ dd: !d.dd }), 'Keep more fine detail (skin, hair, fabric)')}
+          {d.dd && tools?.detail_daemon && <Num label="Amount" value={d.ddAmount} min={0.05} max={0.6} onChange={v => set({ ddAmount: v })} />}
         </div>
         <div className="detail-item">
           {T('refiner_tile', d.tile, 'Tile detail', () => set({ tile: !d.tile }), 'With the Refiner: add real detail without changing the picture')}

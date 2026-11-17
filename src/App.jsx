@@ -17,7 +17,7 @@ import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
-import DetailTools, { loadDetail, detailPayload, detailSummary } from './DetailTools.jsx'
+import DetailTools, { loadDetail, detailPayload, detailSummary, UPSCALER_NAMES } from './DetailTools.jsx'
 import JobProgress, { useJobsProgress } from './JobProgress.jsx'
  
 
@@ -93,6 +93,7 @@ export default function App({ active = true }) {
   // Refiner (BigLust): enlarge + lightly redraw for more detail; optional separate checkpoint
   const savedRefiner = (() => { try { return JSON.parse(localStorage.getItem('refiner')) || {} } catch { return {} } })()
   const [refinerOn, setRefinerOn] = useState(!!savedRefiner.on)
+  const [refinerUpscaler, setRefinerUpscaler] = useState(savedRefiner.upscaler || 'lanczos')   // how the refiner enlarges
   const [refinerCkpt, setRefinerCkpt] = useState(savedRefiner.ckpt || '')
   const [refinerStrength, setRefinerStrength] = useState(savedRefiner.strength ?? 0.3)
   const [refinerUpscale, setRefinerUpscale] = useState(savedRefiner.upscale ?? 1.5)
@@ -155,8 +156,8 @@ export default function App({ active = true }) {
   const [showAddRefiner, setShowAddRefiner] = useState(false)
   const [newRefinerUrl, setNewRefinerUrl] = useState('')
   useEffect(() => {
-    localStorage.setItem('refiner', JSON.stringify({ on: refinerOn, ckpt: refinerCkpt, strength: refinerStrength, upscale: refinerUpscale, steps: refinerSteps }))
-  }, [refinerOn, refinerCkpt, refinerStrength, refinerUpscale, refinerSteps])
+    localStorage.setItem('refiner', JSON.stringify({ on: refinerOn, ckpt: refinerCkpt, strength: refinerStrength, upscale: refinerUpscale, steps: refinerSteps, upscaler: refinerUpscaler }))
+  }, [refinerOn, refinerCkpt, refinerStrength, refinerUpscale, refinerSteps, refinerUpscaler])
   const [qwenModels, setQwenModels] = useState([])   // Qwen: every model size, with installed / fits / current
   const [gpuInfo, setGpuInfo] = useState(null)       // { name, vram_gib } of the Colab GPU
   const [switching, setSwitching] = useState(false)
@@ -770,6 +771,7 @@ export default function App({ active = true }) {
       refiner_strength: +refinerStrength,
       refiner_upscale: +refinerUpscale,
       refiner_steps: +refinerSteps,
+      ...((detailTools?.upscalers || []).includes(refinerUpscaler) ? { refiner_upscaler: refinerUpscaler } : {}),
       face_ref_images: faceRefActive ? faceRefImages : [],
       face_ref_strength: +faceRefStrength,
       face_ref_method: faceRefMethod,
@@ -1414,7 +1416,7 @@ export default function App({ active = true }) {
           <div className="inline">
             <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
               title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
-            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br /><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /><b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.{!supportsRefiner && <><br /><br />Not available: open the BigLust notebook fresh from GitHub.</>}</>} />
+            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br /><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /><b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.<br /><b>Enlarge with</b>: <i>Simple resize</i> is instant; <i>4x-UltraSharp</i> (a few seconds) gives the redraw a much sharper start; <i>4xNomos8kDAT</i> is the sharpest with the most natural textures but several times slower (half a minute or more on a T4).{!supportsRefiner && <><br /><br />Not available: open the BigLust notebook fresh from GitHub.</>}</>} />
           </div>
           {refinerOn && (<>
             <div className="row">
@@ -1433,6 +1435,14 @@ export default function App({ active = true }) {
                 </select>
               </div>
               <div><label>Steps</label><input type="number" min="4" max="60" value={refinerSteps} onChange={e => setRefinerSteps(e.target.value)} /></div>
+              <div style={{ flex: 1.4 }}>
+                <label>Enlarge with</label>
+                <select value={(detailTools?.upscalers || []).includes(refinerUpscaler) ? refinerUpscaler : 'lanczos'} onChange={e => setRefinerUpscaler(e.target.value)}
+                  title="How the picture is made bigger before the refiner redraws it">
+                  <option value="lanczos">Simple resize (fastest)</option>
+                  {(detailTools?.upscalers || []).map(k => <option key={k} value={k}>{UPSCALER_NAMES[k] || k}{k === 'nomos8kdat' ? ' (sharpest, slow)' : ' (sharp, fast)'}</option>)}
+                </select>
+              </div>
             </div>
             {showAddRefiner ? (
               <div className="add-box" style={{ marginTop: 10 }}>

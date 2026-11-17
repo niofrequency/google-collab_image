@@ -196,6 +196,7 @@ export default function Upscale({ active = true }) {
           <select value={opts.model} onChange={e => set({ model: e.target.value })}>
             <option value="ultrasharp">4x-UltraSharp (generated pictures)</option>
             <option value="realesrgan">Real-ESRGAN (photos)</option>
+            <option value="nomos8kdat">4xNomos8kDAT (sharpest, slow)</option>
           </select>
         </div>
         {isVideo ? (

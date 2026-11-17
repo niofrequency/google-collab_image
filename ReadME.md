@@ -164,8 +164,11 @@ Under Face fix in the Image Generator. Each is a switch; models download on firs
 | **Eye detail** | the eye area of each face redrawn lightly at full size: sharp iris, catchlights | 0.25–0.35 |
 | **Hand fix** | hands found (ADetailer hand detector) and redrawn at full size | 0.35–0.5 |
 | **PAG** | Perturbed-Attention Guidance: sharper structure, ~30% slower per step | 1.5–3 |
+| **Detail Daemon** | the model is told there's slightly less noise in the middle steps, so it keeps more fine detail (skin, hair, fabric); no extra time or memory | 0.1–0.3 |
 | **Tile detail** | with the Refiner: xinsir Tile ControlNet holds the picture so the refiner adds pores, hair strands, fabric without changing the face — raise refiner strength to 0.4–0.5 | 0.5–0.7 |
 | **CodeFormer** | last step: cleans up eyes, teeth, skin; partly blended so it stays natural (non-commercial licence) | fidelity 0.7, mix 40% |
+
+**Refiner → Enlarge with**: *Simple resize* (instant), *4x-UltraSharp* (sharp, a few seconds) or *4xNomos8kDAT* (sharpest, most natural textures, several times slower) — the picture is enlarged with the model before the refiner redraws it. 4xNomos8kDAT is also in the Upscale tab.
 
 Pose pictures are now read with **DWPose** (much better hands and fingers), falling back to OpenPose.
 
