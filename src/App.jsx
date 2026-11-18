@@ -29,10 +29,10 @@ const NGROK_HEADERS = {
   'ngrok-skip-browser-warning': 'true'
 }
 
-const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID' }
+const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID', identity: 'Identity Edit (Krea 2)' }
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
 const MODEL_NAMES = { sdxl: 'BigLust (SDXL)', krea2: 'Krea 2', qwen_image_edit: 'Qwen Edit' }   // the Model switch
-const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
+const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img', scene: 'Scene (person put in)', edit: 'Edit picture', kdepth: 'Depth (framing)' }
 
 // SDXL's native sizes (about 1 megapixel); far outside them it tends to draw two pictures in one
 const SIZE_PRESETS = [
@@ -166,11 +166,12 @@ export default function App({ active = true }) {
     } catch { /* storage full: the pictures still work until the page is reloaded */ }
   }, [faceRefOn, faceRefImages, faceRefStrength, faceRefStrength2, faceRefCharacter, faceRefMethod, faceRefStrengths])
   function switchFaceRefMethod(m) {
+    if (backendTypeRef.current) localStorage.setItem('face_method_' + backendTypeRef.current, m)
     if (m === faceRefMethod) return
     const strengths = { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength, ...(faceRefMethod === 'both' ? { both2: +faceRefStrength2 } : {}) }
     setFaceRefStrengths(strengths)
     setFaceRefMethod(m)
-    setFaceRefStrength(strengths[m] ?? (m === 'both' ? 0.15 : 0.8))
+    setFaceRefStrength(strengths[m] ?? (m === 'both' ? 0.15 : m === 'identity' ? 4 : 0.8))
     if (m === 'both') setFaceRefStrength2(strengths.both2 ?? 0.5)
   }
   const [showAddRefiner, setShowAddRefiner] = useState(false)
@@ -261,6 +262,17 @@ export default function App({ active = true }) {
   const activeRef = useRef(active)  // the paste handler ignores pastes while another tab is shown
   activeRef.current = active  // read by the paste handler, which is registered once
   const fileInputRef = useRef(null)
+
+  // Each model has its own face methods (BigLust: FaceID / PuLID / InstantID…, Krea 2: Identity Edit). When the connected
+  // notebook doesn't have the current one, switch to the one last used with this model (or its first).
+  useEffect(() => {   // remember the method per model
+    if (backendType && faceRefMethods.includes(faceRefMethod)) localStorage.setItem('face_method_' + backendType, faceRefMethod)
+  }, [faceRefMethod, backendType, faceRefMethods])
+  useEffect(() => {
+    if (!faceRefMethods.length || faceRefMethods.includes(faceRefMethod)) return
+    const saved = localStorage.getItem('face_method_' + backendType)
+    switchFaceRefMethod(faceRefMethods.includes(saved) ? saved : faceRefMethods[0])
+  }, [faceRefMethods])   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {  // pictures made from the Image to Video tab (character start / end images) go in this gallery too
     async function onMade(e) {
@@ -785,12 +797,12 @@ export default function App({ active = true }) {
     const job = genJobs.start(count)
     // backends without a step counter: creep toward 90% so the bar keeps moving
     const timer = setInterval(() => job.set(job.done + (count * 0.9 - job.done) * 0.03), 600)
-    const faceRefActive = backendType === 'sdxl' && supportsFaceRef && faceRefOn && faceRefImages.length > 0
+    const faceRefActive = hasDetail && supportsFaceRef && faceRefOn && faceRefImages.length > 0
     if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); job.cancel(); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
     if (inpaint && !supportsInpaint) { clearInterval(timer); job.cancel(); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
-    if (inpaintActive && backendType === 'sdxl' && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); job.cancel(); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
-    const refActive = backendType === 'sdxl' && refModes.length > 0 && !!refPicture
+    if (inpaintActive && hasDetail && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); job.cancel(); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
+    const refActive = hasDetail && refModes.length > 0 && !!refPicture
     const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
@@ -805,7 +817,7 @@ export default function App({ active = true }) {
       face_fix: hasDetail && faceFix,
       face_fix_strength: +faceStrength,
       ...(hasDetail ? detailPayload(detail, detailTools, { faceFix, refinerOn: supportsRefiner && refinerOn }) : {}),
-      refiner: backendType === 'sdxl' && supportsRefiner && refinerOn,
+      refiner: hasDetail && supportsRefiner && refinerOn,
       refiner_checkpoint: refinerCkpt || null,
       refiner_strength: +refinerStrength,
       refiner_upscale: +refinerUpscale,
@@ -815,7 +827,7 @@ export default function App({ active = true }) {
       face_ref_strength: +faceRefStrength,
       face_ref_method: faceRefMethod,
       ...(faceRefMethod === 'both' ? { face_ref_pulid_strength: +faceRefStrength2 } : {}),
-      ...(inpaintActive ? (backendType === 'sdxl' ? {
+      ...(inpaintActive ? (hasDetail ? {
         init_image: inpaint.image, mask_image: inpaint.mask, inpaint_denoise: +inpaintSettings.denoise,
         mask_grow: +inpaintSettings.grow, mask_feather: +inpaintSettings.feather, width: inpaint.width, height: inpaint.height,
       } : {
@@ -883,7 +895,7 @@ export default function App({ active = true }) {
         detail: detailRecord(payload),
         seed: data.seed ?? null,
         // the character used (for the Gallery tab's character tags / search)
-        character: (backendType === 'sdxl' ? (data.face_ref ? faceRefCharacter : '') : qwenCharacter) || null,
+        character: (hasDetail ? (data.face_ref ? faceRefCharacter : '') : qwenCharacter) || null,
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale,
           steps: +refinerSteps, upscaler: payload.refiner_upscaler || 'lanczos' } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
@@ -894,7 +906,7 @@ export default function App({ active = true }) {
       if (data.ref_map) setRefMap(data.ref_map)
       if (data.seed != null) setLastSeed(data.seed)
       if (data.variation_seeds?.length) setLastVarSeed(data.variation_seeds[0])
-      if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: backendType === 'sdxl' ? +inpaintSettings.denoise : null }
+      if (inpaintActive) meta.inpaint = { area: inpaint.summary, denoise: hasDetail ? +inpaintSettings.denoise : null }
 
       // Prefer the images array if present, fall back to single image
       const imageList = Array.isArray(data.images) && data.images.length > 0
@@ -1326,7 +1338,7 @@ export default function App({ active = true }) {
             title={savedBackends[type] ? `Switch to ${name} (its notebook must be running in Colab)` : `Run the ${name} notebook (Notebooks tab) and paste its READY URL above once — then this switches to it`}
             onClick={() => switchBackend(type)}>{name}</button>
         ))}
-        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.<br /><br /><b>Krea 2</b>: very realistic text-to-image. Face fix, Eye detail, Hand fix, CodeFormer and Variation work with it; Face reference (PuLID / InstantID / FaceID), PAG, Detail Daemon and Tile are SDXL-only. For your face on a Krea 2 picture, use <b>Refine with InstantID (BigLust)</b> in its full-size view.</>} />
+        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.<br /><br /><b>Krea 2</b>: very realistic text-to-image, with its own versions of BigLust's tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene</b> (put your character into a picture), <b>Edit</b> (change a picture by instruction) and <b>Depth</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation. PAG, Detail Daemon and Tile are SDXL-only. You can still send a Krea 2 picture to BigLust: <b>Refine with InstantID (BigLust)</b> in its full-size view.</>} />
       </div>
 
       <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
@@ -1507,7 +1519,7 @@ export default function App({ active = true }) {
           refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} modelName={MODEL_NAMES[backendType]} />
       )}
 
-      {backendType === 'sdxl' && (
+      {hasDetail && (
         <FaceRef images={faceRefImages} setImages={setFaceRefImages} on={faceRefOn} setOn={setFaceRefOn}
           strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
@@ -1536,7 +1548,7 @@ export default function App({ active = true }) {
               </div>
             </div>
             <div className="row">
-              {backendType === 'sdxl' && <div><label>Denoise</label><input type="number" step="0.05" min="0.05" max="1" value={inpaintSettings.denoise} onChange={e => setInpaintSettings({ denoise: e.target.value })} /></div>}
+              {hasDetail && <div><label>Denoise</label><input type="number" step="0.05" min="0.05" max="1" value={inpaintSettings.denoise} onChange={e => setInpaintSettings({ denoise: e.target.value })} /></div>}
               <div><label>Grow (px)</label><input type="number" step="1" min="0" max="64" value={inpaintSettings.grow} onChange={e => setInpaintSettings({ grow: e.target.value })} /></div>
               <div><label>Feather (px)</label><input type="number" step="1" min="0" max="128" value={inpaintSettings.feather} onChange={e => setInpaintSettings({ feather: e.target.value })} /></div>
             </div>
@@ -1558,13 +1570,13 @@ export default function App({ active = true }) {
           }} />
       )}
 
-      {backendType === 'sdxl' && refModes.length > 0 && (
+      {hasDetail && refModes.length > 0 && (
         <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
           settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
           say={setStatusMsg} hoverRef={refPicHoverRef} />
       )}
 
-      {backendType === 'sdxl' && (
+      {hasDetail && (
         <div className="refiner-box">
           <div className="inline">
             <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
@@ -1597,7 +1609,7 @@ export default function App({ active = true }) {
                 </select>
               </div>
             </div>
-            {showAddRefiner ? (
+            {backendType !== 'sdxl' ? null : showAddRefiner ? (
               <div className="add-box" style={{ marginTop: 10 }}>
                 <input value={newRefinerUrl} onChange={e => setNewRefinerUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link to use as the refiner (page or download link)" />
                 <div className="row">
@@ -1630,7 +1642,7 @@ export default function App({ active = true }) {
           </select>
           <input type="number" step="0.05" value={l.strength} style={{width:80}} title="Strength"
             onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, strength: parseFloat(e.target.value) } : x))} />
-          {backendType === 'sdxl' && supportsLoraTargets && (
+          {hasDetail && supportsLoraTargets && (
             <select className="lora-target" value={l.target || 'all'} title="Where this LoRA is used"
               onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, target: e.target.value } : x))}>
               <option value="all">Whole image</option>
@@ -1641,7 +1653,7 @@ export default function App({ active = true }) {
           <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
         </div>
       ))}
-      {backendType === 'sdxl' && supportsLoraTargets && loras.length > 0 && (
+      {hasDetail && supportsLoraTargets && loras.length > 0 && (
         <div className="muted lora-target-help">
           Where each LoRA is used <Info text={<><b>Whole image</b>: the main image and the face fix (normal).<br /><b>Main image only</b>: body, outfit, pose — not used when face fix redraws the face.<br /><b>Face fix only</b>: used only to redraw the face (needs Face fix on).<br /><br />Example for best likeness: your full-body LoRA (e.g. Stephanie_v1) on <i>Main image only</i> and a face-only LoRA (e.g. Stephanie_face) on <i>Face fix only</i>, with the same trigger word in the prompt.</>} />
           {loras.some(l => l.target === 'face') && !faceFix && (
@@ -1685,7 +1697,7 @@ export default function App({ active = true }) {
 
       <label>Positive Prompt</label>
       <textarea value={positive} onChange={e => setPositive(e.target.value)} />
-      {backendType === 'sdxl' && supportsLoraTags && loras.length > 0 && (
+      {hasDetail && supportsLoraTags && loras.length > 0 && (
         <PromptEnhancer backend={getBackend()} loras={loras} positive={positive} setPositive={setPositive} say={setStatusMsg} />
       )}
 
@@ -1824,7 +1836,7 @@ export default function App({ active = true }) {
             <button className="secondary" onClick={() => setInfoItem(shown[lightboxIndex])}>Info</button>
             <button className="secondary" onClick={() => loadPromptOnly(shown[lightboxIndex])}>Use prompt</button>
             <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(shown[lightboxIndex])}>Use as face</button>
-            {backendType === 'sdxl' && refModes.length > 0 && (
+            {hasDetail && refModes.length > 0 && (
               <button className="secondary" title="Use this image as the pose / structure / style picture (BigLust)"
                 onClick={async () => { setRefPicture(await shrinkImage(shown[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}>Use as pose / style</button>
             )}

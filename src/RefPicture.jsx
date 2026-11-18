@@ -8,6 +8,9 @@ export const REF_MODE_INFO = {
   pose: { label: 'Body pose', help: 'Copies the pose — body, arms, hands and head angle — from the picture (OpenPose skeleton + ControlNet). Clothes, face and background come from your prompt.' },
   depth: { label: 'Depth / framing', help: 'Copies the shapes, layout and camera framing (a depth map + ControlNet), more strictly than the pose. Good for the same composition with another person or outfit.' },
   style: { label: 'Style / outfit', help: 'Copies the look — outfit, colours, light and style — without fixing where things are (IP-Adapter Plus).' },
+  scene: { label: 'Scene (put the person in it)', help: 'Krea 2: this picture is the scene, and your Face reference character is placed into it as the prompt says ("she sits at the console, looking at the screens"). Without a Face reference it works like Edit.' },
+  edit: { label: 'Edit this picture', help: 'Krea 2: changes this picture the way the prompt says ("make it night", "change the suit to white", "remove the cup") and keeps the rest — like Qwen Edit, with Krea 2\'s realism.' },
+  kdepth: { label: 'Depth / framing', help: 'Krea 2: copies the shapes, layout and camera framing (a depth map + the Krea 2 depth control). Strength 0.8–1.0. Can\'t be combined with Face reference yet — use Scene for that.' },
   img2img: { label: 'Img2img', help: 'Starts from the picture itself and redraws it. Denoise 0.3 stays close to it, 0.8 is only loosely based on it.' },
 }
 export const DEFAULT_REF_SETTINGS = { mode: 'pose', strength: 0.8, end: 0.85, denoise: 0.6, showMap: true }
@@ -51,15 +54,15 @@ export default function RefPicture({ image, setImage, settings, setSettings, mod
               {modes.map(m => <option key={m} value={m}>{REF_MODE_INFO[m]?.label || m}</option>)}
             </select>
           </div>
-          {mode !== 'img2img' ? (<>
+          {mode === 'scene' || mode === 'edit' ? null : mode !== 'img2img' ? (<>
             <div>
               <label>Strength</label>
               <input type="number" step="0.05" min="0" max="1.5" value={settings.strength} onChange={e => set({ strength: e.target.value })} />
             </div>
-            <div>
+            {mode !== 'kdepth' && <div>
               <label>Until</label>
               <input type="number" step="0.05" min="0.1" max="1" value={settings.end} onChange={e => set({ end: e.target.value })} title="Stops steering at this fraction of the steps" />
-            </div>
+            </div>}
           </>) : (
             <div>
               <label>Denoise</label>
@@ -69,7 +72,7 @@ export default function RefPicture({ image, setImage, settings, setSettings, mod
         </div>
       )}
       {image && <div className="muted small-note ref-pic-help">{REF_MODE_INFO[mode]?.help}</div>}
-      {image && (mode === 'pose' || mode === 'depth') && (
+      {image && (mode === 'pose' || mode === 'depth' || mode === 'kdepth') && (
         <label className="inline-label ref-pic-map">
           <input type="checkbox" checked={!!settings.showMap} onChange={e => set({ showMap: e.target.checked })} style={{ width: 'auto' }} />
           Show the {mode === 'pose' ? 'skeleton' : 'depth map'} the last image used

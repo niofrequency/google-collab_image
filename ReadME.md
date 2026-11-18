@@ -207,11 +207,17 @@ Very realistic text-to-image, in the same **Image Generator** tab as BigLust.
    each time it starts: paste the new one once.
 3. Recommended settings are applied on connect: 8 steps, CFG 1, euler / simple, 1024×1024.
 
-Works with Krea 2: LoRAs (Krea 2 ones), **Face fix** (+ 2 passes), **Eye detail**, **Hand fix**, **CodeFormer**,
-**Seed** and **Variation**. SDXL-only (not with Krea 2): Face reference (FaceID / PuLID / InstantID), PAG, Detail
-Daemon, Tile detail, pose / style pictures and the refiner. For your face on a Krea 2 picture, open it full size and
-click **Refine with InstantID (BigLust)**: it switches to BigLust and redraws the face with your Face reference at
-img2img 0.35, keeping the picture.
+Krea 2 has its own versions of BigLust's tools (same places in the tab):
+
+| BigLust | Krea 2 |
+|---|---|
+| Face reference (FaceID / PuLID / InstantID) | **Identity Edit** ([Krea 2 Identity Edit V2](https://github.com/lbouaraba/comfyui-krea2edit)): your character from one face photo, restaged by the prompt. Strength = fidelity: 4 recommended, 1–2 loose, 6–8 strict. Face fix then follows the photo too. |
+| Pose / structure / style picture | **Scene** (put your character into that picture), **Edit** (change the picture as the prompt says — General Edit V2), **Depth / framing** ([Krea 2 depth control](https://github.com/facok/comfyui-krea2-controlnet); not with Face reference yet — use Scene), **Img2img** |
+| Inpaint / outpaint, Refiner (UltraSharp / Nomos), LoRA targets, Prompt enhancer, Face / eye / hand fix, CodeFormer, Seed / Variation | the same, redrawn by Krea 2 |
+| PAG, Detail Daemon, Tile detail | SDXL only |
+
+The Identity / Edit / Depth models download the first time you use them (and are saved to Google Drive). You can still
+send a Krea 2 picture to BigLust with **Refine with InstantID (BigLust)** in its full-size view.
 
 ## Seed and variation seed (BigLust)
 

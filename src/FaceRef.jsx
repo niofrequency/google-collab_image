@@ -40,6 +40,7 @@ const METHODS = [
   ['portrait', 'Portrait', 'FaceID Portrait — made for several photos of the person at once (up to 5: front, both sides, smiling…). More angles = steadier likeness. About 0.6–1.0. Downloads on first use (~0.7 GB).'],
   ['pulid', 'PuLID', 'PuLID — keeps the face but leaves the lighting and style alone, so it can go higher (about 0.6–1.0). Its models download the first time you use it (a minute or two).'],
   ['both', 'Both', 'FaceID and PuLID together, each with its own strength. They add up, so keep both lower than alone — start at FaceID 0.15 + PuLID 0.5.'],
+  ['identity', 'Identity Edit', 'Krea 2 Identity Edit V2 — Krea 2\'s face reference: your character from ONE face photo (the Primary picture), restaged by your prompt — new scene, pose, outfit, light. Strength is its fidelity dial: 4 recommended · 1–2 loose · 6–8 very strict (over 10 starts to copy the photo too much). Face fix then redraws each face following the photo. Downloads on first use.'],
   ['instantid', 'InstantID', 'InstantID — the strongest likeness: your identity plus the face landmarks (eyes, nose, mouth). Used fully in Face fix (turn it on, 0.35–0.45), and in the main image when your pose / img2img picture shows a face. About 0.6–0.9. Downloads on first use (~4.2 GB).'],
 ]
 
@@ -114,7 +115,8 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
         </button>
         {on && supported && (
           <label className="inline-label">{method === 'both' ? 'FaceID' : 'Strength'}
-            <input type="number" step="0.05" min="0.05" max={method === 'pulid' ? 2 : 1.5} value={strength} onChange={e => setStrength(e.target.value)} />
+            <input type="number" step={method === 'identity' ? 0.5 : 0.05} min="0.05" max={method === 'identity' ? 12 : method === 'pulid' ? 2 : 1.5} value={strength} onChange={e => setStrength(e.target.value)}
+              title={method === 'identity' ? 'Fidelity: 4 recommended · 1–2 loose · 6–8 very strict' : undefined} />
           </label>
         )}
         {on && supported && method === 'both' && (
@@ -124,7 +126,7 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
         )}
         {on && supported && (
           <div className="chips" style={{ marginTop: 0 }} role="group" aria-label="Face reference method">
-            {METHODS.map(([id, label, tip]) => {
+            {METHODS.filter(([id]) => (methods.includes('identity') ? id === 'identity' : id !== 'identity')).map(([id, label, tip]) => {
               const ok = methods.includes(id)
               return (
                 <button key={id} className={`chip ${method === id ? 'active' : ''}`} disabled={!ok && method !== id}

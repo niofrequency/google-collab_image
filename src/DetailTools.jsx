@@ -119,7 +119,7 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
           <b>Detail Daemon</b>: in the middle steps the model is told there's a bit less noise, so it keeps more fine detail (skin, hair, fabric) instead of smoothing it away. No extra time. 0.1 subtle · 0.2 default · 0.3–0.4 strong (too high looks gritty).<br />
           <b>Tile detail</b> (with the Refiner on): the Tile ControlNet holds the picture so the refiner can add real detail — skin pores, hair strands, fabric — without changing the face. Raise the refiner's strength to 0.4–0.5 with it. Tile 0.5–0.7.<br />
           <b>CodeFormer</b>: the last step — cleans up eyes, teeth and skin of every face. <i>Fidelity</i> 0 = strongest cleanup … 1 = closest to the face (0.7). <i>Mix</i> = how much of it is blended in (40% keeps it natural).<br /><br />
-          {sdxlOnly ? <>With <b>{modelName}</b>: Face fix 2 passes, Eye detail, Hand fix and CodeFormer work (redrawn by {modelName}); PAG, Detail Daemon and Tile detail are SDXL-only.</>
+          {sdxlOnly ? <>With <b>{modelName}</b>: Face fix 2 passes, Eye detail, Hand fix and CodeFormer work (redrawn by {modelName}; with Face reference on, face fix follows your face photo); PAG, Detail Daemon and Tile detail are SDXL-only.</>
             : <>Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>}</>} />
       </div>
       <div className="detail-grid">
