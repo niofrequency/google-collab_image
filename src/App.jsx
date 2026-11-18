@@ -13,6 +13,7 @@ import { askConfirm } from './ConfirmDialog.jsx'
 import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
+import ExtraPicture, { DEFAULT_EXTRA_SETTINGS } from './ExtraPicture.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
@@ -146,6 +147,18 @@ export default function App({ active = true }) {
     return next
   })
   const refPicHoverRef = useRef(false)   // the pose picture box is under the mouse: Ctrl+V goes there
+  // Krea 2: an object or another character added to the picture
+  const [extraPicture, setExtraPicture] = useState(null)
+  const [extraSettings, setExtraSettingsState] = useState(() => {
+    try { return { ...DEFAULT_EXTRA_SETTINGS, ...JSON.parse(localStorage.getItem('extra_picture_settings')) } } catch { return DEFAULT_EXTRA_SETTINGS }
+  })
+  const setExtraSettings = fn => setExtraSettingsState(prev => {
+    const next = typeof fn === 'function' ? fn(prev) : fn
+    localStorage.setItem('extra_picture_settings', JSON.stringify(next))
+    return next
+  })
+  const extraHoverRef = useRef(false)
+  const [supportsExtra, setSupportsExtra] = useState(false)
   // Inpaint / outpaint: { image, mask, width, height, summary, source } from the mask editor
   const [supportsInpaint, setSupportsInpaint] = useState(false)
   const [inpaint, setInpaint] = useState(null)
@@ -320,6 +333,11 @@ export default function App({ active = true }) {
       for (const item of cd.items || []) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
           const blob = item.getAsFile()
+          if (blob && extraHoverRef.current) {   // pasted onto the "add an object / character" box (Krea 2)
+            e.preventDefault()
+            shrinkImage(URL.createObjectURL(blob), 1024).then(src => { setExtraPicture(src); setStatusMsg('Picture added', 'ok') })
+            return
+          }
           if (blob && (refPicHoverRef.current || backendTypeRef.current === 'krea2')) {   // pasted onto the pose / style picture box (Krea 2: anywhere)
             e.preventDefault()
             shrinkImage(URL.createObjectURL(blob), 1024).then(src => { setRefPicture(src); setStatusMsg('Pose / style picture loaded', 'ok') })
@@ -445,6 +463,7 @@ export default function App({ active = true }) {
       seed: item.seed ?? null,
       variation: item.variation || null,
       model: item.model || null,
+      extraPicture: item.extraPicture || null,
       inpaint: item.inpaint || null,
       denoise: item.denoise ?? null
     })))
@@ -482,6 +501,7 @@ export default function App({ active = true }) {
         detailTools: meta.detailTools || null, detail: meta.detail || null, seed: meta.seed ?? null,
         variation: meta.variation || null,
         model: meta.model || null,
+        extraPicture: meta.extraPicture || null,
         character: meta.character || null,
         denoise: meta.denoise ?? null
       })
@@ -638,6 +658,7 @@ export default function App({ active = true }) {
       setFaceRefMethods(Array.isArray(data.face_ref_methods) ? data.face_ref_methods : data.supports_face_ref ? ['faceid'] : [])
       setRefModes(Array.isArray(data.supports_ref_modes) ? data.supports_ref_modes : [])
       setSupportsInpaint(!!data.supports_inpaint)
+      setSupportsExtra(!!data.supports_extra_picture)
       setSupportsLoraTags(!!data.supports_lora_tags)
       setDetailTools(data.supports_detail_tools || null)
       setPoseReader(data.pose_reader || 'openpose')
@@ -845,6 +866,9 @@ export default function App({ active = true }) {
         mask_image: inpaint.mask, mask_grow: +inpaintSettings.grow, mask_feather: +inpaintSettings.feather,
         width: inpaint.width, height: inpaint.height, denoise: 1,
       }) : {}),
+      ...(backendType === 'krea2' && supportsExtra && extraPicture ? {
+        extra_image: extraPicture, extra_kind: extraSettings.kind === 'character' ? 'character' : 'object', extra_strength: +extraSettings.strength,
+      } : {}),
       ...(refActive ? {
         ref_image: refPicture,
         ref_mode: refMode,
@@ -910,6 +934,7 @@ export default function App({ active = true }) {
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
           ...(faceRefMethod === 'identity' && faceRefImages.length > 1 ? { pick: pickIndex + 1 } : {}),
           ...(faceRefMethod === 'both' ? { strength2: +faceRefStrength2 } : {}) } : null,
+        extraPicture: data.extra ? { kind: data.extra, strength: +extraSettings.strength, character: data.extra === 'character' ? (extraSettings.character || null) : null } : null,
         refPicture: data.ref_mode ? (data.ref_mode === 'img2img' ? { mode: 'img2img', denoise: +refSettings.denoise }
           : { mode: data.ref_mode, strength: +refSettings.strength, end: +refSettings.end }) : null,
       }
@@ -1277,6 +1302,16 @@ export default function App({ active = true }) {
         notes.push('Face reference is Off — add the face pictures again and turn it On (they aren\'t saved with images)')
       }
     }
+    // Krea 2 extra picture: its settings, and the character's picture (an object's picture isn't saved)
+    if (item.extraPicture !== undefined) {
+      const x = item.extraPicture
+      if (x) {
+        setExtraSettings(prev => ({ ...prev, kind: x.kind, strength: x.strength ?? prev.strength, character: x.character || '' }))
+        const c = x.character && loadCharacters().find(k => k.name === x.character)
+        if (c?.images?.length) setExtraPicture(c.images[0])
+        else if (!extraPicture) notes.push(x.kind === 'character' ? `add the second character${x.character ? ` ("${x.character}")` : ''} again` : 'add the object picture again')
+      } else if (extraPicture) setExtraPicture(null)
+    }
     // Pose / style picture: its settings (the picture itself isn't saved with images)
     if (item.refPicture !== undefined) {
       if (item.refPicture) {
@@ -1595,6 +1630,11 @@ export default function App({ active = true }) {
           say={setStatusMsg} hoverRef={refPicHoverRef} krea={backendType === 'krea2'} />
       )}
 
+      {backendType === 'krea2' && supportsExtra && (
+        <ExtraPicture image={extraPicture} setImage={setExtraPicture} settings={extraSettings} setSettings={setExtraSettings}
+          say={setStatusMsg} hoverRef={extraHoverRef} />
+      )}
+
       {hasDetail && (
         <div className="refiner-box">
           <div className="inline">
@@ -1910,6 +1950,7 @@ export default function App({ active = true }) {
                 : infoItem.detailTools?.length > 0 && <><br/>Detail tools: {infoItem.detailTools.join(' · ')}</>}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
               {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}{infoItem.faceRef.pick ? ` (face ${infoItem.faceRef.pick})` : ''}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
+              {infoItem.extraPicture && <><br/>Added {infoItem.extraPicture.kind === 'character' ? `character${infoItem.extraPicture.character ? `: ${infoItem.extraPicture.character}` : ''}` : 'object'}, strength {infoItem.extraPicture.strength}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
                 {infoItem.refPicture.mode === 'img2img'
                   ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)

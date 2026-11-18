@@ -446,6 +446,7 @@ function ItemInfo({ item, source, character, url, onClose, onDownload, onOpen })
     for (const l of item.loras || []) if (l.name) add('LoRA', `${l.name.split('/').pop()} · ${l.strength}`)
     for (const [k, v] of detailLines(item.detail)) add(k, v)
     if (item.faceRef) add('Face reference', `${{ faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID', identity: 'Identity Edit (Krea 2)' }[item.faceRef.method] || 'FaceID'} · ${item.faceRef.character || `${item.faceRef.count} picture(s)`}${item.faceRef.pick ? ` (face ${item.faceRef.pick})` : ''}${item.faceRef.strength != null ? ` · ${item.faceRef.strength}` : ''}`)
+    if (item.extraPicture) add('Added', `${item.extraPicture.kind === 'character' ? `character${item.extraPicture.character ? ` ${item.extraPicture.character}` : ''}` : 'object'} · strength ${item.extraPicture.strength}`)
     if (item.refPicture) add('Pose / style picture', `${{ pose: 'Body pose', depth: 'Depth', kdepth: 'Depth', style: 'Style / outfit', img2img: 'Img2img', scene: 'Scene (person put in)', edit: 'Edit picture' }[item.refPicture.mode] || item.refPicture.mode}${item.refPicture.denoise != null ? `, denoise ${item.refPicture.denoise}` : `, strength ${item.refPicture.strength}`}`)
     if (item.refiner) add('Refiner', `×${item.refiner.upscale}, strength ${item.refiner.strength}${item.refiner.upscaler ? ` · ${UPSCALER_NAMES[item.refiner.upscaler] || item.refiner.upscaler}` : ''}`)
   } else if (source.key === 'headswap' || source.key === 'faceswap') {
