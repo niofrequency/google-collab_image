@@ -13,6 +13,7 @@ import Upscale from './Upscale.jsx'
 import Notebooks from './Notebooks.jsx'
 import Library from './Library.jsx'
 import MiniMax from './MiniMax.jsx'
+import MiniMaxGallery from './MiniMaxGallery.jsx'
 import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon, NotebookIcon, GalleryIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'gallery', label: 'Gallery Prompts', short: 'Prompts', Icon: PromptsIcon },
   { id: 'video', label: 'Image to Video', short: 'Video', Icon: VideoIcon },
   { id: 'minimax', label: 'MiniMax H3', short: 'MiniMax', Icon: VideoIcon },
+  { id: 'minimaxgallery', label: 'MiniMax Gallery', short: 'MM Gallery', Icon: GalleryIcon },
   { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
   { id: 'faceswap', label: 'Face Swap', short: 'Face Swap', Icon: FaceSwapIcon },
   { id: 'characters', label: 'Characters', short: 'Characters', Icon: CharactersIcon },
@@ -91,6 +93,7 @@ export default function Root() {
       <div style={{ display: tab === 'gallery' ? 'block' : 'none' }}><GalleryPrompts /></div>
       <div style={{ display: tab === 'video' ? 'block' : 'none' }}><Video active={tab === 'video'} /></div>
       <div style={{ display: tab === 'minimax' ? 'block' : 'none' }}><MiniMax /></div>
+      <div style={{ display: tab === 'minimaxgallery' ? 'block' : 'none' }}><MiniMaxGallery /></div>
       <div style={{ display: tab === 'headswap' ? 'block' : 'none' }}><HeadSwap active={tab === 'headswap'} /></div>
       <div style={{ display: tab === 'faceswap' ? 'block' : 'none' }}><FaceSwap active={tab === 'faceswap'} /></div>
       <div style={{ display: tab === 'characters' ? 'block' : 'none' }}><Characters active={tab === 'characters'} /></div>
