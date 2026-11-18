@@ -1279,3 +1279,27 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 button.icon-btn { background: transparent; border: 1px solid transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: #c9c9c9; }
 button.icon-btn:hover:not(:disabled), button.icon-btn:focus-visible { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); box-shadow: none; color: #fff; }
 button.icon-btn:active:not(:disabled) { background: rgba(255,255,255,0.14); transform: scale(0.94); }
+
+/* Latest pictures: a top-to-bottom carousel in the right panel */
+.vcarousel { position: relative; outline: none; border-radius: 12px; padding: 2px 0 4px; }
+.vcarousel.live { background: rgba(255,255,255,0.02); }
+.vcarousel:focus-visible { box-shadow: 0 0 0 2px rgba(255,255,255,0.25); }
+.vc-stage { position: relative; overflow: hidden; }
+.vc-pic { position: absolute; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid var(--border); cursor: pointer;
+  transition: transform 0.38s cubic-bezier(.22,.8,.3,1), opacity 0.38s ease, box-shadow 0.38s ease; will-change: transform, opacity; }
+.vc-pic.current { border-color: rgba(255,255,255,0.35); box-shadow: 0 10px 30px rgba(0,0,0,0.6); }
+.vc-pic img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+button.vc-nav { display: flex; margin: 0 auto; width: 34px; height: 26px; padding: 0; align-items: center; justify-content: center;
+  font-size: 20px; line-height: 1; border-radius: 13px; background: transparent; border: 1px solid transparent; box-shadow: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none; color: #c9c9c9; }
+button.vc-nav.up { transform: rotate(90deg); }
+button.vc-nav.down { transform: rotate(-90deg); }
+button.vc-nav:hover:not(:disabled) { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); color: #fff; box-shadow: none; }
+button.vc-nav:disabled { opacity: 0.25; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .vc-pic { transition: none; } }
+.vc-pic.loading { background: linear-gradient(180deg, #141414, #0b0b0b); border-color: #2a2a2a; cursor: default; }
+.vc-loading { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  color: #9a9a9a; font-size: 13px; }
+.vc-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.12); border-top-color: #d0d0d0; animation: vc-spin 0.9s linear infinite; }
+@keyframes vc-spin { to { transform: rotate(360deg); } }
+.jp-queue { font-size: 12px; color: var(--muted); margin: 0 0 6px; }

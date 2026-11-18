@@ -15,6 +15,7 @@ import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import ExtraPicture, { DEFAULT_EXTRA_SETTINGS } from './ExtraPicture.jsx'
 import Section from './Section.jsx'
+import VerticalCarousel from './VerticalCarousel.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
@@ -536,9 +537,16 @@ export default function App({ active = true }) {
     return () => mq.removeEventListener('change', on)
   }, [])
   const latestPictures = (() => {
-    const fresh = roundStart ? gallery.filter(g => g.created >= roundStart).slice(0, 8) : []
-    return fresh.length ? { fresh: true, items: fresh } : { fresh: false, items: gallery.slice(0, 4) }
+    const fresh = roundStart ? gallery.filter(g => g.created >= roundStart).slice(0, 24) : []
+    return fresh.length ? { fresh: true, items: fresh } : { fresh: false, items: gallery.slice(0, 24) }
   })()
+  const [latestAt, setLatestAt] = useState(0)   // the picture in the middle of the Latest carousel
+  const pendingPictures = genJobs.stats.pending   // still being made: grey "loading" cards on top of the carousel
+  const queueLabel = genJobs.stats.running
+    ? `${pendingPictures} picture${pendingPictures === 1 ? '' : 's'} being made` + (genJobs.stats.queued ? ` · ${genJobs.stats.queued} in queue` : '')
+    : ''
+  const newestId = gallery[0]?.id
+  useEffect(() => { setLatestAt(0) }, [newestId, roundStart, pendingPictures > 0])   // a new picture: jump back to the newest
   function openPicture(item) {
     const i = shown.findIndex(x => x.id === item.id)
     if (i >= 0) return setLightboxIndex(i)
@@ -1490,7 +1498,7 @@ export default function App({ active = true }) {
               <button className="secondary" onClick={savePrompt}>Save Prompt</button>
             </div>
             {!wide && <div className="gen-inline-progress">
-              {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
+              {genJobs.pct != null ? <JobProgress pct={genJobs.pct} label={queueLabel} /> : showProgress && <JobProgress pct={progress} />}
               {status && <div className={`status ${statusType}`}>{status}</div>}
             </div>}
           </div>
@@ -1853,19 +1861,19 @@ export default function App({ active = true }) {
 
         {wide && <aside className="gen-side" aria-label="Progress and latest pictures">
           <div className="gen-side-inner">
-            {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
+            {genJobs.pct != null ? <JobProgress pct={genJobs.pct} label={queueLabel} /> : showProgress && <JobProgress pct={progress} />}
             {status && <div className={`status ${statusType}`}>{status}</div>}
-            <div className="gen-side-title">{latestPictures.fresh ? 'Latest' : 'Recent'}</div>
-            {latestPictures.items.length === 0 ? (
+            <div className="gen-side-title">{latestPictures.fresh || pendingPictures ? 'Latest' : 'Recent'}</div>
+            {latestPictures.items.length + pendingPictures === 0 ? (
               <div className="muted small-note">Your pictures appear here as they're made.</div>
             ) : (
-              <div className="gen-side-grid">
-                {latestPictures.items.map(item => (
-                  <button key={item.id} className="gen-side-pic" onClick={() => openPicture(item)} title={item.positive || 'Open full size'}>
-                    <img src={item.url} alt="" />
-                  </button>
-                ))}
-              </div>
+              <VerticalCarousel active={latestAt} setActive={setLatestAt} onOpen={i => { const item = latestPictures.items[i - Math.min(pendingPictures, 8)]; if (item) openPicture(item) }}
+                items={[
+                  ...Array.from({ length: Math.min(pendingPictures, 8) }, (_, i) => ({ key: 'loading-' + i, loading: true })),
+                  ...latestPictures.items.map(item => ({ key: item.id, src: item.url, title: item.positive })),
+                ]}
+                caption={<>{latestAt < Math.min(pendingPictures, 8) ? 'Being made…' : `${latestAt - Math.min(pendingPictures, 8) + 1} / ${latestPictures.items.length}`}
+                  {latestPictures.items.length + pendingPictures > 1 && <span className="muted"> · ↑ ↓ or scroll</span>}</>} />
             )}
           </div>
         </aside>}

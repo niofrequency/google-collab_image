@@ -2,10 +2,11 @@ import { useRef, useState } from 'react'
 
 // One progress bar with its percentage.
 //   total / done (optional): one bar per image instead, finished ones full; pct = progress of the current one
-export default function JobProgress({ total = 1, done = 0, pct = 0 }) {
+export default function JobProgress({ total = 1, done = 0, pct = 0, label = '' }) {
   const n = Math.max(1, Math.round(total) || 1)
   return (
     <div className="job-progress">
+      {label && <div className="jp-queue">{label}</div>}
       {Array.from({ length: n }, (_, i) => {
         const v = Math.max(0, Math.min(100, i < done ? 100 : i === done ? pct : 0))
         return (
@@ -29,6 +30,9 @@ export function useJobsProgress() {
   const jobs = useRef(new Map())
   const hideTimer = useRef(null)
   const [pct, setPct] = useState(null)
+  // running: jobs not finished yet (the server makes them one after another, so running - 1 are waiting in the queue)
+  // pending: pictures of those jobs that haven't arrived yet
+  const [stats, setStats] = useState({ running: 0, queued: 0, pending: 0 })
 
   function recompute() {
     const list = [...jobs.current.values()]
@@ -36,9 +40,11 @@ export function useJobsProgress() {
     const total = list.reduce((a, j) => a + j.total, 0)
     const done = list.reduce((a, j) => a + j.done, 0)
     setPct(total ? (100 * done) / total : 0)
+    const open = list.filter(j => !j.finished)
+    setStats({ running: open.length, queued: Math.max(0, open.length - 1), pending: open.reduce((a, j) => a + j.total, 0) })
     clearTimeout(hideTimer.current)
     if (list.every(j => j.finished)) {
-      hideTimer.current = setTimeout(() => { jobs.current.clear(); setPct(null) }, 900)
+      hideTimer.current = setTimeout(() => { jobs.current.clear(); setPct(null); setStats({ running: 0, queued: 0, pending: 0 }) }, 900)
     }
   }
 
@@ -60,7 +66,7 @@ export function useJobsProgress() {
       cancel() {   // never really started (e.g. a setting was wrong): forget it
         jobs.current.delete(id)
         if (jobs.current.size) recompute()
-        else { clearTimeout(hideTimer.current); setPct(null) }
+        else { clearTimeout(hideTimer.current); setPct(null); setStats({ running: 0, queued: 0, pending: 0 }) }
       },
       finish() {
         if (j.finished) return
@@ -74,7 +80,7 @@ export function useJobsProgress() {
   // true when nothing is running (every job finished, or none started)
   const idle = () => [...jobs.current.values()].every(j => j.finished)
 
-  return { pct, start, idle }
+  return { pct, start, idle, stats }
 }
 
 // Video / music jobs go through stages, each with its own step counter. Map them onto one 0-100 scale:
