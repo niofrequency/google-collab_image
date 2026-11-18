@@ -42,12 +42,13 @@ export function useWorkspaceState(key, columns, on) {
       for (const id of col.ids) {
         const el = els.current[id]
         if (!el) continue
-        cards[id] = { x: col.x, y, w: col.w, h: null }
+        const old = layoutRef.current.cards[id]
+        cards[id] = { x: col.x, y, w: col.w, h: old?.free ? old.h : null, ...(old?.s ? { s: old.s } : {}), ...(old?.free ? { free: true, w: old.w } : {}) }
         y += el.offsetHeight + 16
       }
     }
     setLayout(l => {
-      const same = Object.keys(cards).every(id => l.cards[id] && l.cards[id].x === cards[id].x && l.cards[id].y === cards[id].y && l.cards[id].w === cards[id].w && !l.cards[id].h)
+      const same = Object.keys(cards).every(id => l.cards[id] && l.cards[id].x === cards[id].x && l.cards[id].y === cards[id].y && l.cards[id].w === cards[id].w)
       return same ? l : save({ ...l, cards: { ...l.cards, ...cards } })
     })
   }, [columns])   // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,12 +125,13 @@ export function useWorkspaceState(key, columns, on) {
   }
 
   return {
+    baseW: id => (columns.find(c => c.ids.includes(id)) || { w: 400 }).w,
     on, layout, els, register, viewportRef, fullscreen, setFullscreen, arrange, fit, zoomAt, zoomCenter, setView,
     rect: id => layout.cards[id],
     z: id => { const i = layout.order.indexOf(id); return i < 0 ? 1 : i + 2 },
     front: id => setLayout(l => (l.order[l.order.length - 1] === id ? l : save({ ...l, order: [...l.order.filter(x => x !== id), id] }))),
     move: (id, r, persist) => setLayout(l => { const next = { ...l, touched: true, cards: { ...l.cards, [id]: r } }; return persist ? save(next) : next }),
-    reset: () => { setLayout(l => save({ ...l, touched: false, order: [], view: { x: 24, y: 24, z: 1 } })); requestAnimationFrame(arrange) },
+    reset: () => { setLayout(l => save({ ...l, cards: {}, touched: false, order: [], view: { x: 24, y: 24, z: 1 } })); requestAnimationFrame(arrange) },
   }
 }
 
@@ -217,7 +219,10 @@ export function WorkspaceBoard({ ws, children, onGallery }) {
   )
 }
 
-export function WsCard({ id, title, children }) {
+// free: the corner changes width and height (the contents fill the space, e.g. the Latest carousel).
+// Otherwise the corner scales the whole card — text, buttons and boxes get bigger or smaller together (like resizing a
+// picture in Freeform); its height always fits its contents.
+export function WsCard({ id, title, children, free = false }) {
   const ws = useWorkspace()
   const drag = useRef(null)
   const ref = useRef(null)
@@ -232,6 +237,8 @@ export function WsCard({ id, title, children }) {
   const r = ws.rect(id) || { x: 0, y: 0, w: 400, h: null }
   const placed = !!ws.rect(id)
   const zoom = ws.layout.view.z
+  const baseW = ws.baseW(id)
+  const scale = free ? 1 : Math.min(2.5, Math.max(0.6, r.s || 1))
 
   function start(e, mode) {
     if (e.button !== 0) return
@@ -239,16 +246,21 @@ export function WsCard({ id, title, children }) {
     e.stopPropagation()
     ws.front(id)
     // resizing starts from the size you see (the card may be taller than its saved size: it fits its contents)
-    drag.current = { mode, x0: e.clientX, y0: e.clientY, r0: { ...r, h: ref.current?.offsetHeight || r.h || 200 } }
+    drag.current = { mode, x0: e.clientX, y0: e.clientY, r0: { ...r, w: ref.current?.offsetWidth || r.w, h: ref.current?.offsetHeight || r.h || 200, s: scale } }
     e.currentTarget.setPointerCapture(e.pointerId)
   }
   function moveTo(e, persist) {
     const d = drag.current
     if (!d) return
     const dx = (e.clientX - d.x0) / zoom, dy = (e.clientY - d.y0) / zoom
-    const next = d.mode === 'move'
-      ? { ...r, x: snap(d.r0.x + dx), y: snap(d.r0.y + dy) }
-      : { ...r, w: Math.max(MIN_W, snap(d.r0.w + dx)), h: Math.max(80, snap(d.r0.h + dy)) }
+    let next
+    if (d.mode === 'move') next = { ...r, x: snap(d.r0.x + dx), y: snap(d.r0.y + dy) }
+    else if (free) next = { ...r, free: true, w: Math.max(MIN_W, snap(d.r0.w + dx)), h: Math.max(80, snap(d.r0.h + dy)) }
+    else {   // scale: follow whichever way you dragged further (right or down)
+      const k = Math.abs(dx / d.r0.w) >= Math.abs(dy / d.r0.h) ? (d.r0.w + dx) / d.r0.w : (d.r0.h + dy) / d.r0.h
+      const sNew = Math.min(2.5, Math.max(0.6, Math.round(d.r0.s * k * 100) / 100))
+      next = { ...r, s: sNew, w: baseW, h: null }
+    }
     ws.move(id, next, persist)
   }
   const handlers = mode => ({
@@ -260,14 +272,15 @@ export function WsCard({ id, title, children }) {
 
   return (
     <div ref={ref} className={`ws-card ${drag.current ? 'dragging' : ''}`} data-card={id}
-      style={{ left: r.x, top: r.y, width: r.w, minHeight: r.h || undefined, zIndex: ws.z(id), visibility: placed ? 'visible' : 'hidden' }}
+      style={{ left: r.x, top: r.y, width: free ? r.w : baseW * scale, minHeight: free ? r.h || undefined : undefined, zIndex: ws.z(id), visibility: placed ? 'visible' : 'hidden' }}
       onPointerDownCapture={() => ws.front(id)}>
       <div className="ws-card-head" {...handlers('move')} title="Drag to move">
         <span className="ws-grip" aria-hidden="true">⠿</span>
         <span className="ws-card-title">{title}</span>
       </div>
-      <div className="ws-card-body">{children}</div>
-      <div className="ws-resize" {...handlers('resize')} title="Drag to resize" aria-hidden="true" />
+      <div className="ws-card-body" style={scale !== 1 ? { zoom: scale } : undefined}>{children}</div>
+      <div className="ws-resize" {...handlers('resize')} title={free ? 'Drag to resize' : 'Drag to make it bigger or smaller'} aria-hidden="true" />
+      {!free && scale !== 1 && <span className="ws-scale" title="Drag the corner back to change it">{Math.round(scale * 100)}%</span>}
     </div>
   )
 }

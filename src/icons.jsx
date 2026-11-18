@@ -122,3 +122,32 @@ export function IconButton({ label, children, className = '', ...rest }) {
     <button type="button" className={`icon-btn ${className}`} aria-label={label} data-tip={label} {...rest}>{children}</button>
   )
 }
+
+// The ARX logo: a bold black "A" with a thin light outline and a small sparkle (also the browser tab's icon)
+export function ArxLogo({ size = 40, title = 'ARX Image Generator' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" role="img" aria-label={title}>
+      <title>{title}</title>
+      <path fillRule="evenodd" fill="#0b0b0b" stroke="#e8e8e8" strokeWidth="1.3" strokeLinejoin="round"
+        d="M16 3.5 L27.5 28 H22 L20.1 23.2 H11.9 L10 28 H4.5 Z M13.8 18.6 H18.2 L16 13.4 Z" />
+      <path d="M26.2 3 l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" fill="#e8e8e8" />
+    </svg>
+  )
+}
+
+// Image Generator view switches
+export function SimpleModeIcon(props) {
+  return <NavSvg {...props}><rect x="4" y="4" width="16" height="16" rx="3" /><line x1="8" y1="10" x2="16" y2="10" /><line x1="8" y1="14" x2="13" y2="14" /></NavSvg>
+}
+export function AdvancedModeIcon(props) {
+  return <NavSvg {...props}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /><circle cx="9" cy="7" r="2" fill="var(--bg, #111)" /><circle cx="15" cy="12" r="2" fill="var(--bg, #111)" /><circle cx="7" cy="17" r="2" fill="var(--bg, #111)" /></NavSvg>
+}
+export function PageLayoutIcon(props) {
+  return <NavSvg {...props}><rect x="4" y="3.5" width="16" height="17" rx="2.5" /><line x1="8" y1="8" x2="16" y2="8" /><line x1="8" y1="12" x2="16" y2="12" /><line x1="8" y1="16" x2="13" y2="16" /></NavSvg>
+}
+export function WorkspaceIcon(props) {
+  return <NavSvg {...props}><rect x="3" y="4" width="8" height="7" rx="1.5" /><rect x="13" y="7" width="8" height="6" rx="1.5" /><rect x="5" y="14" width="9" height="6.5" rx="1.5" /></NavSvg>
+}
+export function ResetLayoutIcon(props) {
+  return <NavSvg {...props}><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3" /><path d="M4 4v4.5h4.5" /></NavSvg>
+}
