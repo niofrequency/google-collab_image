@@ -15,6 +15,7 @@ import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import ExtraPicture, { DEFAULT_EXTRA_SETTINGS } from './ExtraPicture.jsx'
 import Section from './Section.jsx'
+import { WorkspaceContext, WorkspaceBoard, WsCard, useWorkspaceState } from './Workspace.jsx'
 import VerticalCarousel from './VerticalCarousel.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
@@ -34,6 +35,19 @@ const NGROK_HEADERS = {
 
 const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID', identity: 'Identity Edit (Krea 2)' }
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
+// Workspace: where each card starts (Reset layout puts them back here)
+const WORKSPACE_DEFAULTS = {
+  connection: { x: 0, y: 0, w: 600, h: 176 },
+  character: { x: 0, y: 192, w: 600, h: 152 },
+  prompt: { x: 0, y: 360, w: 600, h: 560 },
+  pictures: { x: 0, y: 936, w: 600, h: 520 },
+  face: { x: 616, y: 0, w: 400, h: 440 },
+  loras: { x: 616, y: 456, w: 400, h: 384 },
+  settings: { x: 616, y: 856, w: 400, h: 440 },
+  detail: { x: 616, y: 1312, w: 400, h: 264 },
+  refiner: { x: 616, y: 1592, w: 400, h: 320 },
+  latest: { x: 1032, y: 0, w: 296, h: 824 },
+}
 const MODEL_NAMES = { sdxl: 'BigLust (SDXL)', krea2: 'Krea 2', qwen_image_edit: 'Qwen Edit' }   // the Model switch
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img', scene: 'Scene (person put in)', edit: 'Edit picture', kdepth: 'Depth (framing)' }
 
@@ -531,6 +545,10 @@ export default function App({ active = true }) {
   const [roundStart, setRoundStart] = useState(0)   // when the current round of Generate presses began
   // wide screens: progress + Latest in the right column; phones: progress under Generate
   const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1001px)').matches)
+  // Workspace: the main blocks as cards you drag and resize (computers / tablets; phones keep the page)
+  const [layoutMode, setLayoutModeState] = useState(() => localStorage.getItem('gen_layout_mode') || 'page')
+  const setLayoutMode = m => { setLayoutModeState(m); localStorage.setItem('gen_layout_mode', m) }
+  const ws = useWorkspaceState('gen', WORKSPACE_DEFAULTS, wide && layoutMode === 'workspace')
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1001px)')
     const on = () => setWide(mq.matches)
@@ -1442,16 +1460,26 @@ export default function App({ active = true }) {
   function handleMouseUp() { setIsDragging(false) }
 
   return (
-    <div className="container gen-page">
+    <div className={`container gen-page ${ws.on ? 'ws-on' : ''}`}>
       <div className="gen-title-row">
         <h1>ARX Image Generator</h1>
         <div className="chips ui-mode" role="group" aria-label="Simple or advanced settings">
           <button className={`chip ${!advanced ? 'active' : ''}`} onClick={() => setUiMode('simple')} title="The essentials: model, character, prompt, size, pictures and LoRAs">Simple</button>
           <button className={`chip ${advanced ? 'active' : ''}`} onClick={() => setUiMode('advanced')} title="Everything: steps, sampler, seed, variation, detail tools, refiner…">Advanced</button>
+          {wide && <>
+            <span className="ui-mode-sep" aria-hidden="true" />
+            <button className={`chip ${layoutMode === 'page' ? 'active' : ''}`} onClick={() => setLayoutMode('page')} title="The normal page">Page</button>
+            <button className={`chip ${layoutMode === 'workspace' ? 'active' : ''}`} onClick={() => setLayoutMode('workspace')}
+              title="A free board: drag each block by its title bar and it stays there; drag its corner to resize it">Workspace</button>
+            {ws.on && <button className="chip" onClick={ws.reset} title="Put every card back in its starting place and size">Reset layout</button>}
+          </>}
         </div>
       </div>
+      <WorkspaceContext.Provider value={ws}>
+      <WorkspaceBoard ws={ws}>
       <div className="gen-layout">
         <div className="gen-main">
+          <WsCard id="connection" title="Notebook">
           <label>Backend URL</label>
           <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={() => loadUserModels()} placeholder="https://xxxx.trycloudflare.com" />
           <div className="chips model-switch" role="group" aria-label="Model">
@@ -1464,12 +1492,16 @@ export default function App({ active = true }) {
             <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.{backendType === 'krea2' && <><br /><br /><b>Krea 2</b> (connected): very realistic text-to-image. Its tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene, Edit, Depth, Img2img</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation.</>}
               {backendType === 'sdxl' && <><br /><br /><b>BigLust</b> (connected): SDXL text-to-image with Face reference (FaceID / PuLID / InstantID), pose / depth / style pictures, inpaint, refiner and all the detail tools.</>}</>} />
           </div>
+          </WsCard>
 
+          <WsCard id="character" title="Saved faces">
           <CharacterBar storageKey="gen_charbar" allAngles={true} carousel={true}
             active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
             hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : backendType === 'krea2' ? 'Krea 2: the Primary picture becomes the Face reference (Identity Edit).' : 'BigLust: the pictures become the Face reference.'}
             onPick={pickCharacter} onClear={clearCharacter} />
+          </WsCard>
 
+          <WsCard id="prompt" title="Prompt">
           {backendType !== 'krea2' && (<>
           <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
           <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
@@ -1567,8 +1599,10 @@ export default function App({ active = true }) {
                 ? 'One click sets size, steps, CFG, sampler, face fix and the strength of your LoRAs. "Default" goes back to the standard settings. Your prompt is not changed. Save your own settings with "+ Save current as preset".'
                 : 'One click sets steps, CFG, sampler and denoise for Qwen edit (Width/Height stay at Picture 1\'s size unless the preset says otherwise). "Default" goes back to the recommended settings. Save your own with "+ Save current as preset".'} />
           )}
+          </WsCard>
 
           {advanced && (
+            <WsCard id="settings" title="Generation settings">
             <Section id="settings" title="Generation settings" icon="⚙" summary={`${steps} steps · CFG ${cfg} · ${sampler}${+seed >= 0 ? ` · seed ${seed}` : ''}${+varStrength > 0 ? ` · variation ${varStrength}` : ''}`}>
               <div className="row">
                 <div>
@@ -1665,9 +1699,11 @@ export default function App({ active = true }) {
                 </div>
               )}
             </Section>
+            </WsCard>
           )}
 
           {hasDetail && (
+            <WsCard id="face" title="Face">
             <Section id="face" title="Face" icon="🙂" summary={[faceFix && supportsFaceFix ? `Face fix ${faceStrength}` : '', faceRefOn && supportsFaceRef && faceRefImages.length ? `${FACE_METHOD_NAMES[faceRefMethod] || faceRefMethod}${faceRefCharacter ? ` · ${faceRefCharacter}` : ''}` : ''].filter(Boolean).join(' · ') || 'Off'}>
               {hasDetail && (
                 <div className="face-fix">
@@ -1693,8 +1729,10 @@ export default function App({ active = true }) {
                   pick={faceRefPick} setPick={setFaceRefPick} />
               )}
             </Section>
+            </WsCard>
           )}
 
+          <WsCard id="pictures" title="Pictures">
           <Section id="pictures" title={hasDetail ? 'Pictures (pose, scene, inpaint)' : 'Inpaint / outpaint'} icon="🖼" summary={[refPicture ? (REF_MODE_NAMES[refSettings.mode] || refSettings.mode) : '', extraPicture && backendType === 'krea2' ? `+ ${extraSettings.kind}` : '', inpaint ? 'inpaint' : ''].filter(Boolean).join(' · ')}>
             {hasDetail && refModes.length > 0 && (
               <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
@@ -1739,17 +1777,21 @@ export default function App({ active = true }) {
               </div>
             )}
           </Section>
+          </WsCard>
 
           {advanced && hasDetail && (
+            <WsCard id="detail" title="Detail tools">
             <Section id="detail" title="Detail tools" icon="✨" summary={detailOnCount ? `${detailOnCount} on` : 'Off'}>
               {hasDetail && (
                 <DetailTools value={detail} setValue={setDetail} tools={detailTools} faceFix={faceFix}
                   refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} modelName={MODEL_NAMES[backendType]} />
               )}
             </Section>
+            </WsCard>
           )}
 
           {advanced && hasDetail && (
+            <WsCard id="refiner" title="Refiner">
             <Section id="refiner" title="Refiner" icon="⤴" summary={refinerOn && supportsRefiner ? `On · ${refinerUpscale}× · ${refinerStrength}` : 'Off'}>
               {hasDetail && (
                 <div className="refiner-box">
@@ -1801,8 +1843,10 @@ export default function App({ active = true }) {
                 </div>
               )}
             </Section>
+            </WsCard>
           )}
 
+          <WsCard id="loras" title="LoRAs & models">
           <Section id="loras" title="LoRAs & models" icon="🧩" summary={loras.length ? `${loras.length} LoRA${loras.length === 1 ? '' : 's'} in use` : 'None in use'}>
             {!supportsLoras && (<>
               <label>LoRAs</label>
@@ -1875,6 +1919,7 @@ export default function App({ active = true }) {
             <button className="secondary" onClick={() => setShowAddCheckpoint(true)}>+ Download Checkpoint</button>
             </>)}
           </Section>
+          </WsCard>
 
           {maskEditorSrc && (
             <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
@@ -1890,6 +1935,7 @@ export default function App({ active = true }) {
         </div>
 
         {wide && <aside className="gen-side" aria-label="Progress and latest pictures">
+          <WsCard id="latest" title="Latest">
           <div className="gen-side-inner">
             {genJobs.pct != null ? <JobProgress pct={genJobs.pct} label={queueLabel} /> : showProgress && <JobProgress pct={progress} />}
             {status && <div className={`status ${statusType}`}>{status}</div>}
@@ -1906,8 +1952,11 @@ export default function App({ active = true }) {
                   {latestPictures.items.length + pendingPictures > 1 && <span className="muted"> · ↑ ↓ or scroll</span>}</>} />
             )}
           </div>
+          </WsCard>
         </aside>}
       </div>
+      </WorkspaceBoard>
+      </WorkspaceContext.Provider>
 
 
       <h3>Saved Prompts</h3>

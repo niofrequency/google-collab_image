@@ -1303,3 +1303,26 @@ button.vc-nav:disabled { opacity: 0.25; cursor: default; }
 .vc-spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.12); border-top-color: #d0d0d0; animation: vc-spin 0.9s linear infinite; }
 @keyframes vc-spin { to { transform: rotate(360deg); } }
 .jp-queue { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+
+/* ===== Workspace (Image Generator): free board of draggable, resizable cards ===== */
+.ui-mode-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+.container.gen-page.ws-on { max-width: none; }
+.ws-board { position: relative; margin-top: 6px; border-radius: 16px;
+  background-image: radial-gradient(rgba(255,255,255,0.07) 1px, transparent 1px); background-size: 24px 24px; }
+.ws-on .gen-layout { display: contents; }
+.ws-on .gen-main, .ws-on .gen-side { display: contents; }
+.ws-card { position: absolute; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); overflow: hidden; }
+.ws-card.dragging { box-shadow: 0 16px 40px rgba(0,0,0,0.6); border-color: rgba(255,255,255,0.25); }
+.ws-card-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: grab; user-select: none; touch-action: none;
+  border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.03); font-size: 13px; font-weight: 600; }
+.ws-card-head:active { cursor: grabbing; }
+.ws-grip { color: var(--muted); font-size: 14px; letter-spacing: -1px; }
+.ws-card-body { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 14px; }
+.ws-card-body > :first-child { margin-top: 6px; }
+.ws-resize { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none; z-index: 2;
+  background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.28) 50%, rgba(255,255,255,0.28) 60%, transparent 60%, transparent 70%, rgba(255,255,255,0.28) 70%, rgba(255,255,255,0.28) 80%, transparent 80%); }
+.ws-section { padding: 0; }
+.ws-card .gen-prompt-box { margin: 6px 0 10px; }
+.ws-card .gen-side-inner { border: none; background: none; padding: 0; max-height: none; overflow: visible; }
+.ws-card .char-bar { margin: 6px 0 0; }
