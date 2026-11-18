@@ -1257,3 +1257,25 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 }
 .gen-section-body .detail-tools { border: none; background: none; padding: 0; margin-top: 0; }
 .gen-section-body .detail-tools .detail-title { display: none; }
+
+/* Full-size viewer: action icons (grey-white) with an instant label on hover */
+.lb-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.icon-btn { position: relative; width: 38px; height: 38px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent; border-radius: 10px; color: #c9c9c9; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.icon-btn:hover, .icon-btn:focus-visible { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.12); color: #fff; outline: none; }
+.icon-btn:active { background: rgba(255,255,255,0.14); }
+.icon-btn[data-tip]:hover::after, .icon-btn[data-tip]:focus-visible::after {
+  content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  padding: 5px 9px; border-radius: 7px; background: #161616; border: 1px solid #333; color: #eee;
+  font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none; z-index: 50; box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+}
+.icon-btn[data-tip]:hover::before, .icon-btn[data-tip]:focus-visible::before {
+  content: ''; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #333; pointer-events: none; z-index: 50;
+}
+.lb-actions .icon-btn:first-child[data-tip]:hover::after { left: 0; transform: none; }
+.lb-actions .icon-btn:last-child[data-tip]:hover::after { left: auto; right: 0; transform: none; }
+.lb-bar .icon-btn, .lb-bar button.icon-btn { width: 38px; height: 38px; padding: 0; font-size: 12px; }
+button.icon-btn { background: transparent; border: 1px solid transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: #c9c9c9; }
+button.icon-btn:hover:not(:disabled), button.icon-btn:focus-visible { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.14); box-shadow: none; color: #fff; }
+button.icon-btn:active:not(:disabled) { background: rgba(255,255,255,0.14); transform: scale(0.94); }
