@@ -1524,7 +1524,7 @@ export default function App({ active = true }) {
           strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
           method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods}
-          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} />
+          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} notebook={backendType === 'krea2' ? 'Krea 2' : 'BigLust'} />
       )}
 
       {(

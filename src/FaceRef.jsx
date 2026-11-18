@@ -45,7 +45,7 @@ const METHODS = [
 ]
 
 export default function FaceRef({ images, setImages, on, setOn, strength, setStrength, supported, say, character, setCharacter,
-  method = 'faceid', setMethod = () => {}, methods = ['faceid'], strength2 = 0.5, setStrength2 = () => {} }) {
+  method = 'faceid', setMethod = () => {}, methods = ['faceid'], strength2 = 0.5, setStrength2 = () => {}, notebook = 'BigLust' }) {
   const [characters, setCharacters] = useState(loadCharacters)
   const fileRef = useRef(null)
   useEffect(() => {  // characters changed in the Characters tab, or saved on another device (cloud backup)
@@ -110,9 +110,10 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
       onDrop={e => { e.preventDefault(); if (supported) addFiles(e.dataTransfer?.files) }}>
       <div className="inline" style={{ alignItems: 'center' }}>
         <button className={`toggle ${on && supported ? 'on' : ''}`} disabled={!supported}
-          onClick={() => setOn(v => !v)} title={supported ? 'Click to turn the face reference on or off' : 'Needs the updated BigLust notebook'}>
+          onClick={() => setOn(v => !v)} title={supported ? 'Click to turn the face reference on or off' : `Needs the updated ${notebook} notebook — in Colab: Runtime → Disconnect and delete runtime, open it fresh from the Notebooks tab, run cells 1–3 and paste the new URL`}>
           Face reference: {on && supported ? 'On' : 'Off'}
         </button>
+        {!supported && <span className="muted small-note">needs the updated {notebook} notebook (open it fresh from the Notebooks tab)</span>}
         {on && supported && (
           <label className="inline-label">{method === 'both' ? 'FaceID' : 'Strength'}
             <input type="number" step={method === 'identity' ? 0.5 : 0.05} min="0.05" max={method === 'identity' ? 12 : method === 'pulid' ? 2 : 1.5} value={strength} onChange={e => setStrength(e.target.value)}
@@ -136,7 +137,7 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
             })}
           </div>
         )}
-        <Info text={<>Keeps <b>the same face</b> in every image — no training needed. Add 1–5 clear pictures of the character's face (front-facing, head-and-shoulders works best; different angles help). Used in the main image and in face fix.<br /><br /><b>Method</b>: <b>FaceID</b> (IP-Adapter FaceID Plus v2, the original) · <b>Portrait</b> (FaceID made for up to 5 photos at once — add several angles) · <b>PuLID</b> (keeps the face but changes the lighting and style much less, so it can go higher) · <b>Both</b> (FaceID + PuLID stacked, each with its own strength — keep both lower: 0.15 + 0.5 to start) · <b>InstantID</b> (strongest likeness: identity + face landmarks; works best with <b>Face fix</b> on, where every face is redrawn following its own landmarks). Each method remembers its own strength.<br /><br /><b>Comics / short films</b>: make your character once (generate a face you like, then <i>Use as face</i> in the full-size viewer), press <b>Save as character</b>, and pick that character for every panel or shot. Start frames made this way keep the character in Image to Video too.<br /><br /><b>Strength</b> — FaceID: 0.2–0.5 natural · 0.8 strong (can look stiff or odd). PuLID: 0.6 light · 0.8–1.0 default · 1.2+ very strong. Turn <b>Face fix</b> on for small faces in full-body shots.<br /><br />It copies the <b>face</b> only — describe hair, body and clothes in the prompt (or use a LoRA). Works with your LoRAs.<br /><br />Only use pictures of real people who have agreed to it.{!supported && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (cell 1 installs it).</>}</>} />
+        <Info text={<>Keeps <b>the same face</b> in every image — no training needed. Add 1–5 clear pictures of the character's face (front-facing, head-and-shoulders works best; different angles help). Used in the main image and in face fix.<br /><br /><b>Method</b>: <b>FaceID</b> (IP-Adapter FaceID Plus v2, the original) · <b>Portrait</b> (FaceID made for up to 5 photos at once — add several angles) · <b>PuLID</b> (keeps the face but changes the lighting and style much less, so it can go higher) · <b>Both</b> (FaceID + PuLID stacked, each with its own strength — keep both lower: 0.15 + 0.5 to start) · <b>InstantID</b> (strongest likeness: identity + face landmarks; works best with <b>Face fix</b> on, where every face is redrawn following its own landmarks). Each method remembers its own strength.<br /><br /><b>Comics / short films</b>: make your character once (generate a face you like, then <i>Use as face</i> in the full-size viewer), press <b>Save as character</b>, and pick that character for every panel or shot. Start frames made this way keep the character in Image to Video too.<br /><br /><b>Strength</b> — FaceID: 0.2–0.5 natural · 0.8 strong (can look stiff or odd). PuLID: 0.6 light · 0.8–1.0 default · 1.2+ very strong. Turn <b>Face fix</b> on for small faces in full-body shots.<br /><br />It copies the <b>face</b> only — describe hair, body and clothes in the prompt (or use a LoRA). Works with your LoRAs.<br /><br />Only use pictures of real people who have agreed to it.{!supported && <><br /><br />Not available with this copy of the {notebook} notebook: open it fresh from the Notebooks tab (cell 1 installs it), run cells 1–3 and paste the new URL.</>}</>} />
       </div>
 
       {supported && on && (<>
