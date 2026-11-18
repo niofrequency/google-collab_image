@@ -134,6 +134,33 @@ export const QWEN_TRAINING_PRESETS = [
   },
 ]
 
+// LoRA Training tab, Krea 2 trainer (ai-toolkit). Krea 2 learns a face fast: don't over-train.
+export const KREA_TRAINING_PRESETS = [
+  {
+    name: 'Default',
+    info: 'Person / character LoRA: 1,200 steps, dim 16, learning rate 0.0001 — a good start for 15–30 pictures. About 1–2 hours on an A100, several hours on an L4. Auto-caption replaces captions.',
+    s: { max_train_steps: 1200, network_dim: 16, network_alpha: 16, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 200 },
+    tag: { mode: 'replace' },
+  },
+  {
+    name: 'Face – strong likeness',
+    info: 'More capacity (dim 32) and 1,600 steps for a face that must look exactly the same in every shot. Can get stiff with fewer than ~15 pictures — if it does, use an earlier checkpoint. Use a new LoRA name if this name already has saved progress.',
+    s: { max_train_steps: 1600, network_dim: 32, network_alpha: 32, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 200 },
+    tag: { mode: 'replace' },
+  },
+  {
+    name: 'Style',
+    info: 'An art or photo style from 20–40 pictures: dim 32, 2,000 steps. Write captions that describe the content (Auto-caption does), so the LoRA learns the look rather than the subjects.',
+    s: { max_train_steps: 2000, network_dim: 32, network_alpha: 32, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 250 },
+    tag: { mode: 'replace' },
+  },
+  {
+    name: 'Quick test',
+    info: 'Short run (300 steps) to check your pictures and captions before a full training — about 15–25 minutes on an A100. Use a different name from your real LoRA.',
+    s: { max_train_steps: 300, network_dim: 16, network_alpha: 16, learning_rate: 0.0001, num_repeats: 1, save_every_n_steps: 100 },
+  },
+]
+
 // Image to Video tab — the same presets work with both video notebooks (A14B and the free 5B).
 // s: size ("480p"/"720p"), seconds, mode ("fast" = 4-step LoRA, "quality" = more steps, much slower).
 export const VIDEO_PRESETS = [

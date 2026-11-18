@@ -552,6 +552,24 @@ Cell 4 alone won't restart it — cell 4 only *shows* progress. What to do depen
 **Keep these the same when resuming:** the **name** and the **number of steps** (default 1,500). Progress after the
 last save is redone. Saves happen every 250 steps, so you lose at most about 15–20 minutes at the default settings.
 
+## Krea 2 LoRA training (KREA2-LORA-TRAINING.ipynb)
+
+Your own Krea 2 LoRA — a person, a character or a style — for the Krea 2 notebook, trained with
+[ai-toolkit](https://github.com/ostris/ai-toolkit).
+
+1. Open **Krea 2 LoRA training** from the website's Notebooks tab, **Runtime → Change runtime type → A100** (or L4,
+   slower) and run **cell 1** (about 10–15 minutes) and **cell 2** (prints a `READY:` URL).
+2. In the **LoRA Training** tab paste the URL (it switches to the **Krea 2** trainer), name the LoRA, set a trigger word,
+   add 15–30 pictures, press **Auto-caption all** (Qwen3-VL writes a sentence per picture), check them, **Start training**.
+3. The LoRA lands in **MyDrive/ComfyUI/loras_krea2** — the Krea 2 notebook's LoRA list. Use the trigger word in the prompt.
+
+- **Base model**: by default your **Krea 2 Realism** (from your Drive copy, or downloaded), with Ostris' Krea 2 Turbo
+  training adapter so the LoRA works with fast 8-step models. Or set `BASE_MODEL` in cell 1 to the official Krea 2 Turbo
+  (needs a Hugging Face token as the Colab secret `HF_TOKEN`, after accepting its licence on Hugging Face).
+- **Time**: about 1–2 hours for a face LoRA on an A100 (1024 px); an L4 (768 px, model in 8-bit) is several times slower.
+- Krea 2 learns a face fast: 1,000–1,500 steps for 15–30 pictures. Checkpoints are saved every 200 steps (in
+  `training_krea2/<name>/output`), and a run continues from the last one after a disconnect.
+
 ## Qwen Image Edit 2511 LoRA training
 
 [Open in Colab](https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/QWEN-2511-LORA-TRAINING.ipynb) ·

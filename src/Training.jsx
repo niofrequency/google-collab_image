@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
 import PresetBar from './PresetBar.jsx'
-import { TRAINING_PRESETS, QWEN_TRAINING_PRESETS } from './presets.js'
+import { TRAINING_PRESETS, QWEN_TRAINING_PRESETS, KREA_TRAINING_PRESETS } from './presets.js'
 import { onUserChange, listCloudDatasets, saveDatasetToCloud, loadDatasetFromCloud, cloudFile, friendly } from './cloud.js'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { trackJob } from './favicon.js'
@@ -22,7 +22,17 @@ const QWEN_DEFAULTS = {
 const TRAINERS = {
   sdxl: { label: 'SDXL (BigLust)', notebook: 'SDXL-LORA-TRAINING.ipynb', gpu: 'T4, L4 or A100', urlKey: 'url' },
   qwen_2511: { label: 'Qwen Image Edit 2511', notebook: 'QWEN-2511-LORA-TRAINING.ipynb', gpu: 'A100, or L4 (slower)', urlKey: 'url_qwen' },
+  krea2: { label: 'Krea 2', notebook: 'KREA2-LORA-TRAINING.ipynb', gpu: 'A100, or L4 (slower)', urlKey: 'url_krea2' },
 }
+// Where each trainer puts the finished LoRA, and which notebook uses it
+const TRAINER_OUTPUT = {
+  sdxl: { folder: 'ComfyUI/loras_sdxl', use: "Start the BigLust notebook and pick it in the Image Generator's LoRA list." },
+  qwen_2511: { folder: 'ComfyUI/loras_qwen', use: 'Start a Qwen edit notebook and pick it in the LoRA list.' },
+  krea2: { folder: 'ComfyUI/loras_krea2', use: "Start the Krea 2 notebook and pick it in the Image Generator's LoRA list (use the trigger word in the prompt)." },
+}
+// Krea 2 trainer defaults before connecting (the notebook sends its own, e.g. 768 px on an L4)
+const KREA_DEFAULTS = { ...QWEN_DEFAULTS, max_train_steps: 1200, class_word: 'man' }
+const knownTrainer = t => (t in TRAINERS ? t : 'sdxl')
 const SETTINGS_DEFAULTS = {
   class_word: 'woman', base_model: 'biglust', max_train_steps: 1500, train_batch_size: 2,
   resolution: 1024, network_dim: 8, network_alpha: 4, learning_rate: 0.0003, num_repeats: 10, save_every_n_steps: 250,
@@ -34,6 +44,7 @@ function load(key, fallback) {
 function save(key, value) { localStorage.setItem('train_' + key, JSON.stringify(value)) }
 
 function settingsFor(trainer, serverDefaults) {
+  if (trainer === 'krea2') return { ...SETTINGS_DEFAULTS, ...KREA_DEFAULTS, ...(serverDefaults || {}), ...load('settings_krea2', {}) }
   return trainer === 'qwen_2511'
     ? { ...SETTINGS_DEFAULTS, ...QWEN_DEFAULTS, ...(serverDefaults || {}), ...load('settings_qwen', {}) }
     : { ...SETTINGS_DEFAULTS, ...load('settings', {}) }
@@ -69,8 +80,8 @@ async function prepareFile(file) {
 }
 
 export default function Training({ active }) {
-  const [trainer, setTrainer] = useState(() => (load('trainer', 'sdxl') === 'qwen_2511' ? 'qwen_2511' : 'sdxl'))  // which training notebook
-  const [url, setUrl] = useState(() => load(TRAINERS[load('trainer', 'sdxl') === 'qwen_2511' ? 'qwen_2511' : 'sdxl'].urlKey, ''))
+  const [trainer, setTrainer] = useState(() => knownTrainer(load('trainer', 'sdxl')))  // which training notebook
+  const [url, setUrl] = useState(() => load(TRAINERS[knownTrainer(load('trainer', 'sdxl'))].urlKey, ''))
   const [connected, setConnected] = useState(false)
   const [gpu, setGpu] = useState(null)               // { name, vram_gib, mode, mode_label } from the training notebook
   const [datasets, setDatasets] = useState([])
@@ -79,6 +90,8 @@ export default function Training({ active }) {
   const [settings, setSettings] = useState(() => settingsFor(trainer))
   const [kind, setKind] = useState('character')         // Qwen: 'character' or 'edit' (per LoRA name)
   const isQwen = trainer === 'qwen_2511'
+  const isKrea = trainer === 'krea2'
+  const bigModel = trainer !== 'sdxl'   // Qwen 2511 / Krea 2: sentence captions, their own settings
   const isEdit = isQwen && kind === 'edit'
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [images, setImages] = useState([])           // [{file, caption, saved}]
@@ -108,7 +121,7 @@ export default function Training({ active }) {
   useEffect(() => save('trainer', trainer), [trainer])
   useEffect(() => save('name', name), [name])
   useEffect(() => save('trigger', trigger), [trigger])
-  useEffect(() => save(trainer === 'qwen_2511' ? 'settings_qwen' : 'settings', settings), [settings])
+  useEffect(() => save(trainer === 'qwen_2511' ? 'settings_qwen' : trainer === 'krea2' ? 'settings_krea2' : 'settings', settings), [settings])
   useEffect(() => save('tagThreshold', tagThreshold), [tagThreshold])
   useEffect(() => save('tagMode', tagMode), [tagMode])
   useEffect(() => save('excludeTags', excludeTags), [excludeTags])
@@ -175,7 +188,7 @@ export default function Training({ active }) {
       const data = await api('/training/info')
       if (data.mode !== 'lora_training') throw new Error('This URL is not the LoRA training server')
       setConnected(true)
-      const tr = data.trainer === 'qwen_2511' ? 'qwen_2511' : 'sdxl'
+      const tr = knownTrainer(data.trainer)
       let switched = false
       if (tr !== trainer) {   // the link is the other trainer's: switch to it (each trainer keeps its own settings)
         save(TRAINERS[trainer].urlKey, '')
@@ -184,12 +197,12 @@ export default function Training({ active }) {
         setKind('character')
         switched = true
       }
-      const maxRes = tr === 'qwen_2511' ? data.defaults?.resolution : null
+      const maxRes = tr !== 'sdxl' ? data.defaults?.resolution : null
       if (maxRes) setSettings(s => (s.resolution > maxRes ? { ...s, resolution: maxRes } : s))  // e.g. 768 px on an L4
       setGpu(data.gpu || null)
       setDatasets(data.datasets || [])
       setTask(data.status)
-      say((tr === 'qwen_2511' ? 'Connected to the Qwen Image Edit 2511 trainer' : 'Connected to the SDXL training server') +
+      say((tr === 'sdxl' ? 'Connected to the SDXL training server' : `Connected to the ${TRAINERS[tr].label} trainer`) +
         (switched ? ' — this link is that trainer\'s, so the switch above changed to it' : ''), 'ok')
     } catch (e) {
       setConnected(false)
@@ -231,7 +244,7 @@ export default function Training({ active }) {
             if (s.task === 'auto-tagging') {
               say(s.status === 'done' ? `Auto-tagged ${s.result?.tagged ?? ''} images — check the tags below` : (s.error || 'Auto-tagging stopped'), s.status === 'done' ? 'ok' : 'error')
             } else if (s.status === 'done') {
-              say(`Training finished! ${s.result?.lora} is in Google Drive (ComfyUI/loras_sdxl). Start the BigLust notebook and pick it in the Image Generator's LoRA list.`, 'ok')
+              say(`Training finished! ${s.result?.lora} is in Google Drive (${TRAINER_OUTPUT[trainer].folder}). ${TRAINER_OUTPUT[trainer].use}`, 'ok')
               refreshDatasets()
             } else if (s.status === 'error') {
               say(s.error || 'Training failed', 'error')
@@ -330,7 +343,7 @@ export default function Training({ active }) {
       if (pairs.length < 3) return say('An edit-effect LoRA needs at least 3 pictures with a Before picture (10–30 works best)', 'error')
       if (pairs.some(x => !x.caption.trim())) return say('Write an instruction under every picture that has a Before picture (what changes)', 'error')
     } else {
-      if (images.length < (isQwen ? 4 : 5)) return say(`Add at least ${isQwen ? 4 : 5} images (15–40 works best)`, 'error')
+      if (images.length < (bigModel ? 4 : 5)) return say(`Add at least ${bigModel ? 4 : 5} images (15–40 works best)`, 'error')
       if (!trigger.trim()) return say('Set a trigger word — you will type it in prompts to use the LoRA', 'error')
     }
     const unsaved = images.findIndex(x => x.caption !== x.saved)
@@ -417,7 +430,7 @@ export default function Training({ active }) {
       let added = 0, retagged = 0
       const cloudTrainer = data.trainer || 'sdxl'
       if (cloudTrainer !== trainer) {
-        throw new Error(`"${cloudName}" was saved from the ${cloudTrainer === 'qwen_2511' ? 'Qwen 2511' : 'SDXL'} trainer — connect that training notebook to restore it`)
+        throw new Error(`"${cloudName}" was saved from the ${TRAINERS[cloudTrainer]?.label || cloudTrainer} trainer — connect that training notebook to restore it`)
       }
       if (isQwen && data.kind) {
         await api(`/training/dataset/${enc}/kind`, { method: 'POST', body: JSON.stringify({ kind: data.kind }) })
@@ -506,7 +519,7 @@ export default function Training({ active }) {
 
   const pct = task?.total ? Math.round((task.step / task.total) * 100) : 0
   const controlThumbUrl = file => `${backend}/training/dataset/${encodeURIComponent(dsName)}/control_thumb/${encodeURIComponent(file)}?v=${thumbVersion}`
-  const presets = isQwen ? QWEN_TRAINING_PRESETS : TRAINING_PRESETS
+  const presets = isQwen ? QWEN_TRAINING_PRESETS : isKrea ? KREA_TRAINING_PRESETS : TRAINING_PRESETS
   const thumbUrl = file => `${backend}/training/dataset/${encodeURIComponent(dsName)}/thumb/${encodeURIComponent(file)}?v=${thumbVersion}`
 
   return (
@@ -529,7 +542,7 @@ export default function Training({ active }) {
         {Object.entries(TRAINERS).map(([id, t]) => (
           <button key={id} className={`chip ${trainer === id ? 'active' : ''}`} onClick={() => switchTrainer(id)}>{t.label}</button>
         ))}
-        <Info text={<><b>SDXL (BigLust)</b>: LoRAs for the Image Generator's BigLust / SDXL models (characters, styles). Notebook <i>SDXL-LORA-TRAINING</i>, free T4 or better.<br /><br /><b>Qwen Image Edit 2511</b>: LoRAs for both Qwen edit notebooks — a <b>Character</b> or an <b>Edit effect</b> from Before → After pairs. A100 (1024 px), or L4 (768 px, slower). Notebook <i>QWEN-2511-LORA-TRAINING</i>.<br /><br />Each trainer remembers its own server link and settings. Pasting the other trainer's link switches automatically.</>} />
+        <Info text={<><b>SDXL (BigLust)</b>: LoRAs for the Image Generator's BigLust / SDXL models (characters, styles). Notebook <i>SDXL-LORA-TRAINING</i>, free T4 or better.<br /><br /><b>Qwen Image Edit 2511</b>: LoRAs for both Qwen edit notebooks — a <b>Character</b> or an <b>Edit effect</b> from Before → After pairs. A100 (1024 px), or L4 (768 px, slower). Notebook <i>QWEN-2511-LORA-TRAINING</i>.<br /><br /><b>Krea 2</b>: LoRAs for the Krea 2 notebook (a person, character or style), trained on your Krea 2 Realism model. A100 (1024 px, about 1–2 hours for a face), or L4 (768 px, slower). Notebook <i>KREA2-LORA-TRAINING</i>.<br /><br />Each trainer remembers its own server link and settings. Pasting the other trainer's link switches automatically.</>} />
         <a className="muted small-note" target="_blank" rel="noreferrer"
           href={`https://colab.research.google.com/github/niofrequency/google-collab_image/blob/main/${TRAINERS[trainer].notebook}`}>
           Open {TRAINERS[trainer].notebook} in Colab ({TRAINERS[trainer].gpu}) ↗</a>
@@ -542,7 +555,12 @@ export default function Training({ active }) {
           Qwen Image Edit 2511 trainer · GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode_label}
         </div>
       )}
-      {connected && gpu?.name && !isQwen && (
+      {connected && gpu?.name && isKrea && (
+        <div className="gpu-note good">
+          Krea 2 trainer · GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode_label}{gpu.base ? ` · base: ${gpu.base}` : ''}
+        </div>
+      )}
+      {connected && gpu?.name && !bigModel && (
         <div className={`gpu-note ${gpu.mode === 'improved' ? 'good' : ''}`}>
           GPU: {gpu.name} ({gpu.vram_gib} GB) · {gpu.mode === 'improved' ? 'Improved training' : 'Standard training'}: {gpu.mode_label.split(': ')[1] || gpu.mode_label}
           {' '}<Info text={gpu.mode === 'improved'
@@ -638,7 +656,7 @@ export default function Training({ active }) {
               </div>
             </div>
             {!isEdit && <div className="tag-tool">
-              <label>{isQwen ? 'Auto-caption' : 'Auto-tag'} <Info text={isQwen ? <>Writes a short sentence for each picture with Qwen2.5-VL (the model's own text encoder): pose, clothes, place, framing — not the face, so the trigger word learns the face. "Replace" overwrites captions, "Add to existing" keeps yours. The first run loads the model (about a minute).</> : 
+              <label>{bigModel ? 'Auto-caption' : 'Auto-tag'} <Info text={bigModel ? <>Writes a short sentence for each picture with {isKrea ? 'Qwen3-VL (Krea 2\'s own text encoder)' : 'Qwen2.5-VL (the model\'s own text encoder)'}: pose, clothes, place, framing — not the face, so the trigger word learns the face. "Replace" overwrites captions, "Add to existing" keeps yours. The first run loads the model (about a minute).</> : 
                 <>Describes each image with tags using the WD14 tagger (e.g. "1girl, long hair, smile, outdoors"). Lower sensitivity = more tags. "Add to existing" keeps your tags; "Replace" overwrites them. The trigger word is put first. Tip: tag what <i>changes</i> between images (clothes, background); things that are always the same are learned as part of the trigger word.</>
               } /></label>
               <div className="inline">
@@ -646,10 +664,10 @@ export default function Training({ active }) {
                   <option value="append">Add to existing</option>
                   <option value="replace">Replace existing</option>
                 </select>
-                {!isQwen && <input type="number" step="0.05" min="0.1" max="0.9" value={tagThreshold} onChange={e => setTagThreshold(e.target.value)} style={{ width: 90 }} title="Sensitivity threshold (0.35 is typical)" />}
-                <button className="secondary" onClick={autoTag} disabled={running}>{isQwen ? 'Auto-caption all' : 'Auto-tag all'}</button>
+                {!bigModel && <input type="number" step="0.05" min="0.1" max="0.9" value={tagThreshold} onChange={e => setTagThreshold(e.target.value)} style={{ width: 90 }} title="Sensitivity threshold (0.35 is typical)" />}
+                <button className="secondary" onClick={autoTag} disabled={running}>{bigModel ? 'Auto-caption all' : 'Auto-tag all'}</button>
               </div>
-              {!isQwen && <><label>Leave out these tags <Info text="Comma-separated tags auto-tag never adds. For a person LoRA, list things that are always true of them (hair colour, eye colour, freckles…): left out of the captions, they're learned by the trigger word, so you don't have to type them in every prompt. The Person / face preset fills in a common list." /></label>
+              {!bigModel && <><label>Leave out these tags <Info text="Comma-separated tags auto-tag never adds. For a person LoRA, list things that are always true of them (hair colour, eye colour, freckles…): left out of the captions, they're learned by the trigger word, so you don't have to type them in every prompt. The Person / face preset fills in a common list." /></label>
               <input value={excludeTags} onChange={e => setExcludeTags(e.target.value)} placeholder="e.g. brown hair, blue eyes, freckles" /></>}
             </div>}
           </div>
@@ -676,7 +694,7 @@ export default function Training({ active }) {
                   <button className="danger train-del" title="Delete this image" onClick={() => removeImage(i)}>×</button>
                 </div>
                 <div className="train-file" title={img.file}>{img.file}{img.caption !== img.saved ? ' • unsaved' : ''}</div>
-                <textarea className="train-caption" value={img.caption} placeholder={isEdit ? 'Instruction: what changes from Before to After, e.g. turn this photo into a comic-book drawing' : `No ${isQwen ? 'caption' : 'tags'} — will use "${[trigger, settings.class_word].filter(Boolean).join(', ')}"`}
+                <textarea className="train-caption" value={img.caption} placeholder={isEdit ? 'Instruction: what changes from Before to After, e.g. turn this photo into a comic-book drawing' : `No ${bigModel ? 'caption' : 'tags'} — will use "${[trigger, settings.class_word].filter(Boolean).join(', ')}"`}
                   onChange={e => setImages(prev => prev.map((x, idx) => idx === i ? { ...x, caption: e.target.value } : x))}
                   onBlur={() => saveCaption(i)} />
               </div>
@@ -685,19 +703,19 @@ export default function Training({ active }) {
         </>
       )}
 
-      <h3>Training settings <Info text={isQwen ? 'Defaults are tuned for Qwen-Image-Edit-2511 on this GPU (A100: 1024 px; L4: 768 px). Pick a preset for your kind of LoRA, or change the steps.' : 'The defaults are tuned for a free Colab T4 and 15–40 images. Pick a preset for your kind of LoRA, or change the steps.'} /></h3>
-      <PresetBar key={trainer} scope={isQwen ? 'training_qwen' : 'training'} builtins={presets} onApply={applyTrainingPreset} getCurrent={currentTrainingSettings}
+      <h3>Training settings <Info text={isKrea ? 'Defaults are tuned for Krea 2 on this GPU (A100: 1024 px; L4: 768 px). Krea 2 learns a face fast: 1,000–1,500 steps for 15–30 pictures. Pick a preset or change the steps.' : isQwen ? 'Defaults are tuned for Qwen-Image-Edit-2511 on this GPU (A100: 1024 px; L4: 768 px). Pick a preset for your kind of LoRA, or change the steps.' : 'The defaults are tuned for a free Colab T4 and 15–40 images. Pick a preset for your kind of LoRA, or change the steps.'} /></h3>
+      <PresetBar key={trainer} scope={isQwen ? 'training_qwen' : isKrea ? 'training_krea2' : 'training'} builtins={presets} onApply={applyTrainingPreset} getCurrent={currentTrainingSettings}
         help={'One click sets the training settings and the auto-tag settings (sensitivity, add/replace, tags to leave out) for that kind of LoRA. "Default" goes back to the standard settings. After changing auto-tag settings, press "Auto-tag all" again to re-tag. Save your own with "+ Save current as preset".'} />
       <div className="row">
         <div>
           <label>Steps <Info text="How long to train. ~1500 for 15–40 images; more images → more steps. Too many steps makes the LoRA 'overcooked' (stiff, same face/pose everywhere). Checkpoints are saved every 250 steps so you can pick an earlier one." /></label>
           <input type="number" value={settings.max_train_steps} onChange={e => setSetting('max_train_steps', e.target.value)} />
         </div>
-        {!isQwen && <div>
+        {!bigModel && <div>
           <label>Batch size <Info text="Images per step. 2 fits a T4 at 1024 px. Use 1 if training fails with 'CUDA out of memory'." /></label>
           <input type="number" min="1" max="4" value={settings.train_batch_size} onChange={e => setSetting('train_batch_size', e.target.value)} />
         </div>}
-        {!isQwen && <div>
+        {!bigModel && <div>
           <label>Base model <Info text={<>The SDXL checkpoint to train on — train on the one you'll generate with. "biglust" = the BigLust notebook's model. Or paste a Civitai / Hugging Face download link.</>} /></label>
           <input value={settings.base_model} onChange={e => setSetting('base_model', e.target.value)} />
         </div>}
@@ -708,7 +726,7 @@ export default function Training({ active }) {
           <div>
             <label>Resolution <Info text="Training size. 1024 is SDXL's native size; 768 is faster and uses less memory but learns less detail." /></label>
             <select value={settings.resolution} onChange={e => setSetting('resolution', +e.target.value)}>
-              {(isQwen ? [512, 768, 1024] : [768, 896, 1024]).map(r => <option key={r} value={r}>{r}</option>)}
+              {(bigModel ? [512, 768, 1024] : [768, 896, 1024]).map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
           <div>

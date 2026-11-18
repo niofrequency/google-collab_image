@@ -42,6 +42,8 @@ const GROUPS = [
     items: [
       { file: 'SDXL-LORA-TRAINING.ipynb', name: 'SDXL LoRA training', tab: 'train', tabName: 'LoRA Training', gpu: 'T4 free · L4 faster',
         what: 'Train your own SDXL LoRA (a person, character or style) from 15–40 pictures — for BigLust.' },
+      { file: 'KREA2-LORA-TRAINING.ipynb', name: 'Krea 2 LoRA training', tab: 'train', tabName: 'LoRA Training', gpu: 'A100 · L4 slower',
+        what: 'Train your own Krea 2 LoRA (a person, character or style) on your Krea 2 Realism model — for the Krea 2 notebook. About 1–2 hours for a face on an A100.' },
       { file: 'QWEN-2511-LORA-TRAINING.ipynb', name: 'Qwen 2511 LoRA training', tab: 'train', tabName: 'LoRA Training', gpu: 'A100 · L4 slower',
         what: 'LoRAs for Qwen Image Edit 2511: a character, or an edit effect from Before → After pairs.' },
     ],
