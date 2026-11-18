@@ -14,6 +14,7 @@ import CharacterBar from './CharacterBar.jsx'
 import SaveToCharacter from './SaveToCharacter.jsx'
 import RefPicture, { DEFAULT_REF_SETTINGS } from './RefPicture.jsx'
 import ExtraPicture, { DEFAULT_EXTRA_SETTINGS } from './ExtraPicture.jsx'
+import Section from './Section.jsx'
 import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
@@ -441,6 +442,7 @@ export default function App({ active = true }) {
     const sorted = items.sort((a, b) => b.created - a.created)
     setGallery(sorted.map(item => ({
       id: item.id,
+      created: item.created || 0,
       url: URL.createObjectURL(item.blob),
       positive: item.positive || '',
       negative: item.negative || '',
@@ -511,6 +513,38 @@ export default function App({ active = true }) {
   }
 
   const hasDetail = backendType === 'sdxl' || backendType === 'krea2'   // face fix + detail tools + variation
+
+  // ---- page layout: Simple (the essentials) or Advanced (every setting), and the Latest pictures panel
+  const [uiMode, setUiModeState] = useState(() => localStorage.getItem('gen_ui_mode') || 'simple')
+  const setUiMode = m => { setUiModeState(m); localStorage.setItem('gen_ui_mode', m) }
+  const advanced = uiMode === 'advanced'
+  const detailOnCount = ['eye', 'hand', 'pag', 'dd', 'tile', 'restore'].filter(k => detail?.[k]).length + (+detail?.facePasses === 2 ? 1 : 0)
+  // settings that stay in effect while hidden in Simple mode, so nothing changes without you knowing
+  const advancedInUse = [
+    hasDetail && supportsRefiner && refinerOn ? 'Refiner' : '',
+    hasDetail && detailTools && detailOnCount ? `${detailOnCount} detail tool${detailOnCount === 1 ? '' : 's'}` : '',
+    hasDetail && detailTools?.variation_seed && +varStrength > 0 ? `Variation ${varStrength}` : '',
+    +seed >= 0 ? `Seed ${seed}` : '',
+  ].filter(Boolean)
+  const [roundStart, setRoundStart] = useState(0)   // when the current round of Generate presses began
+  // wide screens: progress + Latest in the right column; phones: progress under Generate
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1001px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1001px)')
+    const on = () => setWide(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  const latestPictures = (() => {
+    const fresh = roundStart ? gallery.filter(g => g.created >= roundStart).slice(0, 8) : []
+    return fresh.length ? { fresh: true, items: fresh } : { fresh: false, items: gallery.slice(0, 4) }
+  })()
+  function openPicture(item) {
+    const i = shown.findIndex(x => x.id === item.id)
+    if (i >= 0) return setLightboxIndex(i)
+    setActiveFolder(null)   // it's not in the open folder: show All, then open it
+    setTimeout(() => setLightboxIndex(gallery.findIndex(x => x.id === item.id)), 0)
+  }
   function getBackend() { return backendUrl.trim().replace(/\/$/, '') }
 
   // Width/Height for an image: its own size, scaled down so the longest side is at most 1024,
@@ -819,7 +853,7 @@ export default function App({ active = true }) {
     const backend = getBackend()
     if (!backend) return setStatusMsg('Set Backend URL first', 'error')
     const count = Math.max(1, Math.min(8, +batchSize || 1))
-    if (genJobs.idle()) doneRef.current = { jobs: 0, images: 0, last: '', warnings: [] }   // a new round
+    if (genJobs.idle()) { doneRef.current = { jobs: 0, images: 0, last: '', warnings: [] }; setRoundStart(Date.now() - 2000) }   // a new round
     setStatusMsg('')
     const job = genJobs.start(count)
     // backends without a step counter: creep toward 90% so the bar keeps moving
@@ -1370,408 +1404,473 @@ export default function App({ active = true }) {
   function handleMouseUp() { setIsDragging(false) }
 
   return (
-    <div className="container">
-      <h1>ARX Image Generator</h1>
-      <CharacterBar storageKey="gen_charbar" allAngles={true} carousel={true}
-        active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
-        hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : backendType === 'krea2' ? 'Krea 2: the Primary picture becomes the Face reference (Identity Edit).' : 'BigLust: the pictures become the Face reference.'}
-        onPick={pickCharacter} onClear={clearCharacter} />
-
-      <label>Backend URL</label>
-      <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={() => loadUserModels()} placeholder="https://xxxx.trycloudflare.com" />
-      <div className="chips model-switch" role="group" aria-label="Model">
-        <span className="chips-label">Model</span>
-        {Object.entries(MODEL_NAMES).map(([type, name]) => (
-          <button key={type} className={`chip ${backendType === type ? 'active' : ''}`} disabled={!savedBackends[type] && backendType !== type}
-            title={savedBackends[type] ? `Switch to ${name} (its notebook must be running in Colab)` : `Run the ${name} notebook (Notebooks tab) and paste its READY URL above once — then this switches to it`}
-            onClick={() => switchBackend(type)}>{name}</button>
-        ))}
-        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.{backendType === 'krea2' && <><br /><br /><b>Krea 2</b> (connected): very realistic text-to-image. Its tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene, Edit, Depth, Img2img</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation.</>}
-          {backendType === 'sdxl' && <><br /><br /><b>BigLust</b> (connected): SDXL text-to-image with Face reference (FaceID / PuLID / InstantID), pose / depth / style pictures, inpaint, refiner and all the detail tools.</>}</>} />
+    <div className="container gen-page">
+      <div className="gen-title-row">
+        <h1>ARX Image Generator</h1>
+        <div className="chips ui-mode" role="group" aria-label="Simple or advanced settings">
+          <button className={`chip ${!advanced ? 'active' : ''}`} onClick={() => setUiMode('simple')} title="The essentials: model, character, prompt, size, pictures and LoRAs">Simple</button>
+          <button className={`chip ${advanced ? 'active' : ''}`} onClick={() => setUiMode('advanced')} title="Everything: steps, sampler, seed, variation, detail tools, refiner…">Advanced</button>
+        </div>
       </div>
-
-      {backendType !== 'krea2' && (<>
-      <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
-      <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
-        title={refImages.length >= MAX_REFS ? `Up to ${MAX_REFS} images` : 'Tap to choose from your photos · hover and press Ctrl+V to paste'}
-        onClick={() => refImages.length < MAX_REFS && fileInputRef.current?.click()}
-        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && refImages.length < MAX_REFS && fileInputRef.current?.click()}
-        onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
-        {refImages.length > 0 ? (
-          <div style={{display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap'}}>
-            {refImages.map((src, i) => (
-              <div key={src.slice(0, 64) + i} style={{position: 'relative'}}>
-                <img src={src} alt={`Picture ${i + 1}`} style={{maxWidth: 220, maxHeight: 200, borderRadius: 8, display: 'block'}}
-                  onError={() => setStatusMsg(`Could not display Picture ${i + 1} — check the address`, 'error')} />
-                <div style={{fontSize: 12, marginTop: 4, color: '#bbb'}}>Picture {i + 1}{i === 0 ? ' (edited)' : ''}</div>
-                <button className="danger" title={`Remove Picture ${i + 1}`} onClick={e => { e.stopPropagation(); removeRefImage(i) }}
-                  style={{position: 'absolute', top: 4, right: 4, width: 24, height: 24, padding: 0, borderRadius: 12, lineHeight: '22px'}}>×</button>
-              </div>
+      <div className="gen-layout">
+        <div className="gen-main">
+          <label>Backend URL</label>
+          <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={() => loadUserModels()} placeholder="https://xxxx.trycloudflare.com" />
+          <div className="chips model-switch" role="group" aria-label="Model">
+            <span className="chips-label">Model</span>
+            {Object.entries(MODEL_NAMES).map(([type, name]) => (
+              <button key={type} className={`chip ${backendType === type ? 'active' : ''}`} disabled={!savedBackends[type] && backendType !== type}
+                title={savedBackends[type] ? `Switch to ${name} (its notebook must be running in Colab)` : `Run the ${name} notebook (Notebooks tab) and paste its READY URL above once — then this switches to it`}
+                onClick={() => switchBackend(type)}>{name}</button>
             ))}
+            <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.{backendType === 'krea2' && <><br /><br /><b>Krea 2</b> (connected): very realistic text-to-image. Its tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene, Edit, Depth, Img2img</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation.</>}
+              {backendType === 'sdxl' && <><br /><br /><b>BigLust</b> (connected): SDXL text-to-image with Face reference (FaceID / PuLID / InstantID), pose / depth / style pictures, inpaint, refiner and all the detail tools.</>}</>} />
           </div>
-        ) : (
-          <div><div className="image-drop-icon">📷</div>Tap to choose from your photos, drag &amp; drop, or hover and paste (Ctrl+V) — up to {MAX_REFS} images</div>
-        )}
-        {refImages.length > 1 && (
-          <div style={{fontSize: 12, marginTop: 10, color: '#aaa'}}>
-            Picture 1 is edited; refer to the others in the prompt, e.g. "put the person from Picture 1 in the outfit from Picture 2".
-          </div>
-        )}
-        {refImages.length > 0 && refImages.length < MAX_REFS && <div className="image-drop-more">Tap to add another picture</div>}
-        {refImages.length > maxRefImages && (
-          <div style={{fontSize: 12, marginTop: 6, color: '#e88'}}>
-            The notebook running in Colab only uses Picture 1. Open it fresh from GitHub and run its cells again to use more pictures.
-          </div>
-        )}
-      </div>
-      <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImage} />
-      {refImages.length > 0 && (
-        <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
-          <button className="secondary" onClick={() => applyImageSize(refImages[0], true)} style={{width:'auto'}} title="Set Width/Height to Picture 1's size">Use image size</button>
-          <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>
-        </div>
-      )}
-      </>)}
 
-      {GENERATOR_PRESETS[backendType] && (
-        <PresetBar key={backendType} scope={'gen_' + backendType} builtins={GENERATOR_PRESETS[backendType]}
-          onApply={applyGeneratorPreset} getCurrent={currentGeneratorSettings}
-          help={backendType === 'sdxl'
-            ? 'One click sets size, steps, CFG, sampler, face fix and the strength of your LoRAs. "Default" goes back to the standard settings. Your prompt is not changed. Save your own settings with "+ Save current as preset".'
-            : 'One click sets steps, CFG, sampler and denoise for Qwen edit (Width/Height stay at Picture 1\'s size unless the preset says otherwise). "Default" goes back to the recommended settings. Save your own with "+ Save current as preset".'} />
-      )}
+          <CharacterBar storageKey="gen_charbar" allAngles={true} carousel={true}
+            active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
+            hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : backendType === 'krea2' ? 'Krea 2: the Primary picture becomes the Face reference (Identity Edit).' : 'BigLust: the pictures become the Face reference.'}
+            onPick={pickCharacter} onClear={clearCharacter} />
 
-      <div className="row">
-        <div>
-          {backendType === 'qwen_image_edit' && qwenModels.length > 0 ? (<>
-            <label>Model size <Info text={<>The same Qwen Rapid AIO v23 model in different sizes. <b>Bigger = better quality</b> (sharper faces and details) but needs more GPU memory:<br />• <b>Q2_K</b> — free T4 (15 GB)<br />• <b>Q3_K–Q5_K</b> — L4 (24 GB); Q4_K is the best fit<br />• <b>Q6_K, Q8_0</b> — A100 (40 GB)<br /><br />Picking one downloads it (first time only, a few minutes) and loads it. Sizes marked “needs a bigger GPU” won't fit the current Colab GPU. Cell 1 picks the best size for your GPU automatically.</>} /></label>
-            <select value={currentQwenModel?.file || ''} disabled={switching} onChange={e => switchQwenModel(e.target.value)}>
-              {qwenModels.map(m => (
-                <option key={m.file} value={m.file}>
-                  {m.quant} · {m.size_gb} GB{m.installed ? '' : ' · downloads'}{m.fits ? '' : ' · needs a bigger GPU'}
-                </option>
-              ))}
-            </select>
-          </>) : (<>
-          <label>Checkpoint</label>
-          <select value={checkpoint} onChange={e => setCheckpoint(e.target.value)}>
-            <option value="">{checkpoints.length ? "Default (" + checkpoints[0] + ")" : "Default"}</option>
-            {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
-          </select>
-          </>)}
-        </div>
-        <div>
-          <label>Sampler</label>
-          <select value={sampler} onChange={e => setSampler(e.target.value)}>
-            {samplerOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Scheduler</label>
-          <select value={scheduler} onChange={e => setScheduler(e.target.value)}>
-            {schedulerOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {backendType === 'qwen_image_edit' && gpuInfo?.name && (
-        currentQwenModel && !currentQwenModel.fits ? (
-          <div className="gpu-note warn">
-            <b>Switch to a bigger GPU.</b> {currentQwenModel.quant} needs about {currentQwenModel.need_gib} GB of GPU memory,
-            but this Colab GPU ({gpuInfo.name}) has {gpuInfo.vram_gib} GB, so it's very slow or may crash.
-            In Colab: <b>Runtime → Change runtime type → L4</b> (or A100) — needs Colab Pro or compute units — then open the
-            Qwen notebook fresh from GitHub and run cells 1–3; it picks the best size for that GPU automatically.
-            Or pick a smaller size above (Q2_K fits a T4).
-          </div>
-        ) : (
-          <div className="gpu-note">
-            GPU: {gpuInfo.name} ({gpuInfo.vram_gib} GB){currentQwenModel ? ` · using ${currentQwenModel.quant}` : ''}
-            {qwenModels.some(m => !m.fits) && ' · bigger sizes (better quality) need an L4 or A100 GPU'}
-          </div>
-        )
-      )}
-
-      <div className="row">
-        <div><label>Steps</label><input type="number" value={steps} onChange={e => setSteps(e.target.value)} /></div>
-        <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
-        <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
-        <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
-        <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
-        <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
-        <div className="gen-seed">
-          <label>Seed</label>
-          <div className="headswap-seed">
-            <input type="number" value={seed} onChange={e => setSeed(e.target.value)} title="-1 = a new seed every time. The same seed + settings = the same picture" />
-            <button className="secondary" title="New seed every time" onClick={() => setSeed(-1)}>🎲</button>
-            <button className="secondary" title={lastSeed != null ? `Reuse the last seed (${lastSeed})` : 'No image yet'} disabled={lastSeed == null} onClick={() => setSeed(lastSeed)}>♻</button>
-          </div>
-        </div>
-      </div>
-
-      {(hasDetail || !backendType) && (
-        <div className="variation-row">
-          <span className="chips-label">Variation</span>
-          <Info text={<>Make <b>derivatives of the same picture</b>: keep its <b>Seed</b> (♻ or Load Full) and turn Variation up. A second seed's noise is blended into the picture's own, so the result stays the same picture with changes.<br /><br />
-            <b>0</b> = off (exactly the seed's picture) · <b>0.05–0.15</b> small changes (hands, hair, folds, expression) · <b>0.2–0.35</b> same scene and pose, new details · <b>0.5+</b> drifts toward a new picture.<br /><br />
-            With <b>Batch</b> 4 you get 4 different derivatives. The variation seed (🎲 = new each time) is saved with every picture, so Load Full remakes that exact one.<br />
-            Works best with non-ancestral samplers (dpmpp_2m, euler); with "ancestral" / "sde" ones even small amounts change more.</>} />
-          {[0, 0.1, 0.2, 0.35].map(v => (
-            <button key={v} className={`chip ${+varStrength === v ? 'active' : ''}`} disabled={!detailTools?.variation_seed}
-              onClick={() => setVarStrength(v)}>{v === 0 ? 'Off' : v === 0.1 ? 'Subtle 0.1' : v === 0.2 ? 'Medium 0.2' : 'Strong 0.35'}</button>
-          ))}
-          <label className="inline-label">Strength
-            <input type="number" step="0.05" min="0" max="1" value={varStrength} disabled={!detailTools?.variation_seed} onChange={e => setVarStrength(e.target.value)} />
-          </label>
-          {+varStrength > 0 && detailTools?.variation_seed && (
-            <div className="headswap-seed">
-              <input type="number" value={varSeed} onChange={e => setVarSeed(e.target.value)} title="Variation seed: -1 = a new one every time" aria-label="Variation seed" />
-              <button className="secondary" title="New variation every time" onClick={() => setVarSeed(-1)}>🎲</button>
-              <button className="secondary" title={lastVarSeed != null ? `Reuse the last variation seed (${lastVarSeed})` : 'No variation yet'} disabled={lastVarSeed == null} onClick={() => setVarSeed(lastVarSeed)}>♻</button>
-            </div>
-          )}
-          {!detailTools?.variation_seed && <span className="muted small-note">{hasDetail
-            ? 'The connected notebook is an older version: in Colab use Runtime → Disconnect and delete runtime, open it fresh from the Notebooks tab, run cells 1–3 and paste the new URL.'
-            : 'Connect the BigLust or Krea 2 notebook (Notebooks tab, run cells 1–3, paste its URL above) to use it.'}</span>}
-          {detailTools?.variation_seed && +varStrength > 0 && +seed < 0 && <span className="muted small-note">set a Seed (♻ or Load Full) to vary one picture — with 🎲 every picture is new anyway</span>}
-        </div>
-      )}
-
-      {backendType !== 'qwen_image_edit' && (
-        <div className="chips size-presets" role="group" aria-label="Image size">
-          <span className="chips-label">Size</span>
-          {SIZE_PRESETS.map(([label, w, h]) => (
-            <button key={label} className={`chip ${+width === w && +height === h ? 'active' : ''}`} title={`${w} × ${h}`}
-              onClick={() => { setWidth(w); setHeight(h) }}>{label} <span className="size-dim">{w}×{h}</span></button>
-          ))}
-          <Info text={backendType === 'krea2'
-            ? <>Krea 2 works best at about <b>1–2 megapixels</b>. These 1 MP sizes are the safest and fastest; up to about 2 MP (e.g. 1152×1728) also works. Much bigger, and people or objects can start to repeat. For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp).</>
-            : <>SDXL (BigLust, Juggernaut, Pony…) was trained at about 1 megapixel in these shapes. Much taller or bigger sizes often come out as <b>two pictures stacked in one</b> (panels / split screen). For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp); for an extra-tall one, extend it afterwards with <b>Inpaint / outpaint</b>.</>} />
-          {(backendType === 'krea2' ? +width * +height > 2.2e6 : (+width * +height > 1.35e6 || Math.max(+width, +height) / Math.max(1, Math.min(+width, +height)) > 1.8)) && (
-            <span className="size-warn">{backendType === 'krea2' ? 'Over 2 megapixels: people or objects may repeat — pick a smaller size and use the Refiner' : 'This size may come out as two panels — pick one of these sizes'}</span>
-          )}
-        </div>
-      )}
-
-      {hasDetail && (
-        <div className="face-fix">
-          <button className={`toggle ${faceFix ? 'on' : ''}`} disabled={!supportsFaceFix}
-            onClick={() => setFaceFix(f => !f)} title={supportsFaceFix ? 'Click to turn face fix on or off' : 'Needs the updated BigLust notebook'}>
-            Face fix: {faceFix ? 'On' : 'Off'}
-          </button>
-          {faceFix && (
-            <label className="inline-label">Strength
-              <input type="number" step="0.05" min="0.1" max="0.8" value={faceStrength} onChange={e => setFaceStrength(e.target.value)} />
-            </label>
-          )}
-          <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.{backendType === 'krea2' && <><br /><br />Krea 2 redraws the face. With <b>Face reference</b> (Identity Edit) on, each face is redrawn <b>following your face photo</b>, which brings the likeness back in full-body shots.</>}<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab (it installs the face detector in cell 1).</>}</>} />
-        </div>
-      )}
-
-      {hasDetail && (
-        <DetailTools value={detail} setValue={setDetail} tools={detailTools} faceFix={faceFix}
-          refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} modelName={MODEL_NAMES[backendType]} />
-      )}
-
-      {hasDetail && (
-        <FaceRef images={faceRefImages} setImages={setFaceRefImages} on={faceRefOn} setOn={setFaceRefOn}
-          strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
-          character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
-          method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods}
-          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} notebook={backendType === 'krea2' ? 'Krea 2' : 'BigLust'}
-          pick={faceRefPick} setPick={setFaceRefPick} />
-      )}
-
-      {(
-        <div className="inpaint-box">
-          {!supportsInpaint && (
-            <div className="muted small-note inpaint-note">
-              {backendType ? 'The notebook connected right now is an older version without inpainting: in Colab use Runtime → Disconnect and delete runtime, open it again from the Notebooks tab (BigLust, Krea 2, Qwen 2511 or Qwen AIO), run its cells and paste the new URL. You can already paint the mask.'
-                : 'Works with the BigLust, Qwen 2511 and Qwen Rapid AIO notebooks (open them fresh from GitHub).'}
-            </div>
-          )}
-          <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b>{backendType === 'krea2' ? '' : ' (BigLust)'}: 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
-          {inpaint ? (<>
-            <div className="inpaint-current">
-              <img src={inpaint.image} alt="Picture being inpainted" />
-              <div>
-                <div>{inpaint.summary} · {inpaint.width}×{inpaint.height}</div>
-                <div className="inline" style={{ marginTop: 8, flexWrap: 'wrap' }}>
-                  <button className="secondary" onClick={() => setMaskEditorSrc(inpaint.source)}>Paint again</button>
-                  <button className="danger" onClick={() => setInpaint(null)}>Stop inpainting</button>
-                </div>
-              </div>
-            </div>
-            <div className="row">
-              {hasDetail && <div><label>Denoise</label><input type="number" step="0.05" min="0.05" max="1" value={inpaintSettings.denoise} onChange={e => setInpaintSettings({ denoise: e.target.value })} /></div>}
-              <div><label>Grow (px)</label><input type="number" step="1" min="0" max="64" value={inpaintSettings.grow} onChange={e => setInpaintSettings({ grow: e.target.value })} /></div>
-              <div><label>Feather (px)</label><input type="number" step="1" min="0" max="128" value={inpaintSettings.feather} onChange={e => setInpaintSettings({ feather: e.target.value })} /></div>
-            </div>
-          </>) : (
-            <button className="secondary inpaint-open" onClick={() => inpaintFileRef.current?.click()}>+ Open a picture to inpaint / outpaint</button>
-          )}
-          <input ref={inpaintFileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setMaskEditorSrc(URL.createObjectURL(f)); e.target.value = '' }} />
-        </div>
-      )}
-      {maskEditorSrc && (
-        <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
-          onClose={() => setMaskEditorSrc(null)}
-          onDone={result => {
-            setInpaint({ ...result, source: maskEditorSrc })
-            setWidth(result.width); setHeight(result.height)
-            setMaskEditorSrc(null)
-            setLightboxIndex(-1)
-            setStatusMsg(`Inpaint / outpaint ready (${result.summary}) — describe the result in the prompt and press Generate`, 'ok')
-          }} />
-      )}
-
-      {hasDetail && refModes.length > 0 && (
-        <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
-          settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
-          say={setStatusMsg} hoverRef={refPicHoverRef} krea={backendType === 'krea2'} />
-      )}
-
-      {backendType === 'krea2' && supportsExtra && (
-        <ExtraPicture image={extraPicture} setImage={setExtraPicture} settings={extraSettings} setSettings={setExtraSettings}
-          say={setStatusMsg} hoverRef={extraHoverRef} />
-      )}
-
-      {hasDetail && (
-        <div className="refiner-box">
-          <div className="inline">
-            <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
-              title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
-            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br />{backendType === 'krea2'
-              ? <><b>Refiner model</b>: Krea 2 itself, with your LoRAs. <b>Steps</b>: 6–10 is enough for Krea 2.<br /></>
-              : <><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /></>}<b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.<br /><b>Enlarge with</b>: <i>Simple resize</i> is instant; <i>4x-UltraSharp</i> (a few seconds) gives the redraw a much sharper start; <i>4xNomos8kDAT</i> is the sharpest with the most natural textures but several times slower (half a minute or more on a T4).{!supportsRefiner && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab.</>}</>} />
-          </div>
-          {refinerOn && (<>
-            <div className="row">
-              <div style={{ flex: 2 }}>
-                <label>Refiner model</label>
-                <select value={refinerCkpt} onChange={e => setRefinerCkpt(e.target.value)}>
-                  <option value="">Same as main model (fastest, keeps LoRAs)</option>
-                  {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
-              </div>
-              <div><label>Strength</label><input type="number" step="0.05" min="0.05" max="0.8" value={refinerStrength} onChange={e => setRefinerStrength(e.target.value)} /></div>
-              <div>
-                <label>Enlarge</label>
-                <select value={refinerUpscale} onChange={e => setRefinerUpscale(+e.target.value)}>
-                  {[1, 1.25, 1.5, 1.75, 2].map(f => <option key={f} value={f}>{f === 1 ? '1× (same size)' : f + '×'}</option>)}
-                </select>
-              </div>
-              <div><label>Steps</label><input type="number" min="4" max="60" value={refinerSteps} onChange={e => setRefinerSteps(e.target.value)} /></div>
-              <div style={{ flex: 1.4 }}>
-                <label>Enlarge with</label>
-                <select value={(detailTools?.upscalers || []).includes(refinerUpscaler) ? refinerUpscaler : 'lanczos'} onChange={e => setRefinerUpscaler(e.target.value)}
-                  title="How the picture is made bigger before the refiner redraws it">
-                  <option value="lanczos">Simple resize (fastest)</option>
-                  {(detailTools?.upscalers || []).map(k => <option key={k} value={k}>{UPSCALER_NAMES[k] || k}{k === 'nomos8kdat' ? ' (sharpest, slow)' : ' (sharp, fast)'}</option>)}
-                </select>
-              </div>
-            </div>
-            {backendType !== 'sdxl' ? null : showAddRefiner ? (
-              <div className="add-box" style={{ marginTop: 10 }}>
-                <input value={newRefinerUrl} onChange={e => setNewRefinerUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link to use as the refiner (page or download link)" />
-                <div className="row">
-                  <button className="secondary" onClick={() => addModel('checkpoint', newRefinerUrl, 'refiner')}>Download & use as refiner</button>
-                  <button className="secondary" onClick={() => setShowAddRefiner(false)}>Cancel</button>
-                </div>
+          {backendType !== 'krea2' && (<>
+          <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
+          <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
+            title={refImages.length >= MAX_REFS ? `Up to ${MAX_REFS} images` : 'Tap to choose from your photos · hover and press Ctrl+V to paste'}
+            onClick={() => refImages.length < MAX_REFS && fileInputRef.current?.click()}
+            onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && refImages.length < MAX_REFS && fileInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()} onDrop={handleDrop}>
+            {refImages.length > 0 ? (
+              <div style={{display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap'}}>
+                {refImages.map((src, i) => (
+                  <div key={src.slice(0, 64) + i} style={{position: 'relative'}}>
+                    <img src={src} alt={`Picture ${i + 1}`} style={{maxWidth: 220, maxHeight: 200, borderRadius: 8, display: 'block'}}
+                      onError={() => setStatusMsg(`Could not display Picture ${i + 1} — check the address`, 'error')} />
+                    <div style={{fontSize: 12, marginTop: 4, color: '#bbb'}}>Picture {i + 1}{i === 0 ? ' (edited)' : ''}</div>
+                    <button className="danger" title={`Remove Picture ${i + 1}`} onClick={e => { e.stopPropagation(); removeRefImage(i) }}
+                      style={{position: 'absolute', top: 4, right: 4, width: 24, height: 24, padding: 0, borderRadius: 12, lineHeight: '22px'}}>×</button>
+                  </div>
+                ))}
               </div>
             ) : (
-              <button className="secondary link-btn" onClick={() => setShowAddRefiner(true)}>+ Download refiner</button>
+              <div><div className="image-drop-icon">📷</div>Tap to choose from your photos, drag &amp; drop, or hover and paste (Ctrl+V) — up to {MAX_REFS} images</div>
             )}
+            {refImages.length > 1 && (
+              <div style={{fontSize: 12, marginTop: 10, color: '#aaa'}}>
+                Picture 1 is edited; refer to the others in the prompt, e.g. "put the person from Picture 1 in the outfit from Picture 2".
+              </div>
+            )}
+            {refImages.length > 0 && refImages.length < MAX_REFS && <div className="image-drop-more">Tap to add another picture</div>}
+            {refImages.length > maxRefImages && (
+              <div style={{fontSize: 12, marginTop: 6, color: '#e88'}}>
+                The notebook running in Colab only uses Picture 1. Open it fresh from GitHub and run its cells again to use more pictures.
+              </div>
+            )}
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImage} />
+          {refImages.length > 0 && (
+            <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12}}>
+              <button className="secondary" onClick={() => applyImageSize(refImages[0], true)} style={{width:'auto'}} title="Set Width/Height to Picture 1's size">Use image size</button>
+              <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>
+            </div>
+          )}
           </>)}
-        </div>
-      )}
 
-      {!supportsLoras && (<>
-        <label>LoRAs</label>
-        <div className="empty-msg">
-          The Qwen notebook running in Colab is an older version without LoRA support.
-          Open it fresh from GitHub (QWEN-AIO-NSFW-EDIT.ipynb), run cells 1, 2 and 3, and paste the new URL here.
-        </div>
-      </>)}
-      {supportsLoras && (<>
-      <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : backendType === 'krea2' ? ' (Krea 2 LoRAs)' : ''}</label>
-      {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
-      {loras.map((l, i) => (
-        <div key={l.name + i} className="lora-item">
-          <select value={l.name} onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}>
-            {!loraFiles.includes(l.name) && <option value={l.name}>{l.name} (not on server)</option>}
-            {loraFiles.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-          <input type="number" step="0.05" value={l.strength} style={{width:80}} title="Strength"
-            onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, strength: parseFloat(e.target.value) } : x))} />
-          {hasDetail && supportsLoraTargets && (
-            <select className="lora-target" value={l.target || 'all'} title="Where this LoRA is used"
-              onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, target: e.target.value } : x))}>
-              <option value="all">Whole image</option>
-              <option value="main">Main image only</option>
-              <option value="face">Face fix only</option>
-            </select>
-          )}
-          <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
-        </div>
-      ))}
-      {hasDetail && supportsLoraTargets && loras.length > 0 && (
-        <div className="muted lora-target-help">
-          Where each LoRA is used <Info text={<><b>Whole image</b>: the main image and the face fix (normal).<br /><b>Main image only</b>: body, outfit, pose — not used when face fix redraws the face.<br /><b>Face fix only</b>: used only to redraw the face (needs Face fix on).<br /><br />Example for best likeness: your full-body LoRA (e.g. Stephanie_v1) on <i>Main image only</i> and a face-only LoRA (e.g. Stephanie_face) on <i>Face fix only</i>, with the same trigger word in the prompt.</>} />
-          {loras.some(l => l.target === 'face') && !faceFix && (
-            <span className="warn"> — a LoRA is set to “Face fix only”, but Face fix is off, so it won't be used.</span>
-          )}
-        </div>
-      )}
-      {loraFiles.some(f => !loras.some(l => l.name === f)) && (
-        <div className="lora-item">
-          <select value={loraToAdd} onChange={e => addLoraFromList(e.target.value)}>
-            <option value="">+ Use a downloaded LoRA...</option>
-            {loraFiles.filter(f => !loras.some(l => l.name === f)).map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
-        </div>
-      )}
-      {showAddLora && (
-        <div className="add-box">
-          <input value={newLoraUrl} onChange={e => setNewLoraUrl(e.target.value)} placeholder="Civitai or Hugging Face LoRA link (page or download link)" />
-          <div className="row">
-            <button className="secondary" disabled={downloading} onClick={() => addModel('lora', newLoraUrl)}>Download & Add</button>
-            <button className="secondary" onClick={() => setShowAddLora(false)}>Cancel</button>
+          <div className="gen-prompt-box">
+            <label>Positive Prompt</label>
+            <textarea value={positive} onChange={e => setPositive(e.target.value)} />
+            {hasDetail && supportsLoraTags && loras.length > 0 && (
+              <PromptEnhancer backend={getBackend()} loras={loras} positive={positive} setPositive={setPositive} say={setStatusMsg} />
+            )}
+
+            <label>Negative Prompt</label>
+            <textarea value={negative} onChange={e => setNegative(e.target.value)} />
+
+            <div className="row" style={{marginTop:12}}>
+              <button onClick={generate}>Generate</button>
+              <button className="secondary" onClick={savePrompt}>Save Prompt</button>
+            </div>
+            {!wide && <div className="gen-inline-progress">
+              {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
+              {status && <div className={`status ${statusType}`}>{status}</div>}
+            </div>}
           </div>
-        </div>
-      )}
-      <button className="secondary" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>
-      </>)}
 
-      {backendType !== 'qwen_image_edit' && (<>
-      <label style={{marginTop:20}}>Add Checkpoint</label>
-      {showAddCheckpoint && (
-        <div className="add-box">
-          <input value={newCheckpointUrl} onChange={e => setNewCheckpointUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link (page or download link)" />
-          <div className="row">
-            <button className="secondary" disabled={downloading} onClick={() => addModel('checkpoint', newCheckpointUrl)}>Download & Add</button>
-            <button className="secondary" onClick={() => setShowAddCheckpoint(false)}>Cancel</button>
+          {backendType !== 'qwen_image_edit' && (
+            <div className="chips size-presets" role="group" aria-label="Image size">
+              <span className="chips-label">Size</span>
+              {SIZE_PRESETS.map(([label, w, h]) => (
+                <button key={label} className={`chip ${+width === w && +height === h ? 'active' : ''}`} title={`${w} × ${h}`}
+                  onClick={() => { setWidth(w); setHeight(h) }}>{label} <span className="size-dim">{w}×{h}</span></button>
+              ))}
+              <Info text={backendType === 'krea2'
+                ? <>Krea 2 works best at about <b>1–2 megapixels</b>. These 1 MP sizes are the safest and fastest; up to about 2 MP (e.g. 1152×1728) also works. Much bigger, and people or objects can start to repeat. For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp).</>
+                : <>SDXL (BigLust, Juggernaut, Pony…) was trained at about 1 megapixel in these shapes. Much taller or bigger sizes often come out as <b>two pictures stacked in one</b> (panels / split screen). For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp); for an extra-tall one, extend it afterwards with <b>Inpaint / outpaint</b>.</>} />
+              {(backendType === 'krea2' ? +width * +height > 2.2e6 : (+width * +height > 1.35e6 || Math.max(+width, +height) / Math.max(1, Math.min(+width, +height)) > 1.8)) && (
+                <span className="size-warn">{backendType === 'krea2' ? 'Over 2 megapixels: people or objects may repeat — pick a smaller size and use the Refiner' : 'This size may come out as two panels — pick one of these sizes'}</span>
+              )}
+            </div>
+          )}
+
+          {!advanced && (
+            <div className="gen-simple-row">
+              <label className="inline-label">Batch
+                <input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} title="How many pictures per Generate" />
+              </label>
+              {advancedInUse.length > 0 && (
+                <span className="muted small-note">Also on (Advanced): {advancedInUse.join(', ')} · <button className="link-btn inline-link" onClick={() => setUiMode('advanced')}>show</button></span>
+              )}
+            </div>
+          )}
+
+          {GENERATOR_PRESETS[backendType] && (
+            <PresetBar key={backendType} scope={'gen_' + backendType} builtins={GENERATOR_PRESETS[backendType]}
+              onApply={applyGeneratorPreset} getCurrent={currentGeneratorSettings}
+              help={backendType === 'sdxl'
+                ? 'One click sets size, steps, CFG, sampler, face fix and the strength of your LoRAs. "Default" goes back to the standard settings. Your prompt is not changed. Save your own settings with "+ Save current as preset".'
+                : 'One click sets steps, CFG, sampler and denoise for Qwen edit (Width/Height stay at Picture 1\'s size unless the preset says otherwise). "Default" goes back to the recommended settings. Save your own with "+ Save current as preset".'} />
+          )}
+
+          {advanced && (
+            <Section id="settings" title="Generation settings" icon="⚙" summary={`${steps} steps · CFG ${cfg} · ${sampler}${+seed >= 0 ? ` · seed ${seed}` : ''}${+varStrength > 0 ? ` · variation ${varStrength}` : ''}`}>
+              <div className="row">
+                <div>
+                  {backendType === 'qwen_image_edit' && qwenModels.length > 0 ? (<>
+                    <label>Model size <Info text={<>The same Qwen Rapid AIO v23 model in different sizes. <b>Bigger = better quality</b> (sharper faces and details) but needs more GPU memory:<br />• <b>Q2_K</b> — free T4 (15 GB)<br />• <b>Q3_K–Q5_K</b> — L4 (24 GB); Q4_K is the best fit<br />• <b>Q6_K, Q8_0</b> — A100 (40 GB)<br /><br />Picking one downloads it (first time only, a few minutes) and loads it. Sizes marked “needs a bigger GPU” won't fit the current Colab GPU. Cell 1 picks the best size for your GPU automatically.</>} /></label>
+                    <select value={currentQwenModel?.file || ''} disabled={switching} onChange={e => switchQwenModel(e.target.value)}>
+                      {qwenModels.map(m => (
+                        <option key={m.file} value={m.file}>
+                          {m.quant} · {m.size_gb} GB{m.installed ? '' : ' · downloads'}{m.fits ? '' : ' · needs a bigger GPU'}
+                        </option>
+                      ))}
+                    </select>
+                  </>) : (<>
+                  <label>Checkpoint</label>
+                  <select value={checkpoint} onChange={e => setCheckpoint(e.target.value)}>
+                    <option value="">{checkpoints.length ? "Default (" + checkpoints[0] + ")" : "Default"}</option>
+                    {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  </>)}
+                </div>
+                <div>
+                  <label>Sampler</label>
+                  <select value={sampler} onChange={e => setSampler(e.target.value)}>
+                    {samplerOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label>Scheduler</label>
+                  <select value={scheduler} onChange={e => setScheduler(e.target.value)}>
+                    {schedulerOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {backendType === 'qwen_image_edit' && gpuInfo?.name && (
+                currentQwenModel && !currentQwenModel.fits ? (
+                  <div className="gpu-note warn">
+                    <b>Switch to a bigger GPU.</b> {currentQwenModel.quant} needs about {currentQwenModel.need_gib} GB of GPU memory,
+                    but this Colab GPU ({gpuInfo.name}) has {gpuInfo.vram_gib} GB, so it's very slow or may crash.
+                    In Colab: <b>Runtime → Change runtime type → L4</b> (or A100) — needs Colab Pro or compute units — then open the
+                    Qwen notebook fresh from GitHub and run cells 1–3; it picks the best size for that GPU automatically.
+                    Or pick a smaller size above (Q2_K fits a T4).
+                  </div>
+                ) : (
+                  <div className="gpu-note">
+                    GPU: {gpuInfo.name} ({gpuInfo.vram_gib} GB){currentQwenModel ? ` · using ${currentQwenModel.quant}` : ''}
+                    {qwenModels.some(m => !m.fits) && ' · bigger sizes (better quality) need an L4 or A100 GPU'}
+                  </div>
+                )
+              )}
+
+              <div className="row">
+                <div><label>Steps</label><input type="number" value={steps} onChange={e => setSteps(e.target.value)} /></div>
+                <div><label>CFG</label><input type="number" step="0.1" value={cfg} onChange={e => setCfg(e.target.value)} /></div>
+                <div><label>Width</label><input type="number" value={width} onChange={e => setWidth(e.target.value)} /></div>
+                <div><label>Height</label><input type="number" value={height} onChange={e => setHeight(e.target.value)} /></div>
+                <div><label>Denoise</label><input type="number" step="0.05" min="0" max="1" value={denoise} onChange={e => setDenoise(e.target.value)} /></div>
+                <div><label>Batch</label><input type="number" min="1" max="8" value={batchSize} onChange={e => setBatchSize(e.target.value)} /></div>
+                <div className="gen-seed">
+                  <label>Seed</label>
+                  <div className="headswap-seed">
+                    <input type="number" value={seed} onChange={e => setSeed(e.target.value)} title="-1 = a new seed every time. The same seed + settings = the same picture" />
+                    <button className="secondary" title="New seed every time" onClick={() => setSeed(-1)}>🎲</button>
+                    <button className="secondary" title={lastSeed != null ? `Reuse the last seed (${lastSeed})` : 'No image yet'} disabled={lastSeed == null} onClick={() => setSeed(lastSeed)}>♻</button>
+                  </div>
+                </div>
+              </div>
+
+              {(hasDetail || !backendType) && (
+                <div className="variation-row">
+                  <span className="chips-label">Variation</span>
+                  <Info text={<>Make <b>derivatives of the same picture</b>: keep its <b>Seed</b> (♻ or Load Full) and turn Variation up. A second seed's noise is blended into the picture's own, so the result stays the same picture with changes.<br /><br />
+                    <b>0</b> = off (exactly the seed's picture) · <b>0.05–0.15</b> small changes (hands, hair, folds, expression) · <b>0.2–0.35</b> same scene and pose, new details · <b>0.5+</b> drifts toward a new picture.<br /><br />
+                    With <b>Batch</b> 4 you get 4 different derivatives. The variation seed (🎲 = new each time) is saved with every picture, so Load Full remakes that exact one.<br />
+                    Works best with non-ancestral samplers (dpmpp_2m, euler); with "ancestral" / "sde" ones even small amounts change more.</>} />
+                  {[0, 0.1, 0.2, 0.35].map(v => (
+                    <button key={v} className={`chip ${+varStrength === v ? 'active' : ''}`} disabled={!detailTools?.variation_seed}
+                      onClick={() => setVarStrength(v)}>{v === 0 ? 'Off' : v === 0.1 ? 'Subtle 0.1' : v === 0.2 ? 'Medium 0.2' : 'Strong 0.35'}</button>
+                  ))}
+                  <label className="inline-label">Strength
+                    <input type="number" step="0.05" min="0" max="1" value={varStrength} disabled={!detailTools?.variation_seed} onChange={e => setVarStrength(e.target.value)} />
+                  </label>
+                  {+varStrength > 0 && detailTools?.variation_seed && (
+                    <div className="headswap-seed">
+                      <input type="number" value={varSeed} onChange={e => setVarSeed(e.target.value)} title="Variation seed: -1 = a new one every time" aria-label="Variation seed" />
+                      <button className="secondary" title="New variation every time" onClick={() => setVarSeed(-1)}>🎲</button>
+                      <button className="secondary" title={lastVarSeed != null ? `Reuse the last variation seed (${lastVarSeed})` : 'No variation yet'} disabled={lastVarSeed == null} onClick={() => setVarSeed(lastVarSeed)}>♻</button>
+                    </div>
+                  )}
+                  {!detailTools?.variation_seed && <span className="muted small-note">{hasDetail
+                    ? 'The connected notebook is an older version: in Colab use Runtime → Disconnect and delete runtime, open it fresh from the Notebooks tab, run cells 1–3 and paste the new URL.'
+                    : 'Connect the BigLust or Krea 2 notebook (Notebooks tab, run cells 1–3, paste its URL above) to use it.'}</span>}
+                  {detailTools?.variation_seed && +varStrength > 0 && +seed < 0 && <span className="muted small-note">set a Seed (♻ or Load Full) to vary one picture — with 🎲 every picture is new anyway</span>}
+                </div>
+              )}
+            </Section>
+          )}
+
+          {hasDetail && (
+            <Section id="face" title="Face" icon="🙂" summary={[faceFix && supportsFaceFix ? `Face fix ${faceStrength}` : '', faceRefOn && supportsFaceRef && faceRefImages.length ? `${FACE_METHOD_NAMES[faceRefMethod] || faceRefMethod}${faceRefCharacter ? ` · ${faceRefCharacter}` : ''}` : ''].filter(Boolean).join(' · ') || 'Off'}>
+              {hasDetail && (
+                <div className="face-fix">
+                  <button className={`toggle ${faceFix ? 'on' : ''}`} disabled={!supportsFaceFix}
+                    onClick={() => setFaceFix(f => !f)} title={supportsFaceFix ? 'Click to turn face fix on or off' : 'Needs the updated BigLust notebook'}>
+                    Face fix: {faceFix ? 'On' : 'Off'}
+                  </button>
+                  {faceFix && (
+                    <label className="inline-label">Strength
+                      <input type="number" step="0.05" min="0.1" max="0.8" value={faceStrength} onChange={e => setFaceStrength(e.target.value)} />
+                    </label>
+                  )}
+                  <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.{backendType === 'krea2' && <><br /><br />Krea 2 redraws the face. With <b>Face reference</b> (Identity Edit) on, each face is redrawn <b>following your face photo</b>, which brings the likeness back in full-body shots.</>}<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab (it installs the face detector in cell 1).</>}</>} />
+                </div>
+              )}
+
+              {hasDetail && (
+                <FaceRef images={faceRefImages} setImages={setFaceRefImages} on={faceRefOn} setOn={setFaceRefOn}
+                  strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
+                  character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
+                  method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods}
+                  strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} notebook={backendType === 'krea2' ? 'Krea 2' : 'BigLust'}
+                  pick={faceRefPick} setPick={setFaceRefPick} />
+              )}
+            </Section>
+          )}
+
+          <Section id="pictures" title={hasDetail ? 'Pictures (pose, scene, inpaint)' : 'Inpaint / outpaint'} icon="🖼" summary={[refPicture ? (REF_MODE_NAMES[refSettings.mode] || refSettings.mode) : '', extraPicture && backendType === 'krea2' ? `+ ${extraSettings.kind}` : '', inpaint ? 'inpaint' : ''].filter(Boolean).join(' · ')}>
+            {hasDetail && refModes.length > 0 && (
+              <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
+                settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
+                say={setStatusMsg} hoverRef={refPicHoverRef} krea={backendType === 'krea2'} />
+            )}
+
+            {backendType === 'krea2' && supportsExtra && (
+              <ExtraPicture image={extraPicture} setImage={setExtraPicture} settings={extraSettings} setSettings={setExtraSettings}
+                say={setStatusMsg} hoverRef={extraHoverRef} />
+            )}
+
+            {(
+              <div className="inpaint-box">
+                {!supportsInpaint && (
+                  <div className="muted small-note inpaint-note">
+                    {backendType ? 'The notebook connected right now is an older version without inpainting: in Colab use Runtime → Disconnect and delete runtime, open it again from the Notebooks tab (BigLust, Krea 2, Qwen 2511 or Qwen AIO), run its cells and paste the new URL. You can already paint the mask.'
+                      : 'Works with the BigLust, Qwen 2511 and Qwen Rapid AIO notebooks (open them fresh from GitHub).'}
+                  </div>
+                )}
+                <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b>{backendType === 'krea2' ? '' : ' (BigLust)'}: 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
+                {inpaint ? (<>
+                  <div className="inpaint-current">
+                    <img src={inpaint.image} alt="Picture being inpainted" />
+                    <div>
+                      <div>{inpaint.summary} · {inpaint.width}×{inpaint.height}</div>
+                      <div className="inline" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+                        <button className="secondary" onClick={() => setMaskEditorSrc(inpaint.source)}>Paint again</button>
+                        <button className="danger" onClick={() => setInpaint(null)}>Stop inpainting</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="row">
+                    {hasDetail && <div><label>Denoise</label><input type="number" step="0.05" min="0.05" max="1" value={inpaintSettings.denoise} onChange={e => setInpaintSettings({ denoise: e.target.value })} /></div>}
+                    <div><label>Grow (px)</label><input type="number" step="1" min="0" max="64" value={inpaintSettings.grow} onChange={e => setInpaintSettings({ grow: e.target.value })} /></div>
+                    <div><label>Feather (px)</label><input type="number" step="1" min="0" max="128" value={inpaintSettings.feather} onChange={e => setInpaintSettings({ feather: e.target.value })} /></div>
+                  </div>
+                </>) : (
+                  <button className="secondary inpaint-open" onClick={() => inpaintFileRef.current?.click()}>+ Open a picture to inpaint / outpaint</button>
+                )}
+                <input ref={inpaintFileRef} type="file" accept="image/*" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setMaskEditorSrc(URL.createObjectURL(f)); e.target.value = '' }} />
+              </div>
+            )}
+          </Section>
+
+          {advanced && hasDetail && (
+            <Section id="detail" title="Detail tools" icon="✨" summary={detailOnCount ? `${detailOnCount} on` : 'Off'}>
+              {hasDetail && (
+                <DetailTools value={detail} setValue={setDetail} tools={detailTools} faceFix={faceFix}
+                  refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} modelName={MODEL_NAMES[backendType]} />
+              )}
+            </Section>
+          )}
+
+          {advanced && hasDetail && (
+            <Section id="refiner" title="Refiner" icon="⤴" summary={refinerOn && supportsRefiner ? `On · ${refinerUpscale}× · ${refinerStrength}` : 'Off'}>
+              {hasDetail && (
+                <div className="refiner-box">
+                  <div className="inline">
+                    <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
+                      title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
+                    <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br />{backendType === 'krea2'
+                      ? <><b>Refiner model</b>: Krea 2 itself, with your LoRAs. <b>Steps</b>: 6–10 is enough for Krea 2.<br /></>
+                      : <><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /></>}<b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.<br /><b>Enlarge with</b>: <i>Simple resize</i> is instant; <i>4x-UltraSharp</i> (a few seconds) gives the redraw a much sharper start; <i>4xNomos8kDAT</i> is the sharpest with the most natural textures but several times slower (half a minute or more on a T4).{!supportsRefiner && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab.</>}</>} />
+                  </div>
+                  {refinerOn && (<>
+                    <div className="row">
+                      <div style={{ flex: 2 }}>
+                        <label>Refiner model</label>
+                        <select value={refinerCkpt} onChange={e => setRefinerCkpt(e.target.value)}>
+                          <option value="">Same as main model (fastest, keeps LoRAs)</option>
+                          {checkpoints.map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                      </div>
+                      <div><label>Strength</label><input type="number" step="0.05" min="0.05" max="0.8" value={refinerStrength} onChange={e => setRefinerStrength(e.target.value)} /></div>
+                      <div>
+                        <label>Enlarge</label>
+                        <select value={refinerUpscale} onChange={e => setRefinerUpscale(+e.target.value)}>
+                          {[1, 1.25, 1.5, 1.75, 2].map(f => <option key={f} value={f}>{f === 1 ? '1× (same size)' : f + '×'}</option>)}
+                        </select>
+                      </div>
+                      <div><label>Steps</label><input type="number" min="4" max="60" value={refinerSteps} onChange={e => setRefinerSteps(e.target.value)} /></div>
+                      <div style={{ flex: 1.4 }}>
+                        <label>Enlarge with</label>
+                        <select value={(detailTools?.upscalers || []).includes(refinerUpscaler) ? refinerUpscaler : 'lanczos'} onChange={e => setRefinerUpscaler(e.target.value)}
+                          title="How the picture is made bigger before the refiner redraws it">
+                          <option value="lanczos">Simple resize (fastest)</option>
+                          {(detailTools?.upscalers || []).map(k => <option key={k} value={k}>{UPSCALER_NAMES[k] || k}{k === 'nomos8kdat' ? ' (sharpest, slow)' : ' (sharp, fast)'}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {backendType !== 'sdxl' ? null : showAddRefiner ? (
+                      <div className="add-box" style={{ marginTop: 10 }}>
+                        <input value={newRefinerUrl} onChange={e => setNewRefinerUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link to use as the refiner (page or download link)" />
+                        <div className="row">
+                          <button className="secondary" onClick={() => addModel('checkpoint', newRefinerUrl, 'refiner')}>Download & use as refiner</button>
+                          <button className="secondary" onClick={() => setShowAddRefiner(false)}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button className="secondary link-btn" onClick={() => setShowAddRefiner(true)}>+ Download refiner</button>
+                    )}
+                  </>)}
+                </div>
+              )}
+            </Section>
+          )}
+
+          <Section id="loras" title="LoRAs & models" icon="🧩" summary={loras.length ? `${loras.length} LoRA${loras.length === 1 ? '' : 's'} in use` : 'None in use'}>
+            {!supportsLoras && (<>
+              <label>LoRAs</label>
+              <div className="empty-msg">
+                The Qwen notebook running in Colab is an older version without LoRA support.
+                Open it fresh from GitHub (QWEN-AIO-NSFW-EDIT.ipynb), run cells 1, 2 and 3, and paste the new URL here.
+              </div>
+            </>)}
+            {supportsLoras && (<>
+            <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : backendType === 'krea2' ? ' (Krea 2 LoRAs)' : ''}</label>
+            {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
+            {loras.map((l, i) => (
+              <div key={l.name + i} className="lora-item">
+                <select value={l.name} onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))}>
+                  {!loraFiles.includes(l.name) && <option value={l.name}>{l.name} (not on server)</option>}
+                  {loraFiles.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+                <input type="number" step="0.05" value={l.strength} style={{width:80}} title="Strength"
+                  onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, strength: parseFloat(e.target.value) } : x))} />
+                {hasDetail && supportsLoraTargets && (
+                  <select className="lora-target" value={l.target || 'all'} title="Where this LoRA is used"
+                    onChange={e => setLoras(loras.map((x, idx) => idx === i ? { ...x, target: e.target.value } : x))}>
+                    <option value="all">Whole image</option>
+                    <option value="main">Main image only</option>
+                    <option value="face">Face fix only</option>
+                  </select>
+                )}
+                <button className="danger" onClick={() => setLoras(loras.filter((_, idx) => idx !== i))}>Remove</button>
+              </div>
+            ))}
+            {hasDetail && supportsLoraTargets && loras.length > 0 && (
+              <div className="muted lora-target-help">
+                Where each LoRA is used <Info text={<><b>Whole image</b>: the main image and the face fix (normal).<br /><b>Main image only</b>: body, outfit, pose — not used when face fix redraws the face.<br /><b>Face fix only</b>: used only to redraw the face (needs Face fix on).<br /><br />Example for best likeness: your full-body LoRA (e.g. Stephanie_v1) on <i>Main image only</i> and a face-only LoRA (e.g. Stephanie_face) on <i>Face fix only</i>, with the same trigger word in the prompt.</>} />
+                {loras.some(l => l.target === 'face') && !faceFix && (
+                  <span className="warn"> — a LoRA is set to “Face fix only”, but Face fix is off, so it won't be used.</span>
+                )}
+              </div>
+            )}
+            {loraFiles.some(f => !loras.some(l => l.name === f)) && (
+              <div className="lora-item">
+                <select value={loraToAdd} onChange={e => addLoraFromList(e.target.value)}>
+                  <option value="">+ Use a downloaded LoRA...</option>
+                  {loraFiles.filter(f => !loras.some(l => l.name === f)).map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
+            )}
+            {showAddLora && (
+              <div className="add-box">
+                <input value={newLoraUrl} onChange={e => setNewLoraUrl(e.target.value)} placeholder="Civitai or Hugging Face LoRA link (page or download link)" />
+                <div className="row">
+                  <button className="secondary" disabled={downloading} onClick={() => addModel('lora', newLoraUrl)}>Download & Add</button>
+                  <button className="secondary" onClick={() => setShowAddLora(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            <button className="secondary" onClick={() => setShowAddLora(true)}>+ Download LoRA</button>
+            </>)}
+
+            {backendType !== 'qwen_image_edit' && (<>
+            <label style={{marginTop:20}}>Add Checkpoint</label>
+            {showAddCheckpoint && (
+              <div className="add-box">
+                <input value={newCheckpointUrl} onChange={e => setNewCheckpointUrl(e.target.value)} placeholder="Civitai or Hugging Face SDXL checkpoint link (page or download link)" />
+                <div className="row">
+                  <button className="secondary" disabled={downloading} onClick={() => addModel('checkpoint', newCheckpointUrl)}>Download & Add</button>
+                  <button className="secondary" onClick={() => setShowAddCheckpoint(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+            <button className="secondary" onClick={() => setShowAddCheckpoint(true)}>+ Download Checkpoint</button>
+            </>)}
+          </Section>
+
+          {maskEditorSrc && (
+            <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
+              onClose={() => setMaskEditorSrc(null)}
+              onDone={result => {
+                setInpaint({ ...result, source: maskEditorSrc })
+                setWidth(result.width); setHeight(result.height)
+                setMaskEditorSrc(null)
+                setLightboxIndex(-1)
+                setStatusMsg(`Inpaint / outpaint ready (${result.summary}) — describe the result in the prompt and press Generate`, 'ok')
+              }} />
+          )}
+        </div>
+
+        {wide && <aside className="gen-side" aria-label="Progress and latest pictures">
+          <div className="gen-side-inner">
+            {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
+            {status && <div className={`status ${statusType}`}>{status}</div>}
+            <div className="gen-side-title">{latestPictures.fresh ? 'Latest' : 'Recent'}</div>
+            {latestPictures.items.length === 0 ? (
+              <div className="muted small-note">Your pictures appear here as they're made.</div>
+            ) : (
+              <div className="gen-side-grid">
+                {latestPictures.items.map(item => (
+                  <button key={item.id} className="gen-side-pic" onClick={() => openPicture(item)} title={item.positive || 'Open full size'}>
+                    <img src={item.url} alt="" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
-      <button className="secondary" onClick={() => setShowAddCheckpoint(true)}>+ Download Checkpoint</button>
-      </>)}
-
-      <label>Positive Prompt</label>
-      <textarea value={positive} onChange={e => setPositive(e.target.value)} />
-      {hasDetail && supportsLoraTags && loras.length > 0 && (
-        <PromptEnhancer backend={getBackend()} loras={loras} positive={positive} setPositive={setPositive} say={setStatusMsg} />
-      )}
-
-      <label>Negative Prompt</label>
-      <textarea value={negative} onChange={e => setNegative(e.target.value)} />
-
-      <div className="row" style={{marginTop:12}}>
-        <button onClick={generate}>Generate</button>
-        <button className="secondary" onClick={savePrompt}>Save Prompt</button>
+        </aside>}
       </div>
 
-      {genJobs.pct != null ? <JobProgress pct={genJobs.pct} /> : showProgress && <JobProgress pct={progress} />}
-      {status && <div className={`status ${statusType}`}>{status}</div>}
 
       <h3>Saved Prompts</h3>
       {savedPrompts.length > 0 && <div className="gallery-hint prompts-hint"><span className="hint-mouse">Click: select · double-click: edit · triple-click: rename</span><span className="hint-touch">Tap: select · double-tap: edit · triple-tap: rename</span></div>}
