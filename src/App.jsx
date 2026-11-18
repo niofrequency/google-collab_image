@@ -505,6 +505,7 @@ export default function App({ active = true }) {
         variation: meta.variation || null,
         model: meta.model || null,
         extraPicture: meta.extraPicture || null,
+        pictures: meta.pictures || null,   // small copies of the pose / scene, extra and face pictures (Load Full)
         character: meta.character || null,
         denoise: meta.denoise ?? null
       })
@@ -874,6 +875,17 @@ export default function App({ active = true }) {
     if (inpaintActive && hasDetail && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); job.cancel(); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
     const refActive = hasDetail && refModes.length > 0 && !!refPicture
     const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
+    // small copies of the pictures this generation uses, saved with each image so Load Full can put them back
+    const extraUsed = backendType === 'krea2' && supportsExtra && extraPicture
+    const picturesPromise = !hasDetail ? Promise.resolve(null) : (async () => {
+      const small = (src, side) => (src ? shrinkImage(src, side).catch(() => null) : null)
+      const out = {
+        ref: refActive ? await small(refPicture, 768) : null,
+        extra: extraUsed ? await small(extraPicture, 768) : null,
+        faces: faceRefActive && !faceRefCharacter ? (await Promise.all(faceRefImages.map(f => small(f, 512)))).filter(Boolean) : null,
+      }
+      return out.ref || out.extra || out.faces?.length ? out : null
+    })()
     const payload = {
       checkpoint: checkpoint || null, sampler, scheduler,
       steps: +steps, cfg: +cfg, width: +width, height: +height,
@@ -959,6 +971,7 @@ export default function App({ active = true }) {
       job.finish()
 
       const meta = {
+        pictures: await picturesPromise,
         positive, negative,
         checkpoint: checkpoint || (backendType === 'sdxl' && checkpoints[0]) || '',
         sampler, scheduler,
@@ -1286,8 +1299,20 @@ export default function App({ active = true }) {
     } }
   }
 
-  function loadFullWorkflow(item) {
+  async function readPictures(id) {
+    try {
+      const db = await openDB()
+      return await new Promise(resolve => {
+        const q = db.transaction('images', 'readonly').objectStore('images').get(id)
+        q.onsuccess = () => resolve(q.result?.pictures || null)
+        q.onerror = () => resolve(null)
+      })
+    } catch { return null }
+  }
+
+  async function loadFullWorkflow(item) {
     if (!item) return
+    const pics = await readPictures(item.id)   // the pictures it was made with (newer images keep small copies)
     setPositive(item.positive || '')
     setNegative(item.negative || '')
     if (item.checkpoint) setCheckpoint(item.checkpoint)
@@ -1339,6 +1364,9 @@ export default function App({ active = true }) {
           setFaceRefOn(false)
           notes.push(`the character "${item.faceRef.character}" isn't saved on this computer, so Face reference is Off — pick or add the face pictures and turn it On (its method and strength are set)`)
         }
+      } else if (item.faceRef && pics?.faces?.length) {   // face photos that weren't a saved character
+        setFaceRefImages(pics.faces); setFaceRefCharacter('')
+        setFaceRefPick(item.faceRef.pick ? Math.min(item.faceRef.pick, pics.faces.length) - 1 : 0)
       } else if (item.faceRef && !faceRefImages.length) {
         setFaceRefOn(false)
         notes.push('Face reference is Off — add the face pictures again and turn it On (they aren\'t saved with images)')
@@ -1351,6 +1379,7 @@ export default function App({ active = true }) {
         setExtraSettings(prev => ({ ...prev, kind: x.kind, strength: x.strength ?? prev.strength, character: x.character || '' }))
         const c = x.character && loadCharacters().find(k => k.name === x.character)
         if (c?.images?.length) setExtraPicture(c.images[0])
+        else if (pics?.extra) setExtraPicture(pics.extra)
         else if (!extraPicture) notes.push(x.kind === 'character' ? `add the second character${x.character ? ` ("${x.character}")` : ''} again` : 'add the object picture again')
       } else if (extraPicture) setExtraPicture(null)
     }
@@ -1360,7 +1389,8 @@ export default function App({ active = true }) {
         const r = item.refPicture
         setRefSettings(prev => ({ ...prev, mode: r.mode, ...(r.strength != null ? { strength: r.strength } : {}),
           ...(r.end != null ? { end: r.end } : {}), ...(r.denoise != null ? { denoise: r.denoise } : {}) }))
-        if (!refPicture) notes.push(`add the ${REF_MODE_NAMES[r.mode] || r.mode} picture again`)
+        if (pics?.ref) { setRefPicture(pics.ref); setRefMap(null) }
+        else if (!refPicture) notes.push(`add the ${REF_MODE_NAMES[r.mode] || r.mode} picture again`)
       } else if (refPicture) { setRefPicture(null); setRefMap(null) }
     }
     if (item.inpaint) notes.push('inpainting isn\'t restored (open the picture in Inpaint / outpaint again)')
