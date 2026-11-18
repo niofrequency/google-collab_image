@@ -111,7 +111,12 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
     <div className="detail-tools">
       <div className="inline" style={{ alignItems: 'center' }}>
         <strong className="detail-title">Detail tools</strong>
-        <Info text={<>Extra passes for <b>realistic photos</b>. Each one takes a little longer; their models download the first time you use them (and are kept in your Google Drive cache if it's on).<br /><br />
+        <Info text={sdxlOnly ? <>Extra passes for <b>realistic photos</b>, redrawn by <b>{modelName}</b>. Each one takes a little longer; their models download the first time you use them.<br /><br />
+          <b>Face fix 2 passes</b>: a second, lighter face fix after the first — often more likeness with fewer seams. With Face reference (Identity Edit) on, both passes follow your face photo.<br />
+          <b>Eye detail</b>: the eye area of each face redrawn lightly at full size — sharp iris, catchlights. 0.25–0.35.<br />
+          <b>Hand fix</b>: finds the hands and redraws them at full size (like face fix) — fewer extra / fused fingers. 0.35–0.5.<br />
+          <b>CodeFormer</b>: the last step — cleans up eyes, teeth and skin of every face. <i>Fidelity</i> 0 = strongest cleanup … 1 = closest to the face (0.7). <i>Mix</i> = how much of it is blended in (40% keeps it natural).<br /><br />
+          PAG, Detail Daemon and Tile detail are BigLust (SDXL) tools, so they're greyed out here.</> : <>Extra passes for <b>realistic photos</b>. Each one takes a little longer; their models download the first time you use them (and are kept in your Google Drive cache if it's on).<br /><br />
           <b>Face fix 2 passes</b>: a second, lighter face fix after the first — often more likeness with fewer seams (great with InstantID).<br />
           <b>Eye detail</b>: the eye area of each face redrawn lightly at full size — sharp iris, catchlights. 0.25–0.35.<br />
           <b>Hand fix</b>: finds the hands and redraws them at full size (like face fix) — fewer extra / fused fingers. 0.35–0.5.<br />
@@ -119,8 +124,7 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
           <b>Detail Daemon</b>: in the middle steps the model is told there's a bit less noise, so it keeps more fine detail (skin, hair, fabric) instead of smoothing it away. No extra time. 0.1 subtle · 0.2 default · 0.3–0.4 strong (too high looks gritty).<br />
           <b>Tile detail</b> (with the Refiner on): the Tile ControlNet holds the picture so the refiner can add real detail — skin pores, hair strands, fabric — without changing the face. Raise the refiner's strength to 0.4–0.5 with it. Tile 0.5–0.7.<br />
           <b>CodeFormer</b>: the last step — cleans up eyes, teeth and skin of every face. <i>Fidelity</i> 0 = strongest cleanup … 1 = closest to the face (0.7). <i>Mix</i> = how much of it is blended in (40% keeps it natural).<br /><br />
-          {sdxlOnly ? <>With <b>{modelName}</b>: Face fix 2 passes, Eye detail, Hand fix and CodeFormer work (redrawn by {modelName}; with Face reference on, face fix follows your face photo); PAG, Detail Daemon and Tile detail are SDXL-only.</>
-            : <>Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>}</>} />
+          Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>} />
       </div>
       <div className="detail-grid">
         {faceFix && tools?.face_fix_passes && (

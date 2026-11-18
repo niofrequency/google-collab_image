@@ -9,13 +9,13 @@ export const REF_MODE_INFO = {
   depth: { label: 'Depth / framing', help: 'Copies the shapes, layout and camera framing (a depth map + ControlNet), more strictly than the pose. Good for the same composition with another person or outfit.' },
   style: { label: 'Style / outfit', help: 'Copies the look — outfit, colours, light and style — without fixing where things are (IP-Adapter Plus).' },
   scene: { label: 'Scene (put the person in it)', help: 'Krea 2: this picture is the scene, and your Face reference character is placed into it as the prompt says ("she sits at the console, looking at the screens"). Without a Face reference it works like Edit.' },
-  edit: { label: 'Edit this picture', help: 'Krea 2: changes this picture the way the prompt says ("make it night", "change the suit to white", "remove the cup") and keeps the rest — like Qwen Edit, with Krea 2\'s realism.' },
+  edit: { label: 'Edit this picture', help: 'Krea 2: changes this picture the way the prompt says ("make it night", "change the suit to white", "remove the cup") and keeps the rest.' },
   kdepth: { label: 'Depth / framing', help: 'Krea 2: copies the shapes, layout and camera framing (a depth map + the Krea 2 depth control). Strength 0.8–1.0. Can\'t be combined with Face reference yet — use Scene for that.' },
   img2img: { label: 'Img2img', help: 'Starts from the picture itself and redraws it. Denoise 0.3 stays close to it, 0.8 is only loosely based on it.' },
 }
 export const DEFAULT_REF_SETTINGS = { mode: 'pose', strength: 0.8, end: 0.85, denoise: 0.6, showMap: true }
 
-export default function RefPicture({ image, setImage, settings, setSettings, modes, map, say, hoverRef }) {
+export default function RefPicture({ image, setImage, settings, setSettings, modes, map, say, hoverRef, krea = false }) {
   const fileRef = useRef(null)
   const set = patch => setSettings(prev => ({ ...prev, ...patch }))
   const mode = modes.includes(settings.mode) ? settings.mode : modes[0]
@@ -26,9 +26,13 @@ export default function RefPicture({ image, setImage, settings, setSettings, mod
 
   return (
     <div className="ref-pic-box">
-      <label>Pose / structure / style picture <span className="muted">(optional)</span> <Info text={<>
+      <label>Pose / structure / style picture <span className="muted">(optional)</span> <Info text={krea ? <>
+        A second picture for Krea 2. <b>Use it for</b>:<br /><br />
+        {modes.map(m => REF_MODE_INFO[m] && <span key={m}><b>{REF_MODE_INFO[m].label}</b>: {REF_MODE_INFO[m].help.replace(/^Krea 2: /, '')}<br /></span>)}<br />
+        <b>Scene</b> and <b>Edit</b> follow your prompt as an instruction — write what should happen ("she stands at the window, looking out at the Earth"). <b>Strength</b> (Depth): 0.8–1.0. <b>Denoise</b> (Img2img): 0.3 stays close to the picture, 0.8 is only loosely based on it.<br /><br />
+        Pasting a picture anywhere on the page puts it here. The Edit and Depth models download the first time you use them.</> : <>
         A second picture that works <b>together with the Face reference</b>: the face comes from the Face reference (or your LoRA / prompt), and this picture sets the pose, the framing, the look, or the starting point.<br /><br />
-        {Object.values(REF_MODE_INFO).map(m => <span key={m.label}><b>{m.label}</b>: {m.help}<br /></span>)}<br />
+        {modes.map(m => REF_MODE_INFO[m] && <span key={m}><b>{REF_MODE_INFO[m].label}</b>: {REF_MODE_INFO[m].help}<br /></span>)}<br />
         <b>Strength</b>: how strongly it steers (0.8 default; lower = more freedom). <b>Until</b>: it stops steering at this point of the steps, so the last steps can refine details freely (0.85 default).<br /><br />
         Face fix never uses the pose / depth picture, so a full-body skeleton doesn't distort the close-up of the face. The pose, depth and style models download the first time you use them (2.5 / 2.5 / 0.85 GB).</>} /></label>
       <div className={`image-drop ref-pic-drop ${image ? 'has-image' : ''}`} role="button" tabIndex={0}
@@ -71,7 +75,7 @@ export default function RefPicture({ image, setImage, settings, setSettings, mod
           )}
         </div>
       )}
-      {image && <div className="muted small-note ref-pic-help">{REF_MODE_INFO[mode]?.help}</div>}
+      {image && <div className="muted small-note ref-pic-help">{REF_MODE_INFO[mode]?.help.replace(/^Krea 2: /, '')}</div>}
       {image && (mode === 'pose' || mode === 'depth' || mode === 'kdepth') && (
         <label className="inline-label ref-pic-map">
           <input type="checkbox" checked={!!settings.showMap} onChange={e => set({ showMap: e.target.checked })} style={{ width: 'auto' }} />

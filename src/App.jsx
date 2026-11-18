@@ -319,7 +319,7 @@ export default function App({ active = true }) {
       for (const item of cd.items || []) {
         if (item.kind === 'file' && item.type.startsWith('image/')) {
           const blob = item.getAsFile()
-          if (blob && refPicHoverRef.current) {   // pasted onto the pose / style picture box
+          if (blob && (refPicHoverRef.current || backendTypeRef.current === 'krea2')) {   // pasted onto the pose / style picture box (Krea 2: anywhere)
             e.preventDefault()
             shrinkImage(URL.createObjectURL(blob), 1024).then(src => { setRefPicture(src); setStatusMsg('Pose / style picture loaded', 'ok') })
             return
@@ -336,6 +336,11 @@ export default function App({ active = true }) {
       // 3) A copied image address
       const text = (cd.getData('text/plain') || '').trim()
       const url = htmlSrc || (isImageAddress(text) ? text : '')
+      if (url && backendTypeRef.current === 'krea2') {   // Krea 2 has no Reference Images: it becomes the pose / structure picture
+        e.preventDefault()
+        shrinkImage(url, 1024).then(src => { setRefPicture(src); setStatusMsg('Pose / structure picture loaded', 'ok') }).catch(err => setStatusMsg(err.message, 'error'))
+        return
+      }
       if (url) { e.preventDefault(); loadImageFromUrl(url) }
     }
     window.addEventListener('paste', handlePaste)
@@ -1326,7 +1331,7 @@ export default function App({ active = true }) {
       <h1>ARX Image Generator</h1>
       <CharacterBar storageKey="gen_charbar" allAngles={true}
         active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
-        hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : 'BigLust: the pictures become the Face reference.'}
+        hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : backendType === 'krea2' ? 'Krea 2: the Primary picture becomes the Face reference (Identity Edit).' : 'BigLust: the pictures become the Face reference.'}
         onPick={pickCharacter} onClear={clearCharacter} />
 
       <label>Backend URL</label>
@@ -1338,9 +1343,11 @@ export default function App({ active = true }) {
             title={savedBackends[type] ? `Switch to ${name} (its notebook must be running in Colab)` : `Run the ${name} notebook (Notebooks tab) and paste its READY URL above once — then this switches to it`}
             onClick={() => switchBackend(type)}>{name}</button>
         ))}
-        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.<br /><br /><b>Krea 2</b>: very realistic text-to-image, with its own versions of BigLust's tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene</b> (put your character into a picture), <b>Edit</b> (change a picture by instruction) and <b>Depth</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation. PAG, Detail Daemon and Tile are SDXL-only. You can still send a Krea 2 picture to BigLust: <b>Refine with InstantID (BigLust)</b> in its full-size view.</>} />
+        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.{backendType === 'krea2' && <><br /><br /><b>Krea 2</b> (connected): very realistic text-to-image. Its tools: <b>Face reference → Identity Edit</b> (your character from one face photo), <b>Pose / structure picture → Scene, Edit, Depth, Img2img</b>, plus inpaint, refiner, LoRA targets, prompt enhancer, face / eye / hand fix, CodeFormer and Variation.</>}
+          {backendType === 'sdxl' && <><br /><br /><b>BigLust</b> (connected): SDXL text-to-image with Face reference (FaceID / PuLID / InstantID), pose / depth / style pictures, inpaint, refiner and all the detail tools.</>}</>} />
       </div>
 
+      {backendType !== 'krea2' && (<>
       <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
       <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
         title={refImages.length >= MAX_REFS ? `Up to ${MAX_REFS} images` : 'Tap to choose from your photos · hover and press Ctrl+V to paste'}
@@ -1381,6 +1388,7 @@ export default function App({ active = true }) {
           <button className="secondary" onClick={clearReferenceImage} style={{width:'auto'}}>Clear all</button>
         </div>
       )}
+      </>)}
 
       {GENERATOR_PRESETS[backendType] && (
         <PresetBar key={backendType} scope={'gen_' + backendType} builtins={GENERATOR_PRESETS[backendType]}
@@ -1492,9 +1500,11 @@ export default function App({ active = true }) {
             <button key={label} className={`chip ${+width === w && +height === h ? 'active' : ''}`} title={`${w} × ${h}`}
               onClick={() => { setWidth(w); setHeight(h) }}>{label} <span className="size-dim">{w}×{h}</span></button>
           ))}
-          <Info text={<>SDXL (BigLust, Juggernaut, Pony…) was trained at about 1 megapixel in these shapes. Much taller or bigger sizes often come out as <b>two pictures stacked in one</b> (panels / split screen). For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp); for an extra-tall one, extend it afterwards with <b>Inpaint / outpaint</b>.</>} />
-          {(+width * +height > 1.35e6 || Math.max(+width, +height) / Math.max(1, Math.min(+width, +height)) > 1.8) && (
-            <span className="size-warn">This size may come out as two panels — pick one of these sizes</span>
+          <Info text={backendType === 'krea2'
+            ? <>Krea 2 works best at about <b>1–2 megapixels</b>. These 1 MP sizes are the safest and fastest; up to about 2 MP (e.g. 1152×1728) also works. Much bigger, and people or objects can start to repeat. For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp).</>
+            : <>SDXL (BigLust, Juggernaut, Pony…) was trained at about 1 megapixel in these shapes. Much taller or bigger sizes often come out as <b>two pictures stacked in one</b> (panels / split screen). For a bigger picture, use one of these sizes and turn on the <b>Refiner</b> (1.5×, Enlarge with 4x-UltraSharp); for an extra-tall one, extend it afterwards with <b>Inpaint / outpaint</b>.</>} />
+          {(backendType === 'krea2' ? +width * +height > 2.2e6 : (+width * +height > 1.35e6 || Math.max(+width, +height) / Math.max(1, Math.min(+width, +height)) > 1.8)) && (
+            <span className="size-warn">{backendType === 'krea2' ? 'Over 2 megapixels: people or objects may repeat — pick a smaller size and use the Refiner' : 'This size may come out as two panels — pick one of these sizes'}</span>
           )}
         </div>
       )}
@@ -1510,7 +1520,7 @@ export default function App({ active = true }) {
               <input type="number" step="0.05" min="0.1" max="0.8" value={faceStrength} onChange={e => setFaceStrength(e.target.value)} />
             </label>
           )}
-          <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the BigLust notebook fresh from GitHub (it installs the face detector in cell 1).</>}</>} />
+          <Info text={<>After the image is made, face fix finds each face, redraws it at full resolution with your LoRAs and prompt, and blends it back in (like ADetailer). Small faces — e.g. in full-body images — get much more detail and look more like a person LoRA. Takes a little longer per image.{backendType === 'krea2' && <><br /><br />Krea 2 redraws the face. With <b>Face reference</b> (Identity Edit) on, each face is redrawn <b>following your face photo</b>, which brings the likeness back in full-body shots.</>}<br /><br /><b>Strength</b>: how much of the face is redrawn. 0.3 = subtle clean-up, 0.4 = good default, 0.5–0.6 = stronger likeness but can drift from the original expression.{!supportsFaceFix && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab (it installs the face detector in cell 1).</>}</>} />
         </div>
       )}
 
@@ -1535,7 +1545,7 @@ export default function App({ active = true }) {
                 : 'Works with the BigLust, Qwen 2511 and Qwen Rapid AIO notebooks (open them fresh from GitHub).'}
             </div>
           )}
-          <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b> (BigLust): 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
+          <label>Inpaint / outpaint <Info text={<>Redraw part of a picture, or extend its borders. Open a picture (here, or <b>Inpaint / outpaint</b> in the gallery's full-size viewer), paint over what should change or pick a new shape, then describe the result in the prompt and press Generate.<br /><br />Only the painted / extended areas change: the rest is pasted back from your picture, pixel for pixel. Face reference, LoRAs and Face fix still apply.<br /><br /><b>Denoise</b>{backendType === 'krea2' ? '' : ' (BigLust)'}: 1.0 redraws the area completely; 0.5–0.8 keeps some of what was there (e.g. fixing a hand). <b>Grow</b> widens the mask a little; <b>Feather</b> softens its edge.{backendType === 'qwen_image_edit' && <><br /><br />Qwen: the picture becomes Picture 1; your reference pictures become Pictures 2 and 3 (e.g. "put the necklace from Picture 2 on her").</>}</>} /></label>
           {inpaint ? (<>
             <div className="inpaint-current">
               <img src={inpaint.image} alt="Picture being inpainted" />
@@ -1573,7 +1583,7 @@ export default function App({ active = true }) {
       {hasDetail && refModes.length > 0 && (
         <RefPicture image={refPicture} setImage={src => { setRefPicture(src); setRefMap(null) }}
           settings={refSettings} setSettings={setRefSettings} modes={refModes} map={refMap}
-          say={setStatusMsg} hoverRef={refPicHoverRef} />
+          say={setStatusMsg} hoverRef={refPicHoverRef} krea={backendType === 'krea2'} />
       )}
 
       {hasDetail && (
@@ -1581,7 +1591,9 @@ export default function App({ active = true }) {
           <div className="inline">
             <button className={`toggle ${refinerOn ? 'on' : ''}`} disabled={!supportsRefiner} onClick={() => setRefinerOn(r => !r)}
               title={supportsRefiner ? 'Click to turn the refiner on or off' : 'Needs the updated BigLust notebook'}>Refiner: {refinerOn ? 'On' : 'Off'}</button>
-            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br /><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /><b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.<br /><b>Enlarge with</b>: <i>Simple resize</i> is instant; <i>4x-UltraSharp</i> (a few seconds) gives the redraw a much sharper start; <i>4xNomos8kDAT</i> is the sharpest with the most natural textures but several times slower (half a minute or more on a T4).{!supportsRefiner && <><br /><br />Not available: open the BigLust notebook fresh from GitHub.</>}</>} />
+            <Info text={<>A second pass for better quality (like "hires fix"): after the image (and face fix) is made, it's <b>enlarged</b> and then <b>lightly redrawn</b>, which adds sharp detail and cleaner skin, hair and textures.<br /><br />{backendType === 'krea2'
+              ? <><b>Refiner model</b>: Krea 2 itself, with your LoRAs. <b>Steps</b>: 6–10 is enough for Krea 2.<br /></>
+              : <><b>Refiner model</b>: <i>Same as main model</i> is fastest and keeps your LoRAs. Or pick any SDXL checkpoint — paste a Civitai / Hugging Face link under <i>+ Download refiner</i>. A different refiner is loaded in place of the main model, so each image takes longer, and its LoRAs aren't used in this pass.<br /></>}<b>Strength</b>: 0.2 subtle · 0.3 default · 0.4–0.5 stronger (can change details).<br /><b>Enlarge</b>: 1.5× is a good balance; 2× is slower and needs more GPU memory (best on an L4/A100). Images are capped at 2048 px.<br /><b>Enlarge with</b>: <i>Simple resize</i> is instant; <i>4x-UltraSharp</i> (a few seconds) gives the redraw a much sharper start; <i>4xNomos8kDAT</i> is the sharpest with the most natural textures but several times slower (half a minute or more on a T4).{!supportsRefiner && <><br /><br />Not available: open the {backendType === 'krea2' ? 'Krea 2' : 'BigLust'} notebook fresh from the Notebooks tab.</>}</>} />
           </div>
           {refinerOn && (<>
             <div className="row">
@@ -1632,7 +1644,7 @@ export default function App({ active = true }) {
         </div>
       </>)}
       {supportsLoras && (<>
-      <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : ''}</label>
+      <label>LoRAs{backendType === 'qwen_image_edit' ? ' (Qwen-Image / Qwen-Image-Edit LoRAs)' : backendType === 'krea2' ? ' (Krea 2 LoRAs)' : ''}</label>
       {loras.length === 0 && <div className="empty-msg">No LoRAs in use.{loraFiles.length ? ' Pick one below, or download a new one.' : ''}</div>}
       {loras.map((l, i) => (
         <div key={l.name + i} className="lora-item">
