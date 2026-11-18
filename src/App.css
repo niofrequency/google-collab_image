@@ -1188,3 +1188,7 @@ html.hide-images img, html.hide-images video, html.hide-images canvas { opacity:
 
 /* "loaded, except …" — not an error */
 .status.warn { background: #2a2312; color: #f0b44c; padding: 12px 16px; border-radius: 10px; border: 1px solid #5a4a22; }
+
+/* Image Generator: Model switch (BigLust / Krea 2 / Qwen) */
+.model-switch { margin: 8px 0 4px; }
+.model-switch .chip:disabled { opacity: 0.45; cursor: not-allowed; }

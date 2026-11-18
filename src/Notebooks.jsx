@@ -7,6 +7,8 @@ const GROUPS = [
     items: [
       { file: 'BIGLUST.ipynb', name: 'BigLust (SDXL)', tab: 'generate', tabName: 'Image Generator', gpu: 'T4 free · L4 better',
         what: 'Text-to-image with BigLust or any SDXL checkpoint (Juggernaut, Pony…), LoRAs, Face reference (FaceID, PuLID, InstantID…), face / hand fix, pose & style pictures, inpaint, refiner and detail tools.' },
+      { file: 'KREA2.ipynb', name: 'Krea 2 Realism', tab: 'generate', tabName: 'Image Generator', gpu: 'L4 · A100',
+        what: 'Very realistic text-to-image with Krea 2 and its LoRAs (yours are saved to Google Drive). Face fix, eye / hand detail, CodeFormer and Variation; switch between it and BigLust with the Model buttons.' },
       { file: 'QWEN-2511-IMAGE-EDIT.ipynb', name: 'Qwen Image Edit 2511', tab: 'generate', tabName: 'Image Generator', gpu: 'L4 · A100',
         what: 'Edits photos from a text instruction with up to 3 reference pictures (the official 2511 model, 4-step Lightning). Also text-to-image and inpaint.' },
       { file: 'QWEN-AIO-NSFW-EDIT.ipynb', name: 'Qwen Image Edit Rapid AIO', tab: 'generate', tabName: 'Image Generator', gpu: 'T4 · L4',
@@ -48,7 +50,6 @@ const GROUPS = [
 
 const OLDER = [
   { file: 'INTO-REALISM.ipynb', name: 'Into Realism (SDXL)', what: 'Older SDXL text-to-image notebook with a website server.' },
-  { file: 'KREA2.ipynb', name: 'Krea 2 Realism', what: 'Older Krea 2 text-to-image notebook with a website server.' },
   { file: 'Wan2.1_T2I_jupyter.ipynb', name: 'Wan 2.1 (GGUF)', what: 'Text-to-image with Wan 2.1 14B inside the notebook (no website server).' },
 ]
 

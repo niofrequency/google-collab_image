@@ -436,6 +436,7 @@ function ItemInfo({ item, source, character, url, onClose, onDownload, onOpen })
   add('Character', character)
   add('Size', w ? `${w} × ${h}` : null)
   if (source.key === 'images') {
+    add('Model', { sdxl: 'BigLust (SDXL)', krea2: 'Krea 2', qwen_image_edit: 'Qwen Edit' }[item.model] || null)
     add('Steps / CFG', item.steps ? `${item.steps} / ${item.cfg}` : null)
     add('Seed', item.seed)
     add('Variation', item.variation ? `seed ${item.variation.seed} at ${item.variation.strength}` : null)

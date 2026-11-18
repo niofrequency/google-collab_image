@@ -195,6 +195,24 @@ Under Face fix in the Image Generator. Each is a switch; models download on firs
 
 Pose pictures are now read with **DWPose** (much better hands and fingers), falling back to OpenPose.
 
+## Krea 2 Realism (KREA2.ipynb)
+
+Very realistic text-to-image, in the same **Image Generator** tab as BigLust.
+
+1. Open **Krea 2 Realism** from the website's Notebooks tab (L4 or A100; a T4 works but is slow) and run cells 1–3.
+   Cell 1 downloads the LoRAs listed in `LORA_LINKS` into **MyDrive/ComfyUI/loras_krea2** (once — later sessions find
+   them there), and saves the models (10 GB or less each) to MyDrive/ComfyUI/krea2_models so later sessions start faster.
+2. Paste its **READY** URL into **Backend URL**. Under it, the **Model** buttons remember each notebook's URL, so you
+   can flip between **BigLust** and **Krea 2** (both notebooks running) without pasting again. A notebook's URL changes
+   each time it starts: paste the new one once.
+3. Recommended settings are applied on connect: 8 steps, CFG 1, euler / simple, 1024×1024.
+
+Works with Krea 2: LoRAs (Krea 2 ones), **Face fix** (+ 2 passes), **Eye detail**, **Hand fix**, **CodeFormer**,
+**Seed** and **Variation**. SDXL-only (not with Krea 2): Face reference (FaceID / PuLID / InstantID), PAG, Detail
+Daemon, Tile detail, pose / style pictures and the refiner. For your face on a Krea 2 picture, open it full size and
+click **Refine with InstantID (BigLust)**: it switches to BigLust and redraws the face with your Face reference at
+img2img 0.35, keeping the picture.
+
 ## Seed and variation seed (BigLust)
 
 - **Seed**: -1 (🎲) = a new picture every time. Every picture saves the exact seed it was made with (in a batch: seed, seed+1, …), shown in the "i" info; **Load Full** puts it back, so the same settings remake the same picture. ♻ reuses the last seed.

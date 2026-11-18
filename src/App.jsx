@@ -31,6 +31,7 @@ const NGROK_HEADERS = {
 
 const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID' }
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
+const MODEL_NAMES = { sdxl: 'BigLust (SDXL)', krea2: 'Krea 2', qwen_image_edit: 'Qwen Edit' }   // the Model switch
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img' }
 
 // SDXL's native sizes (about 1 megapixel); far outside them it tends to draw two pictures in one
@@ -81,6 +82,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 export default function App({ active = true }) {
   const [backendUrl, setBackendUrl] = useState('')
+  // The Model switch: the last URL of each notebook type (BigLust, Krea 2, Qwen), so you can flip between them
+  const [savedBackends, setSavedBackends] = useState(() => { try { return JSON.parse(localStorage.getItem('gen_backends')) || {} } catch { return {} } })
   const [checkpoint, setCheckpoint] = useState('')
   const [checkpoints, setCheckpoints] = useState([])
   const [sampler, setSampler] = useState('euler')
@@ -423,6 +426,7 @@ export default function App({ active = true }) {
       detail: item.detail || null,
       seed: item.seed ?? null,
       variation: item.variation || null,
+      model: item.model || null,
       inpaint: item.inpaint || null,
       denoise: item.denoise ?? null
     })))
@@ -459,6 +463,7 @@ export default function App({ active = true }) {
         faceRef: meta.faceRef || null, refPicture: meta.refPicture || null, inpaint: meta.inpaint || null,
         detailTools: meta.detailTools || null, detail: meta.detail || null, seed: meta.seed ?? null,
         variation: meta.variation || null,
+        model: meta.model || null,
         character: meta.character || null,
         denoise: meta.denoise ?? null
       })
@@ -467,6 +472,7 @@ export default function App({ active = true }) {
     })
   }
 
+  const hasDetail = backendType === 'sdxl' || backendType === 'krea2'   // face fix + detail tools + variation
   function getBackend() { return backendUrl.trim().replace(/\/$/, '') }
 
   // Width/Height for an image: its own size, scaled down so the longest side is at most 1024,
@@ -594,12 +600,17 @@ export default function App({ active = true }) {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  async function loadUserModels() {
-    const backend = getBackend()
+  async function loadUserModels(url, { fromSwitch = false } = {}) {
+    const backend = (typeof url === 'string' ? url : getBackend()).trim().replace(/\/$/, '')
     if (!backend) return
     try {
       const res = await fetch(backend + '/user_models', { headers: NGROK_HEADERS })
       const data = await res.json()
+      if (data.model_type) setSavedBackends(prev => {
+        const next = { ...prev, [data.model_type]: backend }
+        localStorage.setItem('gen_backends', JSON.stringify(next))
+        return next
+      })
       setBackendType(data.model_type || '')
       backendTypeRef.current = data.model_type || ''
       setSupportsFaceFix(!!data.supports_face_fix)
@@ -651,9 +662,28 @@ export default function App({ active = true }) {
         if (d.height) setHeight(d.height)
         if (d.denoise != null) setDenoise(d.denoise)
         if (data.checkpoints?.length === 1) setCheckpoint(data.checkpoints[0])
-        setStatusMsg(`Connected (${data.model_type || 'backend'}) — recommended settings applied`, 'ok')
-      }
-    } catch {}
+        setStatusMsg(`Connected (${MODEL_NAMES[data.model_type] || data.model_type || 'backend'}) — recommended settings applied`, 'ok')
+      } else if (fromSwitch) setStatusMsg(`Switched to ${MODEL_NAMES[data.model_type] || data.model_type || 'the notebook'}`, 'ok')
+      return true
+    } catch {
+      if (fromSwitch) setStatusMsg('That notebook didn\'t answer at its last address — its URL changes every time the notebook starts: paste the new READY URL into Backend URL.', 'error')
+      return false
+    }
+  }
+
+  // Flip to another notebook you've connected before (it must be running in Colab)
+  async function switchBackend(type) {
+    const url = savedBackends[type]
+    if (!url || type === backendType) return backendType === type
+    setBackendUrl(url)
+    return loadUserModels(url, { fromSwitch: true })
+  }
+
+  // Krea 2 pictures: redraw the face with BigLust + InstantID (switches to BigLust if it was connected before)
+  async function refineKreaPicture(item) {
+    setLightboxIndex(-1); setInfoItem(null)
+    if (backendType !== 'sdxl' && savedBackends.sdxl) await switchBackend('sdxl')
+    window.dispatchEvent(new CustomEvent('refine-with-instantid', { detail: { src: item.url, from: 'Krea 2' } }))
   }
 
   async function addModel(type, url, target = 'main') {  // target 'refiner': use the new checkpoint as the refiner
@@ -767,14 +797,14 @@ export default function App({ active = true }) {
       steps: +steps, cfg: +cfg, width: +width, height: +height,
       denoise: +denoise, batch_size: count,
       ...(+seed >= 0 ? { seed: +seed } : {}),
-      ...(backendType === 'sdxl' && detailTools?.variation_seed && +varStrength > 0
+      ...(hasDetail && detailTools?.variation_seed && +varStrength > 0
         ? { variation_strength: +varStrength, ...(+varSeed >= 0 ? { variation_seed: +varSeed } : {}) } : {}),
       loras, positive, negative,
       reference_image: refImages[0] || null,        // Picture 1
       reference_images: refImages.slice(1),         // Pictures 2 and 3
-      face_fix: backendType === 'sdxl' && faceFix,
+      face_fix: hasDetail && faceFix,
       face_fix_strength: +faceStrength,
-      ...(backendType === 'sdxl' ? detailPayload(detail, detailTools, { faceFix, refinerOn: supportsRefiner && refinerOn }) : {}),
+      ...(hasDetail ? detailPayload(detail, detailTools, { faceFix, refinerOn: supportsRefiner && refinerOn }) : {}),
       refiner: backendType === 'sdxl' && supportsRefiner && refinerOn,
       refiner_checkpoint: refinerCkpt || null,
       refiner_strength: +refinerStrength,
@@ -848,7 +878,8 @@ export default function App({ active = true }) {
         steps: +steps, cfg: +cfg, denoise: +denoise,
         width: data.width || +width, height: data.height || +height,
         loras: [...loras],
-        faceFix: backendType === 'sdxl' && faceFix, faceStrength: +faceStrength,
+        faceFix: hasDetail && faceFix, faceStrength: +faceStrength,
+        model: backendType || null,   // which notebook made it (BigLust, Krea 2, Qwen)
         detail: detailRecord(payload),
         seed: data.seed ?? null,
         // the character used (for the Gallery tab's character tags / search)
@@ -1187,6 +1218,9 @@ export default function App({ active = true }) {
       if (item.variation) { setVarSeed(item.variation.seed); setVarStrength(item.variation.strength) } else setVarStrength(0)
     }
     const notes = []
+    if (item.model && backendType && item.model !== backendType && MODEL_NAMES[item.model]) {
+      notes.push(`it was made with ${MODEL_NAMES[item.model]} — switch Model to ${MODEL_NAMES[item.model]} to remake it`)
+    }
     // Refiner
     if (item.refiner !== undefined) {
       setRefinerOn(!!item.refiner)
@@ -1284,7 +1318,16 @@ export default function App({ active = true }) {
         onPick={pickCharacter} onClear={clearCharacter} />
 
       <label>Backend URL</label>
-      <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={loadUserModels} placeholder="https://xxxx.ngrok-free.app" />
+      <input value={backendUrl} onChange={e => setBackendUrl(e.target.value)} onBlur={() => loadUserModels()} placeholder="https://xxxx.trycloudflare.com" />
+      <div className="chips model-switch" role="group" aria-label="Model">
+        <span className="chips-label">Model</span>
+        {Object.entries(MODEL_NAMES).map(([type, name]) => (
+          <button key={type} className={`chip ${backendType === type ? 'active' : ''}`} disabled={!savedBackends[type] && backendType !== type}
+            title={savedBackends[type] ? `Switch to ${name} (its notebook must be running in Colab)` : `Run the ${name} notebook (Notebooks tab) and paste its READY URL above once — then this switches to it`}
+            onClick={() => switchBackend(type)}>{name}</button>
+        ))}
+        <Info text={<>Each model runs in its own Colab notebook. Paste a notebook's <b>READY</b> URL above once, and it's remembered here: click to switch between <b>BigLust</b> and <b>Krea 2</b> (and Qwen) without pasting again — both notebooks must be running.<br /><br />The URL changes every time a notebook starts, so after restarting one, paste its new URL once more.<br /><br /><b>Krea 2</b>: very realistic text-to-image. Face fix, Eye detail, Hand fix, CodeFormer and Variation work with it; Face reference (PuLID / InstantID / FaceID), PAG, Detail Daemon and Tile are SDXL-only. For your face on a Krea 2 picture, use <b>Refine with InstantID (BigLust)</b> in its full-size view.</>} />
+      </div>
 
       <label style={{marginTop: 16}}>Reference Images (for Qwen Image Edit) — {refImages.length}/{MAX_REFS}</label>
       <div className={`image-drop ${refImages.length ? 'has-image' : ''}`} role="button" tabIndex={0}
@@ -1402,7 +1445,7 @@ export default function App({ active = true }) {
         </div>
       </div>
 
-      {backendType !== 'qwen_image_edit' && (
+      {(hasDetail || !backendType) && (
         <div className="variation-row">
           <span className="chips-label">Variation</span>
           <Info text={<>Make <b>derivatives of the same picture</b>: keep its <b>Seed</b> (♻ or Load Full) and turn Variation up. A second seed's noise is blended into the picture's own, so the result stays the same picture with changes.<br /><br />
@@ -1423,9 +1466,9 @@ export default function App({ active = true }) {
               <button className="secondary" title={lastVarSeed != null ? `Reuse the last variation seed (${lastVarSeed})` : 'No variation yet'} disabled={lastVarSeed == null} onClick={() => setVarSeed(lastVarSeed)}>♻</button>
             </div>
           )}
-          {!detailTools?.variation_seed && <span className="muted small-note">{backendType === 'sdxl'
-            ? 'The connected BigLust notebook is an older version: in Colab use Runtime → Disconnect and delete runtime, open BIGLUST fresh from the Notebooks tab, run cells 1–3 and paste the new URL.'
-            : 'Connect the BigLust notebook (Notebooks tab → BigLust, run cells 1–3, paste its URL above) to use it.'}</span>}
+          {!detailTools?.variation_seed && <span className="muted small-note">{hasDetail
+            ? 'The connected notebook is an older version: in Colab use Runtime → Disconnect and delete runtime, open it fresh from the Notebooks tab, run cells 1–3 and paste the new URL.'
+            : 'Connect the BigLust or Krea 2 notebook (Notebooks tab, run cells 1–3, paste its URL above) to use it.'}</span>}
           {detailTools?.variation_seed && +varStrength > 0 && +seed < 0 && <span className="muted small-note">set a Seed (♻ or Load Full) to vary one picture — with 🎲 every picture is new anyway</span>}
         </div>
       )}
@@ -1444,7 +1487,7 @@ export default function App({ active = true }) {
         </div>
       )}
 
-      {backendType === 'sdxl' && (
+      {hasDetail && (
         <div className="face-fix">
           <button className={`toggle ${faceFix ? 'on' : ''}`} disabled={!supportsFaceFix}
             onClick={() => setFaceFix(f => !f)} title={supportsFaceFix ? 'Click to turn face fix on or off' : 'Needs the updated BigLust notebook'}>
@@ -1459,9 +1502,9 @@ export default function App({ active = true }) {
         </div>
       )}
 
-      {backendType === 'sdxl' && (
+      {hasDetail && (
         <DetailTools value={detail} setValue={setDetail} tools={detailTools} faceFix={faceFix}
-          refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} />
+          refinerOn={supportsRefiner && refinerOn} poseReader={poseReader} modelName={MODEL_NAMES[backendType]} />
       )}
 
       {backendType === 'sdxl' && (
@@ -1788,6 +1831,10 @@ export default function App({ active = true }) {
             <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(shown[lightboxIndex], 'start')}>Video start</button>
             <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(shown[lightboxIndex], 'end')}>Video end</button>
             <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(shown[lightboxIndex].url)}>Inpaint / outpaint</button>
+            {shown[lightboxIndex].model === 'krea2' && (
+              <button className="secondary" title={savedBackends.sdxl ? 'Redraw the face with BigLust + InstantID + your Face reference, keeping the picture (img2img 0.35)' : 'Connect the BigLust notebook once first (paste its URL above)'}
+                onClick={() => refineKreaPicture(shown[lightboxIndex])}>Refine with InstantID (BigLust)</button>
+            )}
             <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}>Save to Characters</button>
             <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
             <button className="secondary" title="Put this image in a folder (a separate gallery)" onClick={() => {
@@ -1813,6 +1860,7 @@ export default function App({ active = true }) {
               Size: {infoItem.width
                 ? `${infoItem.width} × ${infoItem.height}` + (infoDims && (infoDims[0] !== infoItem.width || infoDims[1] !== infoItem.height) ? ` → saved at ${infoDims[0]} × ${infoDims[1]}` : '')
                 : infoDims ? `${infoDims[0]} × ${infoDims[1]}` : '…'}<br/>
+              {infoItem.model && MODEL_NAMES[infoItem.model] && <>Model: {MODEL_NAMES[infoItem.model]}<br/></>}
               Steps: {infoItem.steps} | CFG: {infoItem.cfg}{infoItem.seed != null && <> | Seed: {String(infoItem.seed)}</>}<br/>
               {infoItem.variation && <>Variation: seed {String(infoItem.variation.seed)} at {infoItem.variation.strength}<br/></>}
               Sampler: {infoItem.sampler} / {infoItem.scheduler}

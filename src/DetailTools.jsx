@@ -93,11 +93,12 @@ function Num({ value, onChange, min, max, step = 0.05, label }) {
   )
 }
 
-export default function DetailTools({ value, setValue, tools, faceFix, refinerOn, poseReader }) {
+export default function DetailTools({ value, setValue, tools, faceFix, refinerOn, poseReader, modelName }) {
   const d = value
   const set = patch => setValue(prev => { const next = { ...prev, ...patch }; localStorage.setItem('detail_tools', JSON.stringify(next)); return next })
   const off = !tools
-  const need = 'Needs the updated BigLust notebook — open it fresh from GitHub and run cells 1–3'
+  const sdxlOnly = modelName && !/SDXL/.test(modelName)   // e.g. Krea 2: PAG, Detail Daemon and Tile are SDXL-only
+  const need = sdxlOnly ? `Not available with ${modelName} (SDXL / BigLust only)` : 'Needs the updated notebook — open it fresh from GitHub and run cells 1–3'
   // Not connected: show the setting as it is (dimmed). Connected to a notebook without the tool: Off (it isn't used).
   const T = (key, on, label, onClick, title) => {
     const shownOn = on && (off || tools[key])
@@ -118,7 +119,8 @@ export default function DetailTools({ value, setValue, tools, faceFix, refinerOn
           <b>Detail Daemon</b>: in the middle steps the model is told there's a bit less noise, so it keeps more fine detail (skin, hair, fabric) instead of smoothing it away. No extra time. 0.1 subtle · 0.2 default · 0.3–0.4 strong (too high looks gritty).<br />
           <b>Tile detail</b> (with the Refiner on): the Tile ControlNet holds the picture so the refiner can add real detail — skin pores, hair strands, fabric — without changing the face. Raise the refiner's strength to 0.4–0.5 with it. Tile 0.5–0.7.<br />
           <b>CodeFormer</b>: the last step — cleans up eyes, teeth and skin of every face. <i>Fidelity</i> 0 = strongest cleanup … 1 = closest to the face (0.7). <i>Mix</i> = how much of it is blended in (40% keeps it natural).<br /><br />
-          Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>} />
+          {sdxlOnly ? <>With <b>{modelName}</b>: Face fix 2 passes, Eye detail, Hand fix and CodeFormer work (redrawn by {modelName}); PAG, Detail Daemon and Tile detail are SDXL-only.</>
+            : <>Pose pictures are read with <b>{poseReader === 'dwpose' ? 'DWPose' : 'OpenPose'}</b>{poseReader === 'dwpose' ? ' (much better hands and fingers)' : ' — the updated notebook uses DWPose (better hands)'}.</>}</>} />
       </div>
       <div className="detail-grid">
         {faceFix && tools?.face_fix_passes && (
