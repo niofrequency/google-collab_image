@@ -1,4 +1,36 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+// IndexedDB helpers for MiniMax videos
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('MiniMaxGallery', 1)
+    req.onerror = () => reject(req.error)
+    req.onsuccess = () => resolve(req.result)
+    req.onupgradeneeded = e => {
+      const db = e.target.result
+      if (!db.objectStoreNames.contains('videos')) {
+        db.createObjectStore('videos', { keyPath: 'id', autoIncrement: true })
+      }
+    }
+  })
+}
+
+async function dbAll() {
+  const db = await openDB()
+  return new Promise(resolve => {
+    const req = db.transaction('videos', 'readonly').objectStore('videos').getAll()
+    req.onsuccess = () => resolve(req.result.sort((a, b) => b.created - a.created))
+  })
+}
+
+async function dbAdd(item) {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('videos', 'readwrite').objectStore('videos').add(item)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
 
 export default function MiniMax() {
   const [url, setUrl] = useState(() => localStorage.getItem('minimax_url') || '')
@@ -17,12 +49,29 @@ export default function MiniMax() {
   const [generating, setGenerating] = useState(false)
   const [videoUrl, setVideoUrl] = useState(null)
   const [error, setError] = useState('')
+  const [gallery, setGallery] = useState([])
+
+  const fileRef = useRef(null)
+  const lastFileRef = useRef(null)
 
   useEffect(() => {
     if (url) localStorage.setItem('minimax_url', url)
   }, [url])
 
-  // Handle image selections with local previews
+  // Load gallery on mount
+  useEffect(() => {
+    refreshGallery()
+  }, [])
+
+  async function refreshGallery() {
+    try {
+      const items = await dbAll()
+      setGallery(items.map(v => ({ ...v, src: URL.createObjectURL(v.blob) })))
+    } catch (e) {
+      console.error('Gallery load failed', e)
+    }
+  }
+
   function handleImageChange(e, isLast = false) {
     const file = e.target.files?.[0] || null
     if (isLast) {
@@ -35,27 +84,31 @@ export default function MiniMax() {
   }
 
   async function ping() {
-    if (!url) return
+    if (!url.trim()) return
     setStatus('connecting')
     setError('')
     try {
       const base = url.trim().replace(/\/$/, '')
-      const r = await fetch(`${base}/info`)
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const r = await fetch(base + '/info')
+      if (!r.ok) throw new Error('HTTP ' + r.status)
       const data = await r.json()
       setInfo(data)
       setStatus('connected')
-      if (data.resolutions?.length) setResolution(data.resolutions.includes('768p') ? '768p' : data.resolutions[0])
-      if (data.aspect_ratios?.length) setAspectRatio(data.aspect_ratios.includes('auto') ? 'auto' : data.aspect_ratios[0])
+      if (data.resolutions?.length) {
+        setResolution(data.resolutions.includes('768p') ? '768p' : data.resolutions[0])
+      }
+      if (data.aspect_ratios?.length) {
+        setAspectRatio(data.aspect_ratios.includes('auto') ? 'auto' : data.aspect_ratios[0])
+      }
     } catch (e) {
       setStatus('failed')
-      setError(e.message)
+      setError(e.message || 'Could not connect')
       setInfo(null)
     }
   }
 
   async function generate() {
-    if (!url || !image || !prompt.trim()) return
+    if (!url.trim() || !image || !prompt.trim()) return
     setGenerating(true)
     setError('')
     setVideoUrl(null)
@@ -71,111 +124,112 @@ export default function MiniMax() {
       form.append('num_inference_steps', String(steps))
       form.append('seed', String(seed))
 
-      const r = await fetch(`${base}/generate`, { method: 'POST', body: form })
+      const r = await fetch(base + '/generate', { method: 'POST', body: form })
       if (!r.ok) {
         const t = await r.text()
-        throw new Error(t || `HTTP ${r.status}`)
+        throw new Error(t || 'HTTP ' + r.status)
       }
       const blob = await r.blob()
       const obj = URL.createObjectURL(blob)
       setVideoUrl(obj)
+
+      // Save to gallery
+      await dbAdd({
+        blob,
+        created: Date.now(),
+        prompt,
+        resolution,
+        aspectRatio,
+        duration,
+        steps,
+        seed,
+      })
+      await refreshGallery()
     } catch (e) {
-      setError(e.message)
+      setError(e.message || 'Generation failed')
     } finally {
       setGenerating(false)
     }
   }
 
-  const statusColors = {
-    disconnected: 'bg-zinc-500',
-    connecting: 'bg-amber-500 animate-pulse',
-    connected: 'bg-emerald-500',
-    failed: 'bg-rose-500',
-  }
-
   return (
-    <div style={{ padding: '2rem', maxWidth: 960, margin: '0 auto', color: 'var(--text, #f4f4f5)', fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '1rem' }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 600, letterSpacing: '-0.025em' }}>MiniMax H3 Studio</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.875rem', opacity: 0.6 }}>Multimodal Video & Audio Generation</p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
-          <span className={`w-2.5 h-2.5 rounded-full ${statusColors[status] || 'bg-zinc-500'}`} />
-          <span style={{ textTransform: 'capitalize', fontWeight: 500 }}>{status}</span>
-        </div>
-      </div>
+    <div className="minimax-tab" style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
+      <h2 style={{ margin: '0 0 1rem', fontSize: '1.4rem' }}>MiniMax H3</h2>
 
-      {/* URL Connection Bar - Fixed Flex Layout */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: '1.25rem', width: '100%' }}>
+      {/* Connection */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <input
           value={url}
           onChange={e => setUrl(e.target.value)}
           placeholder="https://xxxx.trycloudflare.com"
-          style={{ flex: 1, minWidth: 0, padding: '10px 14px', background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 8, fontSize: '0.9rem', outline: 'none' }}
+          style={{ flex: 1, padding: '10px 12px', background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}
         />
-        <button 
-          onClick={ping} 
-          style={{ padding: '10px 20px', background: 'var(--accent, #4f46e5)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontWeight: 500, fontSize: '0.9rem', flexShrink: 0, transition: 'opacity 0.2s' }}
+        <button
+          onClick={ping}
+          style={{ padding: '10px 18px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
         >
           Connect
         </button>
       </div>
 
+      <div style={{ marginBottom: 12, fontSize: 14, opacity: 0.8 }}>
+        Status: <strong>{status}</strong>
+        {info && <span> · {info.resolutions?.join(', ')}</span>}
+      </div>
+
       {error && (
-        <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', color: '#f87171', borderRadius: 8, marginBottom: '1.25rem', fontSize: '0.9rem' }}>
+        <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.15)', color: '#f87171', borderRadius: 6, marginBottom: 16 }}>
           {error}
         </div>
       )}
 
-      {/* Image Inputs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: '1.25rem' }}>
-        <div style={{ background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: '0.875rem', fontWeight: 500 }}>First Frame (Required)</label>
-          <input type="file" accept="image/*" onChange={e => handleImageChange(e, false)} style={{ width: '100%', fontSize: '0.8rem', color: '#a1a1aa' }} />
-          {imagePreview && <img src={imagePreview} alt="First Frame Preview" style={{ marginTop: 10, width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }} />}
+      {/* Image inputs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>First frame</label>
+          <input ref={fileRef} type="file" accept="image/*" onChange={e => handleImageChange(e, false)} style={{ width: '100%' }} />
+          {imagePreview && <img src={imagePreview} alt="" style={{ marginTop: 8, width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />}
         </div>
-        <div style={{ background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: 14 }}>
-          <label style={{ display: 'block', marginBottom: 8, fontSize: '0.875rem', fontWeight: 500 }}>Last Frame (Optional FL2VA)</label>
-          <input type="file" accept="image/*" onChange={e => handleImageChange(e, true)} style={{ width: '100%', fontSize: '0.8rem', color: '#a1a1aa' }} />
-          {lastImagePreview && <img src={lastImagePreview} alt="Last Frame Preview" style={{ marginTop: 10, width: '100%', height: 120, objectFit: 'cover', borderRadius: 6 }} />}
+        <div>
+          <label style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>Last frame (optional)</label>
+          <input ref={lastFileRef} type="file" accept="image/*" onChange={e => handleImageChange(e, true)} style={{ width: '100%' }} />
+          {lastImagePreview && <img src={lastImagePreview} alt="" style={{ marginTop: 8, width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />}
         </div>
       </div>
 
-      {/* Prompt Area */}
       <textarea
         value={prompt}
         onChange={e => setPrompt(e.target.value)}
-        placeholder="Describe motion, camera work, and ambient audio cues..."
+        placeholder="Motion + Audio: description..."
         rows={3}
-        style={{ width: '100%', boxSizing: 'border-box', padding: 12, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 8, marginBottom: '1.25rem', fontFamily: 'inherit', fontSize: '0.9rem', outline: 'none', resize: 'vertical' }}
+        style={{ width: '100%', padding: 12, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6, marginBottom: 16, fontFamily: 'inherit' }}
       />
 
-      {/* Configuration Controls */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: '1.5rem' }}>
+      {/* Controls */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 16 }}>
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8rem', opacity: 0.7 }}>Resolution</label>
-          <select value={resolution} onChange={e => setResolution(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 6, fontSize: '0.9rem' }}>
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Resolution</label>
+          <select value={resolution} onChange={e => setResolution(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}>
             {(info?.resolutions || ['480p', '720p', '768p', '1080p']).map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8rem', opacity: 0.7 }}>Aspect Ratio</label>
-          <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 6, fontSize: '0.9rem' }}>
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Aspect ratio</label>
+          <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}>
             {(info?.aspect_ratios || ['auto', '16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </div>
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8rem', opacity: 0.7 }}>Duration (s)</label>
-          <input type="number" min={5} max={15} value={duration} onChange={e => setDuration(Number(e.target.value))} style={{ width: '100%', boxSizing: 'border-box', padding: 8, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 6, fontSize: '0.9rem' }} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Duration (s)</label>
+          <input type="number" min={5} max={15} value={duration} onChange={e => setDuration(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
         </div>
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8rem', opacity: 0.7 }}>Steps</label>
-          <input type="number" min={4} max={50} value={steps} onChange={e => setSteps(Number(e.target.value))} style={{ width: '100%', boxSizing: 'border-box', padding: 8, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 6, fontSize: '0.9rem' }} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Steps</label>
+          <input type="number" min={4} max={50} value={steps} onChange={e => setSteps(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
         </div>
         <div>
-          <label style={{ display: 'block', marginBottom: 4, fontSize: '0.8rem', opacity: 0.7 }}>Seed (-1 = random)</label>
-          <input type="number" value={seed} onChange={e => setSeed(Number(e.target.value))} style={{ width: '100%', boxSizing: 'border-box', padding: 8, background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.12)', color: 'inherit', borderRadius: 6, fontSize: '0.9rem' }} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 12 }}>Seed (-1 = random)</label>
+          <input type="number" value={seed} onChange={e => setSeed(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
         </div>
       </div>
 
@@ -184,31 +238,39 @@ export default function MiniMax() {
         disabled={generating || status !== 'connected' || !image || !prompt.trim()}
         style={{
           width: '100%',
-          padding: '12px 24px',
-          background: generating || status !== 'connected' || !image || !prompt.trim() ? '#3f3f46' : 'var(--accent, #4f46e5)',
+          padding: '12px',
+          background: generating || status !== 'connected' || !image || !prompt.trim() ? '#444' : 'var(--accent)',
           color: '#fff',
           border: 'none',
-          borderRadius: 8,
-          cursor: generating || status !== 'connected' || !image || !prompt.trim() ? 'not-allowed' : 'pointer',
-          fontSize: '1rem',
-          fontWeight: 600,
-          transition: 'background 0.2s'
+          borderRadius: 6,
+          cursor: generating ? 'not-allowed' : 'pointer',
+          fontSize: 16,
+          marginBottom: 24
         }}
       >
-        {generating ? 'Generating Video & Audio…' : 'Generate Video'}
+        {generating ? 'Generating…' : 'Generate Video'}
       </button>
 
+      {/* Latest result */}
       {videoUrl && (
-        <div style={{ marginTop: '2rem', background: 'var(--surface, #18181b)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, padding: 16, textAlign: 'center' }}>
-          <video src={videoUrl} controls autoPlay loop style={{ width: '100%', maxHeight: 540, background: '#000', borderRadius: 8, outline: 'none' }} />
-          <div style={{ marginTop: 12 }}>
-            <a 
-              href={videoUrl} 
-              download="minimax-h3-output.mp4" 
-              style={{ display: 'inline-block', padding: '8px 16px', background: 'rgba(255,255,255,0.08)', color: 'inherit', borderRadius: 6, textDecoration: 'none', fontSize: '0.875rem', fontWeight: 500 }}
-            >
-              Download MP4
-            </a>
+        <div style={{ marginBottom: 32 }}>
+          <h3 style={{ margin: '0 0 8px', fontSize: 15 }}>Latest</h3>
+          <video src={videoUrl} controls autoPlay loop style={{ width: '100%', maxHeight: 480, background: '#000', borderRadius: 8 }} />
+          <a href={videoUrl} download="minimax-h3.mp4" style={{ display: 'inline-block', marginTop: 8, color: 'var(--accent)' }}>Download</a>
+        </div>
+      )}
+
+      {/* Inline gallery preview (full gallery is on its own tab) */}
+      {gallery.length > 0 && (
+        <div>
+          <h3 style={{ margin: '0 0 12px', fontSize: 15 }}>Recent (see MiniMax Gallery tab for full history)</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+            {gallery.slice(0, 6).map(v => (
+              <div key={v.id} style={{ background: 'var(--surface)', borderRadius: 8, overflow: 'hidden' }}>
+                <video src={v.src} muted loop playsInline style={{ width: '100%', height: 120, objectFit: 'cover' }} />
+                <div style={{ padding: 8, fontSize: 12, opacity: 0.8 }}>{v.resolution} · {v.duration}s</div>
+              </div>
+            ))}
           </div>
         </div>
       )}
