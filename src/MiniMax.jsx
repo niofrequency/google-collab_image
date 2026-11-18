@@ -1,120 +1,166 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
 
 export default function MiniMax() {
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem('minimax_api_url') || '')
+  const [url, setUrl] = useState(localStorage.getItem('minimax_url') || '')
+  const [status, setStatus] = useState('disconnected')
+  const [info, setInfo] = useState(null)
   const [prompt, setPrompt] = useState('')
-  const [duration, setDuration] = useState(5.2)
+  const [resolution, setResolution] = useState('768p')
+  const [aspectRatio, setAspectRatio] = useState('auto')
+  const [duration, setDuration] = useState(5)
   const [steps, setSteps] = useState(20)
-  const [seed, setSeed] = useState(42)
-  const [imageFile, setImageFile] = useState(null)
-  const [preview, setPreview] = useState('')
-  const [status, setStatus] = useState({ text: '', type: '' })
-  const [videoUrl, setVideoUrl] = useState('')
-  const [busy, setBusy] = useState(false)
-  const fileRef = useRef(null)
+  const [seed, setSeed] = useState(-1)
+  const [image, setImage] = useState(null)
+  const [lastImage, setLastImage] = useState(null)
+  const [generating, setGenerating] = useState(false)
+  const [videoUrl, setVideoUrl] = useState(null)
+  const [error, setError] = useState('')
 
-  useEffect(() => { localStorage.setItem('minimax_api_url', apiUrl) }, [apiUrl])
-
-  function say(text, type = '') { setStatus({ text, type }) }
-
-  function onFile(e) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setImageFile(f)
-    setPreview(URL.createObjectURL(f))
-  }
+  useEffect(() => {
+    if (url) localStorage.setItem('minimax_url', url)
+  }, [url])
 
   async function ping() {
-    const base = apiUrl.trim().replace(/\/$/, '')
-    if (!base) return say('Paste the Cloudflare Tunnel URL first', 'error')
+    if (!url) return
+    setStatus('connecting...')
+    setError('')
     try {
-      const r = await fetch(base + '/health')
-      const d = await r.json()
-      say('Connected: ' + (d.model || 'MiniMax-H3'), 'ok')
-    } catch {
-      say('Could not reach the Colab backend. Is cell 4 still running?', 'error')
+      const base = url.replace(/\/$/, '')
+      const r = await fetch(`${base}/info`)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const data = await r.json()
+      setInfo(data)
+      setStatus('connected')
+      if (data.resolutions?.length) setResolution(data.resolutions.includes('768p') ? '768p' : data.resolutions[0])
+      if (data.aspect_ratios?.length) setAspectRatio(data.aspect_ratios.includes('auto') ? 'auto' : data.aspect_ratios[0])
+    } catch (e) {
+      setStatus('failed')
+      setError(e.message)
+      setInfo(null)
     }
   }
 
   async function generate() {
-    const base = apiUrl.trim().replace(/\/$/, '')
-    if (!base) return say('Paste the Cloudflare Tunnel URL first', 'error')
-    if (!imageFile) return say('Upload a starting frame image', 'error')
-    if (!prompt.trim()) return say('Enter a prompt', 'error')
-
-    setBusy(true)
-    setVideoUrl('')
-    say('Generating on Colab... this can take a few minutes.')
-
+    if (!url || !image || !prompt.trim()) return
+    setGenerating(true)
+    setError('')
+    setVideoUrl(null)
     try {
-      const fd = new FormData()
-      fd.append('image', imageFile)
-      fd.append('prompt', prompt)
-      fd.append('duration', String(duration))
-      fd.append('steps', String(steps))
-      fd.append('seed', String(seed))
+      const base = url.replace(/\/$/, '')
+      const form = new FormData()
+      form.append('image', image)
+      if (lastImage) form.append('last_image', lastImage)
+      form.append('prompt', prompt)
+      form.append('resolution', resolution)
+      form.append('aspect_ratio', aspectRatio)
+      form.append('duration', String(duration))
+      form.append('num_inference_steps', String(steps))
+      form.append('seed', String(seed))
 
-      const r = await fetch(base + '/generate', { method: 'POST', body: fd })
+      const r = await fetch(`${base}/generate`, { method: 'POST', body: form })
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}))
-        throw new Error(err.detail || 'Generation failed')
+        const t = await r.text()
+        throw new Error(t || `HTTP ${r.status}`)
       }
-      const data = await r.json()
-      const url = 'data:video/mp4;base64,' + data.video_base64
-      setVideoUrl(url)
-      say('Done — ' + data.frames + ' frames generated.', 'ok')
+      const blob = await r.blob()
+      const obj = URL.createObjectURL(blob)
+      setVideoUrl(obj)
     } catch (e) {
-      say(e.message, 'error')
+      setError(e.message)
     } finally {
-      setBusy(false)
+      setGenerating(false)
     }
   }
 
   return (
-    <div className="container">
-      <h1>MiniMax-H3 Image-to-Video</h1>
-      <p className="muted">24 FPS multimodal video + native stereo audio via Google Colab (A100 / L4)</p>
+    <div style={{ padding: '1.5rem', maxWidth: 900, margin: '0 auto' }}>
+      <h2 style={{ marginTop: 0 }}>MiniMax H3</h2>
 
-      <div className="row" style={{ alignItems: 'flex-end' }}>
-        <div style={{ flex: 1 }}>
-          <label>Cloudflare Tunnel URL</label>
-          <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} placeholder="https://xxxx.trycloudflare.com" />
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input
+          value={url}
+          onChange={e => setUrl(e.target.value)}
+          placeholder="https://xxxx.trycloudflare.com"
+          style={{ flex: 1, padding: '8px 12px', background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}
+        />
+        <button onClick={ping} style={{ padding: '8px 16px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+          Ping
+        </button>
+      </div>
+
+      <div style={{ marginBottom: 16, fontSize: 14, opacity: 0.8 }}>
+        Status: <strong>{status}</strong>
+        {info && <span> · resolutions: {info.resolutions?.join(', ')}</span>}
+      </div>
+
+      {error && <div style={{ color: '#f55', marginBottom: 12 }}>{error}</div>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div>
+          <label style={{ display: 'block', marginBottom: 4 }}>First frame</label>
+          <input type="file" accept="image/*" onChange={e => setImage(e.target.files?.[0] || null)} />
         </div>
-        <div style={{ width: 'auto' }}>
-          <button className="secondary" onClick={ping} disabled={busy}>Ping</button>
+        <div>
+          <label style={{ display: 'block', marginBottom: 4 }}>Last frame (optional)</label>
+          <input type="file" accept="image/*" onChange={e => setLastImage(e.target.files?.[0] || null)} />
         </div>
       </div>
 
-      {status.text && <div className={'status ' + status.type}>{status.text}</div>}
+      <textarea
+        value={prompt}
+        onChange={e => setPrompt(e.target.value)}
+        placeholder="Motion prompt + Audio: description..."
+        rows={4}
+        style={{ width: '100%', padding: 12, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6, marginBottom: 16, fontFamily: 'inherit' }}
+      />
 
-      <label>Starting Frame Image</label>
-      <input type="file" accept="image/*" ref={fileRef} onChange={onFile} />
-      {preview && <img src={preview} alt="preview" style={{ maxHeight: 200, marginTop: 8, borderRadius: 8, border: '1px solid var(--border)' }} />}
-
-      <label>Motion & Audio Prompt</label>
-      <textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="Camera movement, subject action, ambient sounds..." />
-
-      <div className="row">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
         <div>
-          <label>Duration (sec)</label>
-          <input type="number" step="0.7" min="5.2" max="15" value={duration} onChange={e => setDuration(+e.target.value)} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Resolution</label>
+          <select value={resolution} onChange={e => setResolution(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}>
+            {(info?.resolutions || ['480p', '720p', '768p', '1080p']).map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
         </div>
         <div>
-          <label>Steps</label>
-          <input type="number" min="4" max="50" value={steps} onChange={e => setSteps(+e.target.value)} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Aspect ratio</label>
+          <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }}>
+            {(info?.aspect_ratios || ['auto', '16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
         </div>
         <div>
-          <label>Seed</label>
-          <input type="number" value={seed} onChange={e => setSeed(+e.target.value)} />
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Duration (s)</label>
+          <input type="number" min={5} max={15} value={duration} onChange={e => setDuration(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Steps</label>
+          <input type="number" min={4} max={50} value={steps} onChange={e => setSteps(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
+        </div>
+        <div>
+          <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>Seed (-1 = random)</label>
+          <input type="number" value={seed} onChange={e => setSeed(Number(e.target.value))} style={{ width: '100%', padding: 8, background: 'var(--surface)', border: '1px solid #333', color: 'var(--text)', borderRadius: 6 }} />
         </div>
       </div>
 
-      <button onClick={generate} disabled={busy}>{busy ? 'Generating…' : 'Generate Video'}</button>
+      <button
+        onClick={generate}
+        disabled={generating || status !== 'connected' || !image || !prompt.trim()}
+        style={{
+          padding: '10px 24px',
+          background: generating ? '#555' : 'var(--accent)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 6,
+          cursor: generating ? 'not-allowed' : 'pointer',
+          fontSize: 16
+        }}
+      >
+        {generating ? 'Generating…' : 'Generate'}
+      </button>
 
       {videoUrl && (
-        <div className="video-result">
-          <video src={videoUrl} controls loop />
-          <a className="video-download" href={videoUrl} download="minimax-h3-output.mp4">Download MP4</a>
+        <div style={{ marginTop: 24 }}>
+          <video src={videoUrl} controls autoPlay loop style={{ width: '100%', maxHeight: 540, background: '#000', borderRadius: 8 }} />
+          <a href={videoUrl} download="minimax-h3.mp4" style={{ display: 'inline-block', marginTop: 8, color: 'var(--accent)' }}>Download</a>
         </div>
       )}
     </div>
