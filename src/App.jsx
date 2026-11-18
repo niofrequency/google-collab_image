@@ -800,7 +800,7 @@ export default function App({ active = true }) {
     const faceRefActive = hasDetail && supportsFaceRef && faceRefOn && faceRefImages.length > 0
     if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); job.cancel(); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
-    if (inpaint && !supportsInpaint) { clearInterval(timer); job.cancel(); return setStatusMsg('This notebook has no inpainting — open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub and run its cells again', 'error') }
+    if (inpaint && !supportsInpaint) { clearInterval(timer); job.cancel(); return setStatusMsg('This notebook has no inpainting — open it again from the Notebooks tab (BigLust, Krea 2, Qwen 2511 or Qwen AIO) and run its cells', 'error') }
     if (inpaintActive && hasDetail && refPicture && refSettings.mode === 'img2img') { clearInterval(timer); job.cancel(); return setStatusMsg('Img2img and inpainting can\'t be used together — remove the pose / style picture or switch it to another mode', 'error') }
     const refActive = hasDetail && refModes.length > 0 && !!refPicture
     const refMode = refModes.includes(refSettings.mode) ? refSettings.mode : refModes[0]
@@ -1531,7 +1531,7 @@ export default function App({ active = true }) {
         <div className="inpaint-box">
           {!supportsInpaint && (
             <div className="muted small-note inpaint-note">
-              {backendType ? 'The notebook connected right now is an older version without inpainting: in Colab use Runtime → Disconnect and delete runtime, open BIGLUST / QWEN-2511 / QWEN-AIO fresh from GitHub, run its cells and paste the new URL. You can already paint the mask.'
+              {backendType ? 'The notebook connected right now is an older version without inpainting: in Colab use Runtime → Disconnect and delete runtime, open it again from the Notebooks tab (BigLust, Krea 2, Qwen 2511 or Qwen AIO), run its cells and paste the new URL. You can already paint the mask.'
                 : 'Works with the BigLust, Qwen 2511 and Qwen Rapid AIO notebooks (open them fresh from GitHub).'}
             </div>
           )}
