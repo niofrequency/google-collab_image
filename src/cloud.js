@@ -135,7 +135,7 @@ function idb(db, store, mode, fn) {
 function metaOf(rec) {
   const out = {}
   for (const [k, v] of Object.entries(rec)) {
-    if (['blob', 'id', 'url', 'src', 'cloudId', 'cloudUid'].includes(k)) continue
+    if (['blob', 'id', 'url', 'src', 'cloudId', 'cloudUid', 'pictures'].includes(k)) continue   // pictures: local copies for Load Full (too big for a cloud record)
     if (typeof v === 'string' && v.length > 50000) continue   // e.g. a video's last frame (re-made from the video)
     if (v === undefined) continue
     out[k] = v
