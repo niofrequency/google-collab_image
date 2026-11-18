@@ -31,6 +31,11 @@ async function dbAdd(item) {
   })
 }
 
+function extractImgSrc(html) {
+  const m = (html || '').match(/<img[^>]+src\s*=\s*["']([^"']+)["']/i)
+  return m ? m[1].replace(/&/g, '&') : ''
+}
+
 export default function MiniMax() {
   const [url, setUrl] = useState(() => localStorage.getItem('minimax_url') || '')
   const [status, setStatus] = useState('disconnected')
@@ -50,6 +55,7 @@ export default function MiniMax() {
   const [error, setError] = useState('')
   const [gallery, setGallery] = useState([])
 
+  const pasteSlotRef = useRef('first')
   const fileRef = useRef(null)
   const lastFileRef = useRef(null)
 
@@ -70,14 +76,55 @@ export default function MiniMax() {
     }
   }
 
-  function handleImageChange(e, isLast = false) {
-    const file = e.target.files?.[0] || null
-    if (isLast) {
+  function setSlotFile(file, slot) {
+    if (!file || !file.type.startsWith('image/')) return
+    const preview = URL.createObjectURL(file)
+    if (slot === 'last') {
       setLastImage(file)
-      setLastImagePreview(file ? URL.createObjectURL(file) : null)
+      setLastImagePreview(preview)
     } else {
       setImage(file)
-      setImagePreview(file ? URL.createObjectURL(file) : null)
+      setImagePreview(preview)
+    }
+  }
+
+  useEffect(() => {
+    function onPaste(e) {
+      const cd = e.clipboardData
+      const file = [...(cd?.items || [])].find(i => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile()
+      const slot = pasteSlotRef.current
+      if (file) {
+        e.preventDefault()
+        setSlotFile(file, slot)
+        return
+      }
+      const t = e.target
+      if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'file'))) return
+      const address = extractImgSrc(cd?.getData('text/html')) || (cd?.getData('text/plain') || '').trim()
+      if (/^(https?:\/\/\S+|data:image\/)/i.test(address)) {
+        e.preventDefault()
+        fetch(address)
+          .then(r => r.blob())
+          .then(blob => setSlotFile(new File([blob], 'pasted.png', { type: blob.type || 'image/png' }), slot))
+          .catch(() => setError('Could not load pasted image address'))
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
+
+  function onDrop(e, slot) {
+    e.preventDefault()
+    e.stopPropagation()
+    const file = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'))
+    if (file) return setSlotFile(file, slot)
+    const address = extractImgSrc(e.dataTransfer?.getData('text/html')) ||
+      (e.dataTransfer?.getData('text/uri-list') || e.dataTransfer?.getData('text/plain') || '').split('\n')[0].trim()
+    if (address && /^(https?:\/\/|data:image\/)/i.test(address)) {
+      fetch(address)
+        .then(r => r.blob())
+        .then(blob => setSlotFile(new File([blob], 'dropped.png', { type: blob.type || 'image/png' }), slot))
+        .catch(() => setError('Could not load dropped image'))
     }
   }
 
@@ -149,6 +196,36 @@ export default function MiniMax() {
     }
   }
 
+  function Slot({ label, slot, preview, fileRef }) {
+    return (
+      <div>
+        <label>{label}</label>
+        <div
+          className="train-drop"
+          title="Tap to choose · hover and Ctrl+V to paste"
+          onMouseEnter={() => { pasteSlotRef.current = slot }}
+          onDragOver={e => e.preventDefault()}
+          onDrop={e => onDrop(e, slot)}
+          onClick={() => fileRef.current?.click()}
+          style={{ padding: preview ? 8 : 28, minHeight: 140 }}
+        >
+          {preview ? (
+            <img src={preview} alt="" style={{ width: '100%', height: 140, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+          ) : (
+            <div style={{ color: '#888', fontSize: 13 }}>Drop image or hover + Ctrl+V</div>
+          )}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={e => setSlotFile(e.target.files?.[0], slot)}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="container">
       <h1>MiniMax H3</h1>
@@ -173,16 +250,8 @@ export default function MiniMax() {
       {error && <div className="status error" style={{ marginBottom: 16 }}>{error}</div>}
 
       <div className="row" style={{ marginBottom: 16 }}>
-        <div>
-          <label>First frame</label>
-          <input ref={fileRef} type="file" accept="image/*" onChange={e => handleImageChange(e, false)} />
-          {imagePreview && <img src={imagePreview} alt="" style={{ marginTop: 8, width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />}
-        </div>
-        <div>
-          <label>Last frame (optional)</label>
-          <input ref={lastFileRef} type="file" accept="image/*" onChange={e => handleImageChange(e, true)} />
-          {lastImagePreview && <img src={lastImagePreview} alt="" style={{ marginTop: 8, width: '100%', height: 140, objectFit: 'cover', borderRadius: 6 }} />}
-        </div>
+        <Slot label="First frame" slot="first" preview={imagePreview} fileRef={fileRef} />
+        <Slot label="Last frame (optional)" slot="last" preview={lastImagePreview} fileRef={lastFileRef} />
       </div>
 
       <label>Prompt</label>
