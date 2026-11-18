@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useCharacters, MAX_CHARACTER_IMAGES } from './characters.js'
+import Carousel from './Carousel.jsx'
 
 // Collapsible "Saved faces" bar shown at the top of the Image Generator, Face Swap, Head Swap and Image to Video tabs.
 // onPick(character, images): images is [Primary] or all of the character's pictures, depending on the
 // "Primary only / All angles" switch (default per tab: allAngles).
-export default function CharacterBar({ storageKey, allAngles = false, active, onPick, onClear, hint }) {
+export default function CharacterBar({ storageKey, allAngles = false, active, onPick, onClear, hint, carousel = false }) {
   const characters = useCharacters()
   const [open, setOpen] = useState(() => localStorage.getItem(storageKey + '_open') === '1')
   const [useAll, setUseAll] = useState(() => {
@@ -12,6 +13,13 @@ export default function CharacterBar({ storageKey, allAngles = false, active, on
     return saved == null ? allAngles : saved === '1'
   })
   const current = characters.find(c => c.name === active)
+  // carousel: the character in the middle (starts at the one in use)
+  const [shown, setShown] = useState(0)
+  useEffect(() => {
+    const i = characters.findIndex(c => c.name === active)
+    if (i >= 0) setShown(i)
+  }, [active, characters.length])   // eslint-disable-line react-hooks/exhaustive-deps
+  const middle = Math.min(shown, Math.max(0, characters.length - 1))
 
   function toggleOpen() {
     setOpen(o => { localStorage.setItem(storageKey + '_open', o ? '0' : '1'); return !o })
@@ -49,6 +57,14 @@ export default function CharacterBar({ storageKey, allAngles = false, active, on
               </button>
               {hint && <span className="muted small-note">{hint}</span>}
             </div>
+            {carousel ? (
+              <Carousel className="char-carousel" size={150} active={middle} setActive={setShown}
+                items={characters.map(c => ({ key: c.name, src: c.images[0], label: c.name, badge: c.images.length > 1 ? `+${c.images.length - 1}` : null }))}
+                pickedIndex={characters.findIndex(c => c.name === active)}
+                onPick={i => pick(characters[i])}
+                caption={<><b>{characters[middle]?.name}</b>{active === characters[middle]?.name ? ' · in use' : ' · click it or press Enter to use'}
+                  {characters.length > 1 && <span className="muted"> · ← → to browse ({middle + 1} / {characters.length})</span>}</>} />
+            ) : (
             <div className="char-bar-grid">
               {characters.map(c => (
                 <button key={c.name} className={`char-card ${active === c.name ? 'active' : ''}`} onClick={() => pick(c)}
@@ -61,6 +77,7 @@ export default function CharacterBar({ storageKey, allAngles = false, active, on
                 </button>
               ))}
             </div>
+            )}
           </>)}
         </div>
       )}

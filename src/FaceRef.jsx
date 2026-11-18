@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Info from './Info.jsx'
+import Carousel from './Carousel.jsx'
 import { askConfirm } from './ConfirmDialog.jsx'
 import { loadCharacters, saveCharacters as storeCharacters } from './characters.js'
 
@@ -185,48 +186,9 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
 
 
 // Krea 2: the character's faces as a carousel. The face in the middle is the one Identity Edit uses.
-// ← / → (while the pointer is over it or it has focus), the arrows, or a click on a side face browse it.
 function FaceCarousel({ images, active, setActive }) {
-  const [live, setLive] = useState(false)   // pointer over it / focused: the arrow keys browse it
-  const n = images.length
-  const go = d => setActive((active + d + n) % n)
-  useEffect(() => {
-    if (!live || n < 2) return
-    const onKey = e => {
-      const t = e.target
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
-      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1) }
-      if (e.key === 'ArrowRight') { e.preventDefault(); go(1) }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })   // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className={`face-carousel ${live ? 'live' : ''}`} tabIndex={0} aria-label="Faces — use the left and right arrow keys"
-      onMouseEnter={() => setLive(true)} onMouseLeave={() => setLive(false)} onFocus={() => setLive(true)} onBlur={() => setLive(false)}>
-      {n > 1 && <button className="fc-nav left" title="Previous face (←)" onClick={() => go(-1)}>‹</button>}
-      <div className="fc-stage">
-        {images.map((src, i) => {
-          let d = ((i - active) % n + n) % n   // position relative to the middle, wrapping around
-          if (d > n / 2) d -= n
-          const side = Math.abs(d)
-          return (
-            <img key={i} src={src} alt={`Face ${i + 1}`} className={`fc-face ${d === 0 ? 'current' : ''}`}
-              style={{
-                transform: `translateX(${d * 62}%) scale(${d === 0 ? 1 : 0.68})`,
-                opacity: side === 0 ? 1 : side === 1 ? 0.45 : 0,
-                zIndex: 10 - side,
-                pointerEvents: side > 1 ? 'none' : 'auto',
-              }}
-              onClick={() => d !== 0 && setActive(i)} title={d === 0 ? 'The face Identity Edit uses' : 'Use this face'} />
-          )
-        })}
-      </div>
-      {n > 1 && <button className="fc-nav right" title="Next face (→)" onClick={() => go(1)}>›</button>}
-      <div className="fc-caption">
-        Face <b>{active + 1}</b> / {n} · used by Identity Edit
-        {n > 1 && <span className="muted"> · ← → to browse</span>}
-      </div>
-    </div>
+    <Carousel items={images.map((src, i) => ({ key: i, src }))} active={active} setActive={setActive}
+      caption={<>Face <b>{active + 1}</b> / {images.length} · used by Identity Edit{images.length > 1 && <span className="muted"> · ← → to browse</span>}</>} />
   )
 }

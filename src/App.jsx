@@ -1372,7 +1372,7 @@ export default function App({ active = true }) {
   return (
     <div className="container">
       <h1>ARX Image Generator</h1>
-      <CharacterBar storageKey="gen_charbar" allAngles={true}
+      <CharacterBar storageKey="gen_charbar" allAngles={true} carousel={true}
         active={backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter}
         hint={backendType === 'qwen_image_edit' ? 'Qwen: the pictures go into Reference Images (Picture 1-3).' : backendType === 'krea2' ? 'Krea 2: the Primary picture becomes the Face reference (Identity Edit).' : 'BigLust: the pictures become the Face reference.'}
         onPick={pickCharacter} onClear={clearCharacter} />
