@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon } from './icons'
+import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, IconButton, InfoIcon, UsePromptIcon, UseFaceIcon, PoseIcon, VideoStartIcon, VideoEndIcon, InpaintIcon, RefineFaceIcon, SaveCharacterIcon, UpscaleIcon, FolderAddIcon, DownloadIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
@@ -1993,27 +1993,29 @@ export default function App({ active = true }) {
             <span className="lb-count">{lightboxIndex + 1} / {shown.length}</span>
             <span className="lb-caption" title={shown[lightboxIndex].positive}>{shown[lightboxIndex].positive || '(no prompt)'}</span>
             <span className="lb-meta">{shown[lightboxIndex].width}×{shown[lightboxIndex].height}</span>
-            <button className="secondary" onClick={() => setInfoItem(shown[lightboxIndex])}>Info</button>
-            <button className="secondary" onClick={() => loadPromptOnly(shown[lightboxIndex])}>Use prompt</button>
-            <button className="secondary" title="Use this image's face as the face reference (Image Generator, BigLust)" onClick={() => useAsFace(shown[lightboxIndex])}>Use as face</button>
-            {hasDetail && refModes.length > 0 && (
-              <button className="secondary" title="Use this image as the pose / structure / style picture (BigLust)"
-                onClick={async () => { setRefPicture(await shrinkImage(shown[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}>Use as pose / style</button>
-            )}
-            <button className="secondary" title="Use this image as the start of a video (Image to Video tab)" onClick={() => sendToVideo(shown[lightboxIndex], 'start')}>Video start</button>
-            <button className="secondary" title="Use this image as the end of a video (Image to Video tab, A14B notebook)" onClick={() => sendToVideo(shown[lightboxIndex], 'end')}>Video end</button>
-            <button className="secondary" title="Redraw part of this picture, or extend its borders" onClick={() => setMaskEditorSrc(shown[lightboxIndex].url)}>Inpaint / outpaint</button>
-            {shown[lightboxIndex].model === 'krea2' && (
-              <button className="secondary" title={savedBackends.sdxl ? 'Redraw the face with BigLust + InstantID + your Face reference, keeping the picture (img2img 0.35)' : 'Connect the BigLust notebook once first (paste its URL above)'}
-                onClick={() => refineKreaPicture(shown[lightboxIndex])}>Refine with InstantID (BigLust)</button>
-            )}
-            <button className="secondary" title="Keep this face as a character (Characters tab)" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}>Save to Characters</button>
-            <button className="secondary" title="Make it bigger and sharper (Upscale tab)" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}>Send to Upscale</button>
-            <button className="secondary" title="Put this image in a folder (a separate gallery)" onClick={() => {
-              setSelectedIds(new Set([shown[lightboxIndex].id])); setLightboxIndex(-1); setFolderMenu(true)
-              setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
-            }}>Add to folder</button>
-            <button className="secondary" onClick={() => downloadImage(shown[lightboxIndex])}>Download</button>
+            <div className="lb-actions">
+              <IconButton label="Info — everything used to make it" onClick={() => setInfoItem(shown[lightboxIndex])}><InfoIcon size={20} /></IconButton>
+              <IconButton label="Use prompt" onClick={() => loadPromptOnly(shown[lightboxIndex])}><UsePromptIcon size={20} /></IconButton>
+              <IconButton label="Use as face reference" onClick={() => useAsFace(shown[lightboxIndex])}><UseFaceIcon size={20} /></IconButton>
+              {hasDetail && refModes.length > 0 && (
+                <IconButton label="Use as pose / structure picture"
+                  onClick={async () => { setRefPicture(await shrinkImage(shown[lightboxIndex].url, 1024)); setRefMap(null); setStatusMsg('Pose / style picture set from the gallery', 'ok') }}><PoseIcon size={20} /></IconButton>
+              )}
+              <IconButton label="Video start (Image to Video)" onClick={() => sendToVideo(shown[lightboxIndex], 'start')}><VideoStartIcon size={20} /></IconButton>
+              <IconButton label="Video end (Image to Video)" onClick={() => sendToVideo(shown[lightboxIndex], 'end')}><VideoEndIcon size={20} /></IconButton>
+              <IconButton label="Inpaint / outpaint" onClick={() => setMaskEditorSrc(shown[lightboxIndex].url)}><InpaintIcon size={20} /></IconButton>
+              {shown[lightboxIndex].model === 'krea2' && (
+                <IconButton label={savedBackends.sdxl ? 'Refine the face with InstantID (BigLust)' : 'Refine with InstantID — connect BigLust once first'}
+                  onClick={() => refineKreaPicture(shown[lightboxIndex])}><RefineFaceIcon size={20} /></IconButton>
+              )}
+              <IconButton label="Save to Characters" onClick={() => setSaveCharSrc(shown[lightboxIndex].url)}><SaveCharacterIcon size={20} /></IconButton>
+              <IconButton label="Send to Upscale" onClick={() => { const src = shown[lightboxIndex].url; setLightboxIndex(-1); window.dispatchEvent(new CustomEvent('send-to-upscale', { detail: { src, from: 'the Image Generator' } })) }}><UpscaleIcon size={20} /></IconButton>
+              <IconButton label="Add to folder" onClick={() => {
+                setSelectedIds(new Set([shown[lightboxIndex].id])); setLightboxIndex(-1); setFolderMenu(true)
+                setTimeout(() => folderAddRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50)
+              }}><FolderAddIcon size={20} /></IconButton>
+              <IconButton label="Download" onClick={() => downloadImage(shown[lightboxIndex])}><DownloadIcon size={20} /></IconButton>
+            </div>
           </div>
           <div className="lb-help">← → browse · double-click to zoom · Esc to close</div>
           {[shown[lightboxIndex - 1], shown[lightboxIndex + 1]].filter(Boolean).map(g => <img key={g.id} src={g.url} alt="" style={{ display: 'none' }} />)}

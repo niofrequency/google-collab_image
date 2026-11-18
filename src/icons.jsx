@@ -80,3 +80,45 @@ export function NotebookIcon(props) {
 export function GalleryIcon(props) {
   return <NavSvg {...props}><rect x="3" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5" /></NavSvg>
 }
+
+// Full-size viewer actions (same line style as the sidebar icons)
+export function InfoIcon(props) {
+  return <NavSvg {...props}><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16.5" /><circle cx="12" cy="7.6" r="0.9" fill="currentColor" stroke="none" /></NavSvg>
+}
+export function UsePromptIcon(props) {
+  return <NavSvg {...props}><path d="M4 5h12M4 9h12M4 13h7" /><path d="M14 17h7" /><path d="M18 14l3 3-3 3" /></NavSvg>
+}
+export function UseFaceIcon(props) {
+  return <NavSvg {...props}><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16" /><circle cx="12" cy="10.5" r="2.8" /><path d="M7.8 17c.9-1.9 2.4-2.8 4.2-2.8s3.3.9 4.2 2.8" /></NavSvg>
+}
+export function PoseIcon(props) {
+  return <NavSvg {...props}><circle cx="12" cy="4.6" r="1.9" /><path d="M12 7v7M12 9.5l-5-2.5M12 9.5l5 3M12 14l-3.5 6.5M12 14l3.5 6.5" /></NavSvg>
+}
+export function VideoStartIcon(props) {
+  return <NavSvg {...props}><rect x="6" y="5" width="15" height="14" rx="2.5" /><path d="M11.5 9.5l4 2.5-4 2.5z" /><line x1="3" y1="5" x2="3" y2="19" /></NavSvg>
+}
+export function VideoEndIcon(props) {
+  return <NavSvg {...props}><rect x="3" y="5" width="15" height="14" rx="2.5" /><path d="M8.5 9.5l4 2.5-4 2.5z" /><line x1="21" y1="5" x2="21" y2="19" /></NavSvg>
+}
+export function InpaintIcon(props) {
+  return <NavSvg {...props}><path d="M14.5 4.5l5 5L10 19H5v-5z" /><line x1="12.5" y1="6.5" x2="17.5" y2="11.5" /><path d="M3 21h7" strokeDasharray="2 2" /></NavSvg>
+}
+export function RefineFaceIcon(props) {
+  return <NavSvg {...props}><circle cx="10" cy="11" r="6.5" /><circle cx="7.8" cy="10" r="0.8" fill="currentColor" stroke="none" /><circle cx="12.2" cy="10" r="0.8" fill="currentColor" stroke="none" /><path d="M8 13.4c.6.7 1.3 1 2 1s1.4-.3 2-1" /><path d="M18.5 2.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z" /></NavSvg>
+}
+export function SaveCharacterIcon(props) {
+  return <NavSvg {...props}><circle cx="9.5" cy="8" r="3.5" /><path d="M3 20c.8-3.6 3.4-5.5 6.5-5.5 1.6 0 3 .5 4.2 1.4" /><line x1="18.5" y1="13.5" x2="18.5" y2="20.5" /><line x1="15" y1="17" x2="22" y2="17" /></NavSvg>
+}
+export function FolderAddIcon(props) {
+  return <NavSvg {...props}><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H9l2 2.5h8.5A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18z" /><line x1="12" y1="11.5" x2="12" y2="16.5" /><line x1="9.5" y1="14" x2="14.5" y2="14" /></NavSvg>
+}
+export function DownloadIcon(props) {
+  return <NavSvg {...props}><path d="M12 4v11" /><path d="M7.5 10.5L12 15l4.5-4.5" /><path d="M4.5 17.5v1A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5v-1" /></NavSvg>
+}
+
+// An icon button with a label that appears right away on hover (and is read out by screen readers)
+export function IconButton({ label, children, className = '', ...rest }) {
+  return (
+    <button type="button" className={`icon-btn ${className}`} aria-label={label} data-tip={label} {...rest}>{children}</button>
+  )
+}
