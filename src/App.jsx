@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, IconButton, InfoIcon, UsePromptIcon, UseFaceIcon, PoseIcon, VideoStartIcon, VideoEndIcon, InpaintIcon, RefineFaceIcon, SaveCharacterIcon, UpscaleIcon, FolderAddIcon, DownloadIcon } from './icons'
+import { ZoomIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, ArxLogo, SimpleModeIcon, AdvancedModeIcon, PageLayoutIcon, WorkspaceIcon, ResetLayoutIcon, IconButton, InfoIcon, UsePromptIcon, UseFaceIcon, PoseIcon, VideoStartIcon, VideoEndIcon, InpaintIcon, RefineFaceIcon, SaveCharacterIcon, UpscaleIcon, FolderAddIcon, DownloadIcon } from './icons'
 import { useLightboxKeys } from './useLightboxKeys'
 import FaceRef, { shrinkImage, MAX_FACE_REFS } from './FaceRef.jsx'
 import { queueSync, cloudForget } from './cloud.js'
@@ -1455,16 +1455,19 @@ export default function App({ active = true }) {
   return (
     <div className={`container gen-page ${ws.on ? 'ws-on' : ''}`}>
       <div className="gen-title-row">
-        <h1>ARX Image Generator</h1>
-        <div className="chips ui-mode" role="group" aria-label="Simple or advanced settings">
-          <button className={`chip ${!advanced ? 'active' : ''}`} onClick={() => setUiMode('simple')} title="The essentials: model, character, prompt, size, pictures and LoRAs">Simple</button>
-          <button className={`chip ${advanced ? 'active' : ''}`} onClick={() => setUiMode('advanced')} title="Everything: steps, sampler, seed, variation, detail tools, refiner…">Advanced</button>
+        <h1 className="gen-logo"><ArxLogo size={44} /><span className="visually-hidden">ARX Image Generator</span></h1>
+        <div className="mode-icons" role="group" aria-label="Simple or advanced settings, page or workspace">
+          <IconButton className={`tip-below ${!advanced ? 'active' : ''}`} aria-pressed={!advanced} label="Simple — just the essentials"
+            onClick={() => setUiMode('simple')}><SimpleModeIcon size={20} /></IconButton>
+          <IconButton className={`tip-below ${advanced ? 'active' : ''}`} aria-pressed={advanced} label="Advanced — every setting (steps, seed, detail tools, refiner…)"
+            onClick={() => setUiMode('advanced')}><AdvancedModeIcon size={20} /></IconButton>
           {wide && <>
             <span className="ui-mode-sep" aria-hidden="true" />
-            <button className={`chip ${layoutMode === 'page' ? 'active' : ''}`} onClick={() => setLayoutMode('page')} title="The normal page">Page</button>
-            <button className={`chip ${layoutMode === 'workspace' ? 'active' : ''}`} onClick={() => setLayoutMode('workspace')}
-              title="A free board: drag each block by its title bar and it stays there; drag its corner to resize it">Workspace</button>
-            {ws.on && <button className="chip" onClick={ws.reset} title="Put every card back in its starting place and size">Reset layout</button>}
+            <IconButton className={`tip-below ${layoutMode === 'page' ? 'active' : ''}`} aria-pressed={layoutMode === 'page'} label="Page — the normal layout"
+              onClick={() => setLayoutMode('page')}><PageLayoutIcon size={20} /></IconButton>
+            <IconButton className={`tip-below ${layoutMode === 'workspace' ? 'active' : ''}`} aria-pressed={layoutMode === 'workspace'} label="Workspace — drag, resize and zoom the cards"
+              onClick={() => setLayoutMode('workspace')}><WorkspaceIcon size={20} /></IconButton>
+            {ws.on && <IconButton className="tip-below tip-right" label="Reset layout — tidy every card back into place" onClick={ws.reset}><ResetLayoutIcon size={20} /></IconButton>}
           </>}
         </div>
       </div>
@@ -1917,7 +1920,7 @@ export default function App({ active = true }) {
         </div>
 
         {wide && <aside className="gen-side" aria-label="Progress and latest pictures">
-          <WsCard id="latest" title="Latest">
+          <WsCard id="latest" title="Latest" free>
           <div className="gen-side-inner">
             {genJobs.pct != null ? <JobProgress pct={genJobs.pct} label={queueLabel} /> : showProgress && <JobProgress pct={progress} />}
             {status && <div className={`status ${statusType}`}>{status}</div>}
@@ -1925,13 +1928,13 @@ export default function App({ active = true }) {
             {latestPictures.items.length + pendingPictures === 0 ? (
               <div className="muted small-note">Your pictures appear here as they're made.</div>
             ) : (
-              <VerticalCarousel active={latestAt} setActive={setLatestAt} onOpen={i => { const item = latestPictures.items[i - Math.min(pendingPictures, 8)]; if (item) openPicture(item) }}
+              <VerticalCarousel fill={ws.on} active={latestAt} setActive={setLatestAt} onOpen={i => { const item = latestPictures.items[i - Math.min(pendingPictures, 8)]; if (item) openPicture(item) }}
                 items={[
                   ...Array.from({ length: Math.min(pendingPictures, 8) }, (_, i) => ({ key: 'loading-' + i, loading: true })),
                   ...latestPictures.items.map(item => ({ key: item.id, src: item.url, title: item.positive })),
                 ]}
                 caption={<>{latestAt < Math.min(pendingPictures, 8) ? 'Being made…' : `${latestAt - Math.min(pendingPictures, 8) + 1} / ${latestPictures.items.length}`}
-                  {latestPictures.items.length + pendingPictures > 1 && <span className="muted"> · ↑ ↓ or scroll</span>}</>} />
+                  {latestPictures.items.length + pendingPictures > 1 && <span className="muted"> · arrow keys or scroll</span>}</>} />
             )}
           </div>
           </WsCard>
