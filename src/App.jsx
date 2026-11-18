@@ -131,6 +131,7 @@ export default function App({ active = true }) {
   const [faceRefMethods, setFaceRefMethods] = useState([])
   const [supportsLoraTags, setSupportsLoraTags] = useState(false)
   const [faceRefCharacter, setFaceRefCharacter] = useState(savedFaceRef.character || '')
+  const [faceRefPick, setFaceRefPick] = useState(+savedFaceRef.pick || 0)   // Krea 2: which face Identity Edit uses (the carousel)
   const [supportsFaceRef, setSupportsFaceRef] = useState(false)
   // BigLust: pose / depth / style / img2img picture (next to the face reference)
   const [refModes, setRefModes] = useState([])          // modes the connected notebook supports
@@ -161,10 +162,10 @@ export default function App({ active = true }) {
   useEffect(() => {
     try {
       localStorage.setItem('face_ref', JSON.stringify({ on: faceRefOn, images: faceRefImages, strength: +faceRefStrength, character: faceRefCharacter,
-        method: faceRefMethod, strength2: +faceRefStrength2,
+        method: faceRefMethod, strength2: +faceRefStrength2, pick: faceRefPick,
         strengths: { ...faceRefStrengths, [faceRefMethod]: +faceRefStrength, ...(faceRefMethod === 'both' ? { both2: +faceRefStrength2 } : {}) } }))
     } catch { /* storage full: the pictures still work until the page is reloaded */ }
-  }, [faceRefOn, faceRefImages, faceRefStrength, faceRefStrength2, faceRefCharacter, faceRefMethod, faceRefStrengths])
+  }, [faceRefOn, faceRefImages, faceRefStrength, faceRefStrength2, faceRefCharacter, faceRefMethod, faceRefStrengths, faceRefPick])
   function switchFaceRefMethod(m) {
     if (backendTypeRef.current) localStorage.setItem('face_method_' + backendTypeRef.current, m)
     if (m === faceRefMethod) return
@@ -802,6 +803,7 @@ export default function App({ active = true }) {
     const job = genJobs.start(count)
     // backends without a step counter: creep toward 90% so the bar keeps moving
     const timer = setInterval(() => job.set(job.done + (count * 0.9 - job.done) * 0.03), 600)
+    const pickIndex = Math.min(Math.max(0, faceRefPick), Math.max(0, faceRefImages.length - 1))
     const faceRefActive = hasDetail && supportsFaceRef && faceRefOn && faceRefImages.length > 0
     if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); job.cancel(); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
@@ -828,7 +830,9 @@ export default function App({ active = true }) {
       refiner_upscale: +refinerUpscale,
       refiner_steps: +refinerSteps,
       ...((detailTools?.upscalers || []).includes(refinerUpscaler) ? { refiner_upscaler: refinerUpscaler } : {}),
-      face_ref_images: faceRefActive ? faceRefImages : [],
+      // Krea 2 (Identity Edit) uses the first picture: the one picked in the carousel goes first
+      face_ref_images: !faceRefActive ? [] : faceRefMethod === 'identity'
+        ? [faceRefImages[pickIndex], ...faceRefImages.filter((_, i) => i !== pickIndex)] : faceRefImages,
       face_ref_strength: +faceRefStrength,
       face_ref_method: faceRefMethod,
       ...(faceRefMethod === 'both' ? { face_ref_pulid_strength: +faceRefStrength2 } : {}),
@@ -904,6 +908,7 @@ export default function App({ active = true }) {
         refiner: !!data.refined ? { checkpoint: refinerCkpt || 'same as main', strength: +refinerStrength, upscale: +refinerUpscale,
           steps: +refinerSteps, upscaler: payload.refiner_upscaler || 'lanczos' } : null,
         faceRef: data.face_ref ? { count: data.face_ref, strength: +faceRefStrength, method: faceRefMethod, character: faceRefCharacter,
+          ...(faceRefMethod === 'identity' && faceRefImages.length > 1 ? { pick: pickIndex + 1 } : {}),
           ...(faceRefMethod === 'both' ? { strength2: +faceRefStrength2 } : {}) } : null,
         refPicture: data.ref_mode ? (data.ref_mode === 'img2img' ? { mode: 'img2img', denoise: +refSettings.denoise }
           : { mode: data.ref_mode, strength: +refSettings.strength, end: +refSettings.end }) : null,
@@ -1256,7 +1261,10 @@ export default function App({ active = true }) {
       if (item.faceRef?.strength2 != null) setFaceRefStrength2(item.faceRef.strength2)
       if (item.faceRef?.character) {
         const c = loadCharacters().find(x => x.name === item.faceRef.character)
-        if (c?.images?.length) { setFaceRefImages(c.images.slice(0, MAX_FACE_REFS)); setFaceRefCharacter(c.name) }
+        if (c?.images?.length) {
+          setFaceRefImages(c.images.slice(0, MAX_FACE_REFS)); setFaceRefCharacter(c.name)
+          setFaceRefPick(item.faceRef.pick ? Math.min(item.faceRef.pick, c.images.length) - 1 : 0)   // the face it used (Krea 2)
+        }
         else {
           // the character isn't on this computer: everything else is loaded; face reference waits (Off) for pictures,
           // and pictures of another character aren't left in (they'd give the wrong face)
@@ -1534,7 +1542,8 @@ export default function App({ active = true }) {
           strength={faceRefStrength} setStrength={setFaceRefStrength} supported={supportsFaceRef}
           character={faceRefCharacter} setCharacter={setFaceRefCharacter} say={setStatusMsg}
           method={faceRefMethod} setMethod={switchFaceRefMethod} methods={faceRefMethods}
-          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} notebook={backendType === 'krea2' ? 'Krea 2' : 'BigLust'} />
+          strength2={faceRefStrength2} setStrength2={setFaceRefStrength2} notebook={backendType === 'krea2' ? 'Krea 2' : 'BigLust'}
+          pick={faceRefPick} setPick={setFaceRefPick} />
       )}
 
       {(
@@ -1900,7 +1909,7 @@ export default function App({ active = true }) {
                 ? detailLines(infoItem.detail).map(([name, value]) => <span key={name}><br/>{name}: {value}</span>)
                 : infoItem.detailTools?.length > 0 && <><br/>Detail tools: {infoItem.detailTools.join(' · ')}</>}
               {infoItem.denoise != null && +infoItem.denoise !== 1 && <><br/>Denoise: {infoItem.denoise}</>}
-              {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
+              {infoItem.faceRef && <><br/>Face reference: {FACE_METHOD_NAMES[infoItem.faceRef.method] || 'FaceID'} · {infoItem.faceRef.character || `${infoItem.faceRef.count} picture(s)`}{infoItem.faceRef.pick ? ` (face ${infoItem.faceRef.pick})` : ''}, {infoItem.faceRef.method === 'both' ? `strength FaceID ${infoItem.faceRef.strength} / PuLID ${infoItem.faceRef.strength2}` : `strength ${infoItem.faceRef.strength}`}</>}
               {infoItem.refPicture && <><br/>Pose / style picture: {REF_MODE_NAMES[infoItem.refPicture.mode] || infoItem.refPicture.mode}
                 {infoItem.refPicture.mode === 'img2img'
                   ? (infoItem.refPicture.denoise != null && <>, denoise {infoItem.refPicture.denoise}</>)

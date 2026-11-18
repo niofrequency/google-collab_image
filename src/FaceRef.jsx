@@ -45,7 +45,10 @@ const METHODS = [
 ]
 
 export default function FaceRef({ images, setImages, on, setOn, strength, setStrength, supported, say, character, setCharacter,
-  method = 'faceid', setMethod = () => {}, methods = ['faceid'], strength2 = 0.5, setStrength2 = () => {}, notebook = 'BigLust' }) {
+  method = 'faceid', setMethod = () => {}, methods = ['faceid'], strength2 = 0.5, setStrength2 = () => {}, notebook = 'BigLust',
+  pick = 0, setPick = () => {} }) {
+  const carousel = method === 'identity'   // Krea 2: one face is used — browse the character's faces and pick it
+  const active = Math.min(Math.max(0, pick), Math.max(0, images.length - 1))
   const [characters, setCharacters] = useState(loadCharacters)
   const fileRef = useRef(null)
   useEffect(() => {  // characters changed in the Characters tab, or saved on another device (cloud backup)
@@ -71,6 +74,7 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
       const added = []
       for (const src of srcs.slice(0, room)) added.push(await shrinkImage(src))
       setImages([...images, ...added])
+      if (carousel) setPick(images.length)   // show the picture just added
       setOn(true)
       setCharacter('')
       say(`Face reference: ${images.length + added.length} picture(s)`, 'ok')
@@ -93,6 +97,7 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
 
   function useCharacter(c) {
     setImages(c.images)
+    setPick(0)
     if (c.strength) setStrength(c.strength)
     setCharacter(c.name)
     setOn(true)
@@ -141,11 +146,16 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
       </div>
 
       {supported && on && (<>
+        {carousel && images.length > 0 && <FaceCarousel images={images} active={active} setActive={setPick} />}
         <div className="face-ref-thumbs">
           {images.map((src, i) => (
-            <div key={i} className="face-ref-thumb">
-              <img src={src} alt={`Face ${i + 1}`} />
-              <button className="danger train-del" title="Remove" onClick={() => { setImages(images.filter((_, j) => j !== i)); setCharacter('') }}>×</button>
+            <div key={i} className={`face-ref-thumb ${carousel && i === active ? 'picked' : ''}`}>
+              <img src={src} alt={`Face ${i + 1}`} onClick={carousel ? () => setPick(i) : undefined}
+                title={carousel ? (i === active ? 'The face Identity Edit uses' : 'Use this face') : undefined} style={carousel ? { cursor: 'pointer' } : undefined} />
+              <button className="danger train-del" title="Remove" onClick={() => {
+                setImages(images.filter((_, j) => j !== i)); setCharacter('')
+                if (carousel && i <= active && active > 0) setPick(active - 1)
+              }}>×</button>
             </div>
           ))}
           {images.length < MAX_FACE_REFS && (
@@ -169,6 +179,54 @@ export default function FaceRef({ images, setImages, on, setOn, strength, setStr
           <button className="chip custom" onClick={saveCharacter} disabled={!images.length}>+ Save as character</button>
         </div>
       </>)}
+    </div>
+  )
+}
+
+
+// Krea 2: the character's faces as a carousel. The face in the middle is the one Identity Edit uses.
+// ← / → (while the pointer is over it or it has focus), the arrows, or a click on a side face browse it.
+function FaceCarousel({ images, active, setActive }) {
+  const [live, setLive] = useState(false)   // pointer over it / focused: the arrow keys browse it
+  const n = images.length
+  const go = d => setActive((active + d + n) % n)
+  useEffect(() => {
+    if (!live || n < 2) return
+    const onKey = e => {
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1) }
+      if (e.key === 'ArrowRight') { e.preventDefault(); go(1) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })   // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className={`face-carousel ${live ? 'live' : ''}`} tabIndex={0} aria-label="Faces — use the left and right arrow keys"
+      onMouseEnter={() => setLive(true)} onMouseLeave={() => setLive(false)} onFocus={() => setLive(true)} onBlur={() => setLive(false)}>
+      {n > 1 && <button className="fc-nav left" title="Previous face (←)" onClick={() => go(-1)}>‹</button>}
+      <div className="fc-stage">
+        {images.map((src, i) => {
+          let d = ((i - active) % n + n) % n   // position relative to the middle, wrapping around
+          if (d > n / 2) d -= n
+          const side = Math.abs(d)
+          return (
+            <img key={i} src={src} alt={`Face ${i + 1}`} className={`fc-face ${d === 0 ? 'current' : ''}`}
+              style={{
+                transform: `translateX(${d * 62}%) scale(${d === 0 ? 1 : 0.68})`,
+                opacity: side === 0 ? 1 : side === 1 ? 0.45 : 0,
+                zIndex: 10 - side,
+                pointerEvents: side > 1 ? 'none' : 'auto',
+              }}
+              onClick={() => d !== 0 && setActive(i)} title={d === 0 ? 'The face Identity Edit uses' : 'Use this face'} />
+          )
+        })}
+      </div>
+      {n > 1 && <button className="fc-nav right" title="Next face (→)" onClick={() => go(1)}>›</button>}
+      <div className="fc-caption">
+        Face <b>{active + 1}</b> / {n} · used by Identity Edit
+        {n > 1 && <span className="muted"> · ← → to browse</span>}
+      </div>
     </div>
   )
 }
