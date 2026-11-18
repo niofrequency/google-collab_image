@@ -35,19 +35,12 @@ const NGROK_HEADERS = {
 
 const FACE_METHOD_NAMES = { faceid: 'FaceID', portrait: 'FaceID Portrait', pulid: 'PuLID', both: 'FaceID + PuLID', instantid: 'InstantID', identity: 'Identity Edit (Krea 2)' }
 const LORA_TARGET_NAMES = { all: 'whole image', main: 'main image only', face: 'face fix only' }
-// Workspace: where each card starts (Reset layout puts them back here)
-const WORKSPACE_DEFAULTS = {
-  connection: { x: 0, y: 0, w: 600, h: 176 },
-  character: { x: 0, y: 192, w: 600, h: 152 },
-  prompt: { x: 0, y: 360, w: 600, h: 560 },
-  pictures: { x: 0, y: 936, w: 600, h: 520 },
-  face: { x: 616, y: 0, w: 400, h: 440 },
-  loras: { x: 616, y: 456, w: 400, h: 384 },
-  settings: { x: 616, y: 856, w: 400, h: 440 },
-  detail: { x: 616, y: 1312, w: 400, h: 264 },
-  refiner: { x: 616, y: 1592, w: 400, h: 320 },
-  latest: { x: 1032, y: 0, w: 296, h: 824 },
-}
+// Workspace: the columns the cards start in (Reset layout stacks them like this again, at their real heights)
+const WORKSPACE_COLUMNS = [
+  { x: 0, w: 600, ids: ['connection', 'character', 'prompt', 'pictures'] },
+  { x: 616, w: 420, ids: ['face', 'loras', 'settings', 'detail', 'refiner'] },
+  { x: 1052, w: 300, ids: ['latest'] },
+]
 const MODEL_NAMES = { sdxl: 'BigLust (SDXL)', krea2: 'Krea 2', qwen_image_edit: 'Qwen Edit' }   // the Model switch
 const REF_MODE_NAMES = { pose: 'Body pose', depth: 'Depth (framing)', style: 'Style / outfit', img2img: 'Img2img', scene: 'Scene (person put in)', edit: 'Edit picture', kdepth: 'Depth (framing)' }
 
@@ -548,7 +541,7 @@ export default function App({ active = true }) {
   // Workspace: the main blocks as cards you drag and resize (computers / tablets; phones keep the page)
   const [layoutMode, setLayoutModeState] = useState(() => localStorage.getItem('gen_layout_mode') || 'page')
   const setLayoutMode = m => { setLayoutModeState(m); localStorage.setItem('gen_layout_mode', m) }
-  const ws = useWorkspaceState('gen', WORKSPACE_DEFAULTS, wide && layoutMode === 'workspace')
+  const ws = useWorkspaceState('gen', WORKSPACE_COLUMNS, wide && layoutMode === 'workspace')
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1001px)')
     const on = () => setWide(mq.matches)
@@ -1476,7 +1469,7 @@ export default function App({ active = true }) {
         </div>
       </div>
       <WorkspaceContext.Provider value={ws}>
-      <WorkspaceBoard ws={ws}>
+      <WorkspaceBoard ws={ws} onGallery={() => galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
       <div className="gen-layout">
         <div className="gen-main">
           <WsCard id="connection" title="Notebook">
@@ -1921,17 +1914,6 @@ export default function App({ active = true }) {
           </Section>
           </WsCard>
 
-          {maskEditorSrc && (
-            <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
-              onClose={() => setMaskEditorSrc(null)}
-              onDone={result => {
-                setInpaint({ ...result, source: maskEditorSrc })
-                setWidth(result.width); setHeight(result.height)
-                setMaskEditorSrc(null)
-                setLightboxIndex(-1)
-                setStatusMsg(`Inpaint / outpaint ready (${result.summary}) — describe the result in the prompt and press Generate`, 'ok')
-              }} />
-          )}
         </div>
 
         {wide && <aside className="gen-side" aria-label="Progress and latest pictures">
@@ -1957,6 +1939,18 @@ export default function App({ active = true }) {
       </div>
       </WorkspaceBoard>
       </WorkspaceContext.Provider>
+
+      {maskEditorSrc && (
+        <MaskEditor src={maskEditorSrc} multiple={backendType === 'sdxl' ? 8 : 16} maxSide={backendType === 'sdxl' ? 2048 : 1536}
+          onClose={() => setMaskEditorSrc(null)}
+          onDone={result => {
+            setInpaint({ ...result, source: maskEditorSrc })
+            setWidth(result.width); setHeight(result.height)
+            setMaskEditorSrc(null)
+            setLightboxIndex(-1)
+            setStatusMsg(`Inpaint / outpaint ready (${result.summary}) — describe the result in the prompt and press Generate`, 'ok')
+          }} />
+      )}
 
 
       <h3>Saved Prompts</h3>
