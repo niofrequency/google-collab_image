@@ -1,59 +1,125 @@
 import { useState, useRef } from 'react'
 
-// Progressive gallery prompt templates (clothed teasing → full nude explicit)
-// {clothing} will be replaced with the user's clothing description
-// {subject} will be replaced with the subject + LoRA line
+// Progression stages for the gallery
+const STAGES = [
+  { name: "Fully Clothed Seductive", count: 4, nudeLevel: 0 },
+  { name: "Teasing / Clothing Adjusted", count: 4, nudeLevel: 1 },
+  { name: "Partial Nude", count: 4, nudeLevel: 2 },
+  { name: "Fully Nude", count: 4, nudeLevel: 3 },
+  { name: "Explicit + Fluids", count: 4, nudeLevel: 4 },
+]
 
-const GALLERY_TEMPLATES = [
-  // 1-4: Fully clothed / teasing
-  `{subject}, standing full body, wearing {clothing}, hands clasped in front, cute smile, soft indoor lighting, bedroom background, photorealistic, 8k, highly detailed skin texture, natural expression`,
-  `{subject}, sitting on bed edge, wearing {clothing}, legs crossed, looking at camera with a soft smile, soft lighting, photorealistic, 8k, detailed skin`,
-  `{subject}, standing, slightly lifting the skirt of {clothing} with one hand, teasing, looking down at camera, soft lighting, photorealistic, 8k`,
-  `{subject}, kneeling, wearing {clothing}, looking up at camera with a playful expression, soft indoor lighting, photorealistic, 8k, detailed skin texture`,
+const POSES = [
+  "standing with weight on one leg, hand on hip",
+  "sitting on the edge of the bed, legs crossed",
+  "kneeling on the bed, looking back over shoulder",
+  "standing low angle, looking down at camera",
+  "lying on back with one leg raised",
+  "bending slightly forward, hands on thighs",
+  "sitting with legs spread",
+  "leaning against the wall, one leg bent",
+  "on all fours looking back",
+  "standing with one leg up on the bed",
+]
 
-  // 5-8: Clothing partially removed / teasing more
-  `{subject}, standing, {clothing} pulled up to expose panties, looking at camera seductively, soft lighting, photorealistic, 8k, thick thighs, small perky tits`,
-  `{subject}, sitting with legs spread, {clothing} skirt lifted, pink pantyhose still on, hands on thighs, cute smile, soft lighting, photorealistic, 8k`,
-  `{subject}, standing low angle, looking down between legs, {clothing} still on but skirt lifted, soft seductive expression, photorealistic, 8k`,
-  `{subject}, half body, sitting on bed, {clothing} pulled up to waist, pink pantyhose pulled to mid-thigh, looking at camera with a shy smile, soft lighting, photorealistic, 8k`,
+const EXPRESSIONS = [
+  "soft seductive smile, half-lidded eyes",
+  "playful smirk, tongue slightly out",
+  "shy blushing look, biting lower lip",
+  "intense eye contact, mouth slightly open",
+  "ahegao-like expression, eyes rolled back, tongue out",
+  "dazed happy expression with open mouth",
+  "confident smirk looking at camera",
+  "moaning expression, eyes half closed",
+]
 
-  // 9-12: Nude with some clothing still on
-  `{subject}, standing, {clothing} pulled up high, no panties, pink pantyhose pulled down to knees, one hand spreading pussy slightly, looking at camera, soft lighting, photorealistic, 8k, highly detailed natural vulva, realistic labia with natural folds, subtle moisture`,
-  `{subject}, sitting on bed edge, legs spread wide, {clothing} pulled up, pink pantyhose pulled down, hands resting on thighs, seductive smile, soft lighting, photorealistic, 8k, detailed skin, thick thighs`,
-  `{subject}, standing one leg raised high, {clothing} pulled up, pink pantyhose pulled down on one leg, pussy fully exposed, confident expression, soft lighting, photorealistic, 8k, highly detailed natural vulva`,
-  `{subject}, kneeling on bed, looking back over shoulder, {clothing} still partially on, ass raised, soft lighting, photorealistic, 8k`,
+const ANGLES = [
+  "full body shot",
+  "half body shot",
+  "medium shot from the waist up",
+  "close-up portrait",
+  "extreme close-up of face",
+  "low angle looking up",
+  "high angle looking down",
+  "from behind",
+  "side view",
+  "POV from between legs",
+]
 
-  // 13-16: Fully nude poses
-  `{subject}, fully nude, only wearing pink striped socks, lying on back with legs spread wide and held up, looking down at camera with seductive expression, soft bedroom lighting, photorealistic, 8k, highly detailed natural vulva, realistic labia majora and minora with natural folds, asymmetry and texture, visible clitoral hood, realistic pubic hair that is not perfectly trimmed, subtle natural moisture, visible pores`,
-  `{subject}, fully nude, doggystyle on all fours, ass raised high, looking back over shoulder with playful smile, pink striped socks, soft lighting, photorealistic, 8k, highly detailed natural vulva and asshole visible`,
-  `{subject}, fully nude, extreme low-angle POV from between legs, holding legs up spreading wide, looking down at camera, soft lighting, photorealistic, 8k, highly detailed natural vulva, realistic labia with natural folds, subtle moisture, visible pores`,
-  `{subject}, fully nude, sitting on bed with one leg raised high, pussy spread toward camera, seductive smile, soft lighting, photorealistic, 8k, highly detailed natural vulva`,
-
-  // 17-20: Extreme closeups + cum
-  `{subject}, extreme closeup of pussy filling the frame, fully nude, soft lighting, photorealistic, 8k, highly detailed natural vulva, realistic labia majora and minora with natural folds, asymmetry and texture, visible clitoral hood, realistic pubic hair that is not perfectly trimmed, subtle natural moisture and skin sheen only on the genitals, visible pores, fine skin texture, slight natural imperfections`,
-  `{subject}, extreme closeup from behind doggystyle, ass cheeks slightly spread, both pussy and asshole clearly visible, fully nude, soft lighting, photorealistic, 8k, highly detailed natural vulva and asshole, realistic labia with folds, subtle moisture`,
-  `{subject}, closeup portrait, face covered in thick white cum, some dripping from chin, mouth slightly open, dazed happy expression, soft lighting, photorealistic, 8k, highly detailed skin and cum texture, long eyelashes`,
-  `{subject}, half-body, face completely covered in thick white cum, mouth wide open, tongue out, cum dripping heavily from mouth and chin down onto small perky tits, ahegao-like expression, soft lighting, photorealistic, 8k, highly detailed cum and skin`,
+const FLUIDS = [
+  "thick white cum on face, dripping from chin and lips",
+  "face completely covered in thick white cum, mouth open, tongue out",
+  "cum dripping from mouth and chin onto tits",
+  "pissing while sitting with legs spread, stream visible",
+  "sitting on toilet pissing, looking at camera",
+  "cum on face and chest, dazed expression",
+  "pussy wet with visible moisture and slight piss drip",
 ]
 
 export default function GalleryPrompts() {
-  const [subject, setSubject] = useState('woman, bright shoulder-length pink hair bobcut with parted bangs solid pink hair with a purple headband with small silver studs, eyelines and long eyelashes, cute face, small and slightly chubby body, thick thighs, small perky tits')
+  const [subject, setSubject] = useState('woman, bright shoulder-length pink hair bobcut with parted bangs, purple headband with small silver studs, eyelines and long eyelashes, cute face, small and slightly chubby body, thick thighs, small perky tits')
   const [lora, setLora] = useState('zxq_steph')
-  const [clothingDesc, setClothingDesc] = useState('sleeveless V-neck mini dress with vertical light pink and hot pink stripes, slightly shiny fabric, short flared skirt, pink pantyhose, pink knitted leg warmers, pink and white sneakers')
-  const [clothingImage, setClothingImage] = useState(null)
+  const [clothing, setClothing] = useState('sleeveless V-neck mini dress with vertical light pink and hot pink stripes, slightly shiny fabric, short flared skirt, pink pantyhose, pink knitted leg warmers, pink and white sneakers')
+  const [pose, setPose] = useState('')
+  const [expression, setExpression] = useState('')
+  const [camera, setCamera] = useState('')
+  const [lighting, setLighting] = useState('soft warm indoor bedroom lighting, gentle shadows')
+  const [background, setBackground] = useState('messy bedroom with bed, soft focus background')
   const [prompts, setPrompts] = useState([])
-  const [copied, setCopied] = useState(null)  // 'all' or a prompt id: shows "Copied ✓" on that button for a moment
-  const fileInputRef = useRef(null)
+  const [copied, setCopied] = useState(null)
+
+  function randomFrom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)]
+  }
 
   function generate() {
     const loraPrefix = lora.trim() ? `lora:${lora.trim()}, ` : ''
     const subjectLine = loraPrefix + subject.trim()
+    const baseLighting = lighting.trim() || 'soft indoor lighting'
+    const baseBackground = background.trim() || 'bedroom background'
 
-    const generated = GALLERY_TEMPLATES.map((tpl, i) => {
-      const prompt = tpl
-        .replaceAll('{subject}', subjectLine)
-        .replaceAll('{clothing}', clothingDesc.trim() || 'pink outfit')
-      return { id: i + 1, prompt }
+    const generated = []
+    let id = 1
+
+    STAGES.forEach((stage) => {
+      for (let i = 0; i < stage.count; i++) {
+        const usePose = pose.trim() || randomFrom(POSES)
+        const useExpression = expression.trim() || randomFrom(EXPRESSIONS)
+        const useCamera = camera.trim() || randomFrom(ANGLES)
+
+        let clothingState = clothing.trim() || 'pink outfit'
+        let extra = ''
+
+        if (stage.nudeLevel === 0) {
+          // Fully clothed
+          extra = ''
+        } else if (stage.nudeLevel === 1) {
+          clothingState = `${clothing.trim()} pulled up slightly, teasing, skirt lifted`
+        } else if (stage.nudeLevel === 2) {
+          clothingState = `${clothing.trim()} pulled up to waist, pink pantyhose pulled down to mid-thigh, no panties`
+          extra = ', pussy partially visible'
+        } else if (stage.nudeLevel === 3) {
+          clothingState = 'fully nude, only pink striped socks remaining'
+          extra = ', highly detailed natural vulva, realistic labia with natural folds, subtle moisture'
+        } else if (stage.nudeLevel === 4) {
+          clothingState = 'fully nude'
+          extra = ', ' + randomFrom(FLUIDS) + ', highly detailed natural vulva'
+        }
+
+        const prompt = [
+          subjectLine,
+          useCamera,
+          usePose,
+          `wearing ${clothingState}`,
+          useExpression,
+          extra,
+          baseLighting,
+          baseBackground,
+          'photorealistic, 8k, highly detailed skin texture, natural skin pores, realistic lighting, Krea 2 style'
+        ].filter(Boolean).join(', ')
+
+        generated.push({ id: id++, stage: stage.name, prompt })
+      }
     })
 
     setPrompts(generated)
@@ -66,81 +132,62 @@ export default function GalleryPrompts() {
 
   function copyAll() {
     const text = prompts.map(p => p.prompt).join('\n\n')
-    navigator.clipboard.writeText(text).then(() => flashCopied('all'), () => alert('Could not copy — select the text and copy it by hand'))
+    navigator.clipboard.writeText(text).then(() => flashCopied('all'))
   }
 
   function copyOne(prompt, id) {
-    navigator.clipboard.writeText(prompt).then(() => flashCopied(id), () => alert('Could not copy — select the text and copy it by hand'))
-  }
-
-  function handleImageUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const url = URL.createObjectURL(file)
-    setClothingImage(url)
+    navigator.clipboard.writeText(prompt).then(() => flashCopied(id))
   }
 
   return (
     <div className="container gallery-prompts">
-      <h1>Gallery Prompt Generator</h1>
+      <h1>Gallery Prompt Generator (Krea 2)</h1>
       <p className="gp-intro">
-        Generate a full progressive gallery (clothed teasing → full nude explicit) in the style of ATK-style sets.
+        Fill the boxes below. The generator creates a full progressive gallery (clothed seductive → full nude + fluids) with randomized poses, expressions, and angles.
       </p>
 
       <div className="row gp-top-row">
         <div>
-          <label>Subject Description</label>
-          <textarea
-            value={subject}
-            onChange={e => setSubject(e.target.value)}
-            placeholder="woman, pink bob hair, purple headband, cute face, thick thighs..."
-            className="gp-textarea"
-          />
+          <label>1. Subject / Identity</label>
+          <textarea value={subject} onChange={e => setSubject(e.target.value)} className="gp-textarea" placeholder="woman, pink bob hair, cute face, thick thighs..." />
         </div>
         <div>
           <label>LoRA Name (optional)</label>
-          <input
-            value={lora}
-            onChange={e => setLora(e.target.value)}
-            placeholder="zxq_steph"
-          />
-          <small className="gp-note">Will be added as lora:name at the start of every prompt</small>
+          <input value={lora} onChange={e => setLora(e.target.value)} placeholder="zxq_steph" />
+          <small className="gp-note">Added as lora:name at the start</small>
         </div>
       </div>
 
-      <label>Clothing Description</label>
-      <textarea
-        value={clothingDesc}
-        onChange={e => setClothingDesc(e.target.value)}
-        placeholder="sleeveless V-neck mini dress with vertical pink stripes, pink pantyhose, pink leg warmers..."
-        className="gp-textarea"
-      />
+      <label>2. Clothing / Outfit</label>
+      <textarea value={clothing} onChange={e => setClothing(e.target.value)} className="gp-textarea" placeholder="sleeveless mini dress, pink pantyhose, leg warmers..." />
 
-      <label>Clothing Reference Image (optional, for your reference only)</label>
-      <div className="gp-ref">
+      <div className="row">
         <div>
-          <input
-            type="file"
-            accept="image/*"
-            ref={fileInputRef}
-            onChange={handleImageUpload}
-            style={{ display: 'none' }}
-          />
-          <button className="secondary gp-upload" onClick={() => fileInputRef.current?.click()}>
-            Upload Clothing Image
-          </button>
+          <label>3. Pose (leave blank to randomize)</label>
+          <textarea value={pose} onChange={e => setPose(e.target.value)} className="gp-textarea" placeholder="standing, hands on hips..." />
         </div>
-        {clothingImage && (
-          <img
-            src={clothingImage}
-            alt="clothing reference"
-            className="gp-ref-img"
-          />
-        )}
+        <div>
+          <label>4. Facial Expression (leave blank to randomize)</label>
+          <textarea value={expression} onChange={e => setExpression(e.target.value)} className="gp-textarea" placeholder="seductive smile, half-lidded eyes..." />
+        </div>
       </div>
+
+      <div className="row">
+        <div>
+          <label>5. Camera / Angle / Framing (leave blank to randomize)</label>
+          <textarea value={camera} onChange={e => setCamera(e.target.value)} className="gp-textarea" placeholder="half body shot, low angle..." />
+        </div>
+        <div>
+          <label>6. Lighting</label>
+          <textarea value={lighting} onChange={e => setLighting(e.target.value)} className="gp-textarea" />
+        </div>
+      </div>
+
+      <label>7. Background / Setting</label>
+      <textarea value={background} onChange={e => setBackground(e.target.value)} className="gp-textarea" />
 
       <div className="gp-actions">
-        <button onClick={generate}>Generate 20 Prompts</button>
+        <button onClick={generate}>Generate Progressive Gallery (~20 prompts)</button>
         {prompts.length > 0 && (
           <button className="secondary" onClick={copyAll}>{copied === 'all' ? 'Copied ✓' : 'Copy All'}</button>
         )}
@@ -148,19 +195,17 @@ export default function GalleryPrompts() {
 
       {prompts.length > 0 && (
         <div className="gp-results">
-          <h2>Generated Gallery Prompts <span className="muted">· {prompts.length}</span></h2>
+          <h2>Generated Prompts <span className="muted">· {prompts.length}</span></h2>
           <div className="gp-list">
             {prompts.map(p => (
               <div key={p.id} className="gp-card">
                 <div className="gp-card-head">
-                  <strong>#{p.id}</strong>
+                  <strong>#{p.id} — {p.stage}</strong>
                   <button className="secondary" onClick={() => copyOne(p.prompt, p.id)}>
                     {copied === p.id ? 'Copied ✓' : 'Copy'}
                   </button>
                 </div>
-                <pre>
-                  {p.prompt}
-                </pre>
+                <pre>{p.prompt}</pre>
               </div>
             ))}
           </div>
