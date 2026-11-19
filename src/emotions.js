@@ -1,6 +1,7 @@
 // Emotion shots for a character. Stored as emotions: [{ id, image, tag }].
 // tag is the emotion only (LoRA-style), never the full WD14 caption.
 import { loadCharacters, saveCharacters } from './characters.js'
+import { cachedPicture, ensurePicture } from './pictureCache.js'
 
 // Expression tags the training tagger is allowed to keep. Everything else
 // (hair, clothes, body, background) is dropped.
@@ -59,14 +60,8 @@ export function emotionOnly(caption) {
 
 export function emotionShots(character) {
   const raw = character?.emotions
-  if (Array.isArray(raw)) return raw.filter(s => s && s.image)
-  // Older builds stored { crying: dataURL }.
-  if (raw && typeof raw === 'object') {
-    return Object.entries(raw)
-      .filter(([, image]) => typeof image === 'string' && image.startsWith('data:'))
-      .map(([tag, image]) => ({ id: tag, image, tag }))
-  }
-  return []
+  const list = Array.isArray(raw) ? raw.filter(s => s && s.id) : []
+  return list.map(s => ({ id: s.id, tag: s.tag || '', image: cachedPicture(s.id) || (typeof s.image === 'string' ? s.image : '') }))
 }
 
 export function saveEmotionShots(name, shots) {
@@ -81,8 +76,8 @@ export function newShotId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 }
 
-// The shot whose emotion tag shows up in the prompt, or null.
-export function emotionForPrompt(characterName, prompt) {
+// Which emotion tag in this character's set the prompt names, or null. Does not load the picture.
+export function emotionLabelForPrompt(characterName, prompt) {
   if (!characterName || !prompt) return null
   const character = loadCharacters().find(c => c.name === characterName)
   let best = null
@@ -95,6 +90,25 @@ export function emotionForPrompt(characterName, prompt) {
     }
   }
   if (!best) return null
+  return { tag: best.shot.tag, label: String(best.shot.tag || '').replace(/_/g, ' ') }
+}
+
+// The shot whose emotion tag shows up in the prompt, or null.
+export async function emotionForPrompt(characterName, prompt) {
+  if (!characterName || !prompt) return null
+  const character = loadCharacters().find(c => c.name === characterName)
+  let best = null
+  for (const shot of emotionShots(character)) {
+    const parts = String(shot.tag || '').split(/[,\s]+/).map(t => t.replace(/_/g, ' ').trim()).filter(Boolean)
+    for (const w of parts) {
+      const i = wordAt(prompt, w)
+      if (i < 0) continue
+      if (!best || i < best.i || (i === best.i && w.length > best.len)) best = { i, len: w.length, shot }
+    }
+  }
+  if (!best) return null
+  const image = await ensurePicture(best.shot.id)
+  if (!image) return null
   const label = String(best.shot.tag || '').replace(/_/g, ' ')
-  return { image: best.shot.image, tag: best.shot.tag, label }
+  return { image, tag: best.shot.tag, label }
 }

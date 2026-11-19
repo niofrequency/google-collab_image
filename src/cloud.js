@@ -2,6 +2,9 @@
 // prompts and presets are copied to your Firebase project (Storage for files, Firestore for details), and
 // training datasets can be saved / restored from the LoRA Training tab.
 //
+// Picture bytes for characters and emotion shots are files in Storage (and a local IndexedDB cache).
+// localStorage only keeps names, tags and picture ids, so it does not fill up.
+//
 // Everything stays in this browser too (IndexedDB / localStorage) — the cloud copy is a backup that syncs
 // between your devices. Files go to users/<your uid>/... and the security rules in firestore.rules /
 // storage.rules let only you read or write them.
@@ -9,6 +12,9 @@
 // Config: Vercel environment variables VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN,
 // VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_APP_ID — or paste the firebaseConfig
 // from the Firebase console into the ☁ panel (kept in this browser).
+
+import { packForStorage } from './characters.js'
+import { picturesToUpload, dataUrlToBlob, markPictureCloud, ensurePicture, rememberPicture } from './pictureCache.js'
 
 const ENV_CONFIG = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -273,6 +279,13 @@ function localSettings() {
     const key = localStorage.key(i)
     if (SETTINGS_KEYS(key)) { try { out[key] = JSON.parse(localStorage.getItem(key)) } catch { /* skip */ } }
   }
+  if (Array.isArray(out.face_characters)) {
+    const slim = packForStorage(out.face_characters)
+    if (JSON.stringify(slim) !== JSON.stringify(out.face_characters)) {
+      try { localStorage.setItem('face_characters', JSON.stringify(slim)) } catch { /* other keys may still be full */ }
+    }
+    out.face_characters = slim
+  }
   return out
 }
 const readJson = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback } catch { return fallback } }
@@ -354,6 +367,45 @@ let lastCloudMd5 = null
 let lastLocalJson = null
 let settingsBusy = null
 
+async function flushCharacterPictures() {
+  if (!currentUser) return
+  const { storage, st } = await firebase()
+  const uid = currentUser.uid
+  const fileRef = name => st.ref(storage, `users/${uid}/images/${name}`)
+  for (const rec of await picturesToUpload()) {
+    try {
+      const blob = dataUrlToBlob(rec.dataUrl)
+      await st.uploadBytes(fileRef(`${rec.kind}-${rec.id}.jpg`), blob, { contentType: blob.type || 'image/jpeg' })
+      await markPictureCloud(rec.id)
+    } catch (e) { console.warn('Picture backup failed', e) }
+  }
+  let list = []
+  try { list = JSON.parse(localStorage.getItem('face_characters')) || [] } catch { list = [] }
+  const want = []
+  for (const c of list) {
+    for (const id of c.imageIds || []) want.push(['charpic', id])
+    for (const s of c.emotions || []) if (s?.id) want.push(['emotion', s.id])
+  }
+  let got = false
+  for (const [kind, id] of want) {
+    if (await ensurePicture(id)) continue
+    try {
+      const blob = await st.getBlob(fileRef(`${kind}-${id}.jpg`))
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(String(reader.result))
+        reader.onerror = () => reject(reader.error)
+        reader.readAsDataURL(blob)
+      })
+      await rememberPicture(id, dataUrl, kind, false)
+      got = true
+    } catch { /* this picture is not in Storage yet */ }
+  }
+  if (got) window.dispatchEvent(new Event('characters-changed'))
+}
+
+window.addEventListener('pictures-dirty', () => { if (currentUser) flushCharacterPictures().catch(() => {}) })
+
 export function syncSettings() {   // one at a time (the 20 s timer and "Sync now" can overlap)
   if (!currentUser) return Promise.resolve()
   if (!settingsBusy) settingsBusy = runSettingsSync().finally(() => { settingsBusy = null })
@@ -386,9 +438,10 @@ async function runSettingsSync() {
   let changedHere = false
   const kept = {}   // what this browser really has now
   for (const [key, value] of Object.entries(merged)) {
-    kept[key] = value
-    if (canonical({ k: value }) !== canonical({ k: local[key] })) {
-      try { localStorage.setItem(key, JSON.stringify(value)); changedHere = true } catch {
+    const stored = key === 'face_characters' && Array.isArray(value) ? packForStorage(value) : value
+    kept[key] = stored
+    if (canonical({ k: stored }) !== canonical({ k: local[key] })) {
+      try { localStorage.setItem(key, JSON.stringify(stored)); changedHere = true } catch {
         kept[key] = local[key]   // browser storage full: the old list stays (what's missing is NOT treated as deleted)
       }
     }
@@ -404,13 +457,14 @@ async function runSettingsSync() {
     window.dispatchEvent(new Event('characters-changed'))
   }
 
-  const out = JSON.stringify({ ...merged, __sync_state: newState })
+  const out = JSON.stringify({ ...kept, __sync_state: newState })
   if (!md5 || canonical(merged, newState) !== canonical(cloud, cloudState)) {
     await st.uploadBytes(ref, new Blob([out], { type: 'application/json' }), { contentType: 'application/json' })
     try { md5 = (await st.getMetadata(ref)).md5Hash || null } catch { md5 = null }
   }
   lastCloudMd5 = md5
   lastLocalJson = JSON.stringify(localSettings())
+  flushCharacterPictures().catch(() => {})
 }
 // Changes on this computer or another one are picked up every 20 s while signed in
 setInterval(() => { if (currentUser) syncSettings().catch(() => {}) }, 20000)

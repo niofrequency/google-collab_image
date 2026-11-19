@@ -21,7 +21,7 @@ import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
 import { loadCharacters } from './characters.js'
-import { emotionForPrompt } from './emotions.js'
+import { emotionForPrompt, emotionLabelForPrompt } from './emotions.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import DetailTools, { loadDetail, detailPayload, detailSummary, detailRecord, detailLines, detailFromRecord, UPSCALER_NAMES } from './DetailTools.jsx'
@@ -881,7 +881,7 @@ export default function App({ active = true }) {
     const timer = setInterval(() => job.set(job.done + (count * 0.9 - job.done) * 0.03), 600)
     const pickIndex = Math.min(Math.max(0, faceRefPick), Math.max(0, faceRefImages.length - 1))
     const charForEmotion = backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter
-    const emotionShot = charForEmotion ? emotionForPrompt(charForEmotion, positive) : null
+    const emotionShot = charForEmotion ? await emotionForPrompt(charForEmotion, positive) : null
     // A named emotion in the prompt uses that Character Set shot as the face, instead of the usual angles.
     const genFaceImages = emotionShot && backendType !== 'qwen_image_edit' ? [emotionShot.image] : faceRefImages
     const genPick = emotionShot && backendType !== 'qwen_image_edit' ? 0 : pickIndex
@@ -1552,7 +1552,7 @@ export default function App({ active = true }) {
             <textarea value={positive} onChange={e => setPositive(e.target.value)} />
             {(() => {
               const who = backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter
-              const shot = who ? emotionForPrompt(who, positive) : null
+              const shot = who ? emotionLabelForPrompt(who, positive) : null
               if (!shot) return null
               return <div className="muted small-note">Face reference: {shot.label} · LoRA tag {shot.tag} · {who}</div>
             })()}
