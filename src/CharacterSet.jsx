@@ -7,14 +7,18 @@ import { emotionShots, emotionOnly, saveEmotionShots, newShotId } from './emotio
 const HEADERS = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }
 const TAG_DATASET = 'arx_emotion_tmp'
 
+function readUrl(key) {
+  try {
+    const v = JSON.parse(localStorage.getItem(key) || 'null')
+    if (typeof v === 'string' && v.trim()) return v.trim().replace(/\/$/, '')
+  } catch { /* stored as plain text */ }
+  const raw = localStorage.getItem(key) || ''
+  return raw.startsWith('http') ? raw.trim().replace(/\/$/, '') : ''
+}
+
 function trainingUrl() {
-  for (const key of ['train_url', 'train_url_qwen', 'train_url_krea2']) {
-    try {
-      const v = JSON.parse(localStorage.getItem(key) || 'null')
-      if (typeof v === 'string' && v.trim()) return v.trim().replace(/\/$/, '')
-    } catch { /* not this trainer */ }
-  }
-  return ''
+  // This tab's own tagger first. The LoRA training notebook still works if that URL is the one saved.
+  return readUrl('emotion_tag_url') || readUrl('train_url') || readUrl('train_url_qwen') || readUrl('train_url_krea2')
 }
 
 async function trainApi(backend, path, opts = {}) {
@@ -31,7 +35,7 @@ async function trainApi(backend, path, opts = {}) {
 // Runs the LoRA training tagger and returns one emotion-only caption per image, in the same order.
 async function tagEmotions(images) {
   const backend = trainingUrl()
-  if (!backend) throw new Error('Paste the READY URL on the LoRA Training tab first — that notebook is what auto-tags.')
+  if (!backend) throw new Error('Paste the READY URL from the Character Set tagger notebook above.')
   const uploaded = []
   const existing = await trainApi(backend, `/training/dataset/${TAG_DATASET}`).catch(() => ({ images: [] }))
   for (const img of existing.images || []) {
@@ -71,7 +75,9 @@ async function tagEmotions(images) {
 // The Image Generator uses the shot whose tag is in the prompt as the face reference.
 export default function CharacterSet({ active = true }) {
   const characters = useCharacters()
+  const [tagUrl, setTagUrl] = useState(() => readUrl('emotion_tag_url'))
   const [name, setName] = useState('')
+  useEffect(() => { localStorage.setItem('emotion_tag_url', JSON.stringify(tagUrl.trim())) }, [tagUrl])
   const [status, setStatus] = useState({ text: '', type: '' })
   const [busy, setBusy] = useState(false)
   const hoverRef = useRef(false)
@@ -153,7 +159,10 @@ export default function CharacterSet({ active = true }) {
 
   return (
     <div className="container characters-tab">
-      <h1>Character Set <Info text={<>Drop any face shots of a character — or hover the box and paste. Each picture is sent to the LoRA training tagger (same one as the Training tab) and <b>only the emotion tag is kept</b>. Hair, clothes and background are thrown away.<br /><br />On the Image Generator, pick this character and mention that emotion in the prompt. The matching shot is used as the face reference. No emotion in the prompt means the character's normal face pictures are used.<br /><br />The training notebook has to be running, and its READY URL pasted on the LoRA Training tab.</>} /></h1>
+      <h1>Character Set <Info text={<>Drop any face shots of a character — or hover the box and paste. Each picture is sent to the <b>Character Set tagger</b> notebook (not LoRA training) and <b>only the emotion tag is kept</b>. Hair, clothes and background are thrown away.<br /><br />Open <b>CHARACTER-SET-TAG</b> from the Notebooks tab, run both cells, and paste the READY URL above. A free T4 is enough. Leave that Colab tab open while you drop pictures.<br /><br />On the Image Generator, pick this character and mention that emotion in the prompt. The matching shot is used as the face reference.</>} /></h1>
+
+      <label>Tagger URL</label>
+      <input value={tagUrl} onChange={e => setTagUrl(e.target.value)} placeholder="https://….trycloudflare.com  (READY URL from the Character Set notebook)" />
 
       {characters.length === 0 ? (
         <div className="empty-msg">No characters yet. Make one on the Characters tab, then drop emotion shots here.</div>

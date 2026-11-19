@@ -24,6 +24,8 @@ const GROUPS = [
         what: 'The whole head (face, hair, head shape) from one photo onto the person in another — pose, body, light and background kept.' },
       { file: 'FACESWAP.ipynb', name: 'Face Swap', tab: 'faceswap', tabName: 'Face Swap', gpu: 'T4 · L4 faster',
         what: 'Only the face from one photo onto the person in another; their hair and head shape stay.' },
+      { file: 'CHARACTER-SET-TAG.ipynb', name: 'Character Set tagger', tab: 'emotionset', tabName: 'Character Set', gpu: 'T4 free',
+        what: 'Tags the emotion on pictures you drop in Character Set. Does not train a LoRA. Run both cells and paste the READY URL on that tab.' },
     ],
   },
   {
