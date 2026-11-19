@@ -9,12 +9,13 @@ import { ConfirmHost } from './ConfirmDialog.jsx'
 import HeadSwap from './HeadSwap.jsx'
 import FaceSwap from './FaceSwap.jsx'
 import Characters from './Characters.jsx'
+import CharacterSet from './CharacterSet.jsx'
 import Upscale from './Upscale.jsx'
 import Notebooks from './Notebooks.jsx'
 import Library from './Library.jsx'
 import MiniMax from './MiniMax.jsx'
 import MiniMaxGallery from './MiniMaxGallery.jsx'
-import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon, NotebookIcon, GalleryIcon } from './icons.jsx'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon, PromptsIcon, VideoIcon, HeadSwapIcon, FaceSwapIcon, CharactersIcon, CharacterSetIcon, UpscaleIcon, MusicIcon, TrainingIcon, EyeIcon, EyeOffIcon, NotebookIcon, GalleryIcon } from './icons.jsx'
 
 // short: the name under the icon in the narrow phone sidebar
 const TABS = [
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'headswap', label: 'Head Swap', short: 'Head Swap', Icon: HeadSwapIcon },
   { id: 'faceswap', label: 'Face Swap', short: 'Face Swap', Icon: FaceSwapIcon },
   { id: 'characters', label: 'Characters', short: 'Characters', Icon: CharactersIcon },
+  { id: 'emotionset', label: 'Character Set', short: 'Set', Icon: CharacterSetIcon },
   { id: 'upscale', label: 'Upscale', short: 'Upscale', Icon: UpscaleIcon },
   { id: 'music', label: 'Music', short: 'Music', Icon: MusicIcon },
   { id: 'train', label: 'LoRA Training', short: 'Training', Icon: TrainingIcon },
@@ -97,6 +99,7 @@ export default function Root() {
       <div style={{ display: tab === 'headswap' ? 'block' : 'none' }}><HeadSwap active={tab === 'headswap'} /></div>
       <div style={{ display: tab === 'faceswap' ? 'block' : 'none' }}><FaceSwap active={tab === 'faceswap'} /></div>
       <div style={{ display: tab === 'characters' ? 'block' : 'none' }}><Characters active={tab === 'characters'} /></div>
+      <div style={{ display: tab === 'emotionset' ? 'block' : 'none' }}><CharacterSet active={tab === 'emotionset'} /></div>
       <div style={{ display: tab === 'upscale' ? 'block' : 'none' }}><Upscale active={tab === 'upscale'} /></div>
       <div style={{ display: tab === 'music' ? 'block' : 'none' }}><Music /></div>
       <div style={{ display: tab === 'train' ? 'block' : 'none' }}><Training active={tab === 'train'} /></div>

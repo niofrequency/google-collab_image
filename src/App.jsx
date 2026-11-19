@@ -21,6 +21,7 @@ import MaskEditor from './MaskEditor.jsx'
 import { trackJob } from './favicon.js'
 import PromptEnhancer from './PromptEnhancer.jsx'
 import { loadCharacters } from './characters.js'
+import { emotionForPrompt } from './emotions.js'
 import SeeMore, { useSeeMore } from './SeeMore.jsx'
 import { useGalleryFolders, changeFoldersInDb, useFolderActions, useShiftSelect, FolderBar, FolderButtons } from './GalleryFolders.jsx'
 import DetailTools, { loadDetail, detailPayload, detailSummary, detailRecord, detailLines, detailFromRecord, UPSCALER_NAMES } from './DetailTools.jsx'
@@ -879,7 +880,12 @@ export default function App({ active = true }) {
     // backends without a step counter: creep toward 90% so the bar keeps moving
     const timer = setInterval(() => job.set(job.done + (count * 0.9 - job.done) * 0.03), 600)
     const pickIndex = Math.min(Math.max(0, faceRefPick), Math.max(0, faceRefImages.length - 1))
-    const faceRefActive = hasDetail && supportsFaceRef && faceRefOn && faceRefImages.length > 0
+    const charForEmotion = backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter
+    const emotionShot = charForEmotion ? emotionForPrompt(charForEmotion, positive) : null
+    // A named emotion in the prompt uses that Character Set shot as the face, instead of the usual angles.
+    const genFaceImages = emotionShot && backendType !== 'qwen_image_edit' ? [emotionShot.image] : faceRefImages
+    const genPick = emotionShot && backendType !== 'qwen_image_edit' ? 0 : pickIndex
+    const faceRefActive = hasDetail && supportsFaceRef && (faceRefOn || !!emotionShot) && genFaceImages.length > 0
     if (faceRefActive && faceRefMethod !== 'faceid' && !faceRefMethods.includes(faceRefMethod)) { clearInterval(timer); job.cancel(); return setStatusMsg('PuLID needs the updated BigLust notebook — open it fresh from GitHub and run its cells again (or switch Face reference to FaceID)', 'error') }
     const inpaintActive = !!inpaint && supportsInpaint
     if (inpaint && !supportsInpaint) { clearInterval(timer); job.cancel(); return setStatusMsg('This notebook has no inpainting — open it again from the Notebooks tab (BigLust, Krea 2, Qwen 2511 or Qwen AIO) and run its cells', 'error') }
@@ -893,7 +899,7 @@ export default function App({ active = true }) {
       const out = {
         ref: refActive ? await small(refPicture, 768) : null,
         extra: extraUsed ? await small(extraPicture, 768) : null,
-        faces: faceRefActive && !faceRefCharacter ? (await Promise.all(faceRefImages.map(f => small(f, 512)))).filter(Boolean) : null,
+        faces: faceRefActive && !faceRefCharacter ? (await Promise.all(genFaceImages.map(f => small(f, 512)))).filter(Boolean) : null,
       }
       return out.ref || out.extra || out.faces?.length ? out : null
     })()
@@ -905,8 +911,8 @@ export default function App({ active = true }) {
       ...(hasDetail && detailTools?.variation_seed && +varStrength > 0
         ? { variation_strength: +varStrength, ...(+varSeed >= 0 ? { variation_seed: +varSeed } : {}) } : {}),
       loras, positive, negative,
-      reference_image: refImages[0] || null,        // Picture 1
-      reference_images: refImages.slice(1),         // Pictures 2 and 3
+      reference_image: (emotionShot && backendType === 'qwen_image_edit' ? emotionShot.image : refImages[0]) || null,        // Picture 1
+      reference_images: emotionShot && backendType === 'qwen_image_edit' ? refImages.filter(Boolean).slice(0, 2) : refImages.slice(1),         // Pictures 2 and 3
       face_fix: hasDetail && faceFix,
       face_fix_strength: +faceStrength,
       ...(hasDetail ? detailPayload(detail, detailTools, { faceFix, refinerOn: supportsRefiner && refinerOn }) : {}),
@@ -918,7 +924,7 @@ export default function App({ active = true }) {
       ...((detailTools?.upscalers || []).includes(refinerUpscaler) ? { refiner_upscaler: refinerUpscaler } : {}),
       // Krea 2 (Identity Edit) uses the first picture: the one picked in the carousel goes first
       face_ref_images: !faceRefActive ? [] : faceRefMethod === 'identity'
-        ? [faceRefImages[pickIndex], ...faceRefImages.filter((_, i) => i !== pickIndex)] : faceRefImages,
+        ? [genFaceImages[genPick], ...genFaceImages.filter((_, i) => i !== genPick)] : genFaceImages,
       face_ref_strength: +faceRefStrength,
       face_ref_method: faceRefMethod,
       ...(faceRefMethod === 'both' ? { face_ref_pulid_strength: +faceRefStrength2 } : {}),
@@ -1027,7 +1033,7 @@ export default function App({ active = true }) {
         const sizeInfo = data.width && data.height ? ` at ${data.width}×${data.height}` : ''
         const faces = data.faces_fixed == null ? ''
           : data.faces_fixed > 0 ? ` · face fix redrew ${data.faces_fixed} face(s)` : ' · face fix found no face'
-        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}${data.refined ? ' · refined' : ''}`
+        const done = `Done — ${imageList.length} image(s)${sizeInfo}${data.cached ? ' (reused prompt/image encoding)' : ''}${faces}${data.refined ? ' · refined' : ''}${emotionShot ? ` · face: ${emotionShot.label}` : ''}`
         // shown once every queued generation has finished (the bar is the only thing that moves until then)
         const r = doneRef.current
         r.jobs++
@@ -1544,6 +1550,12 @@ export default function App({ active = true }) {
           <div className="gen-prompt-box">
             <label>Positive Prompt</label>
             <textarea value={positive} onChange={e => setPositive(e.target.value)} />
+            {(() => {
+              const who = backendType === 'qwen_image_edit' ? qwenCharacter : faceRefCharacter
+              const shot = who ? emotionForPrompt(who, positive) : null
+              if (!shot) return null
+              return <div className="muted small-note">Face reference: {shot.label} · LoRA tag {shot.tag} · {who}</div>
+            })()}
             {hasDetail && supportsLoraTags && loras.length > 0 && (
               <PromptEnhancer backend={getBackend()} loras={loras} positive={positive} setPositive={setPositive} say={setStatusMsg} />
             )}
