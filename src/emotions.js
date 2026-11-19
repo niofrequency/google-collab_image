@@ -1,50 +1,23 @@
-// Emotion shots for a character. Stored on the character as emotions: { [id]: dataURL }.
-// The caption kept for each shot is the emotion tag only (the same idea as a LoRA caption
-// that describes what changes, not the whole picture).
+// Emotion shots for a character. Stored as emotions: [{ id, image, tag }].
+// tag is the emotion only (LoRA-style), never the full WD14 caption.
 import { loadCharacters, saveCharacters } from './characters.js'
 
-export const EMOTIONS = [
-  { id: 'crying', tag: 'crying', label: 'Crying', words: ['crying', 'sobbing', 'tearful', 'tears'] },
-  { id: 'angry', tag: 'angry', label: 'Angry', words: ['angry', 'anger', 'furious'] },
-  { id: 'shocked', tag: 'shocked', label: 'Shocked', words: ['shocked', 'surprised', 'gasp'] },
-  { id: 'disgust', tag: 'disgust', label: 'Disgust', words: ['disgust', 'disgusted'] },
-  { id: 'lustful', tag: 'lustful', label: 'Lustful', words: ['lustful', 'lust', 'aroused'] },
-  { id: 'biting_lip', tag: 'biting_lip', label: 'Biting lip', words: ['biting lip', 'biting lips', 'bite lip', 'lip bite', 'biting_lip'] },
-  { id: 'tongue_out', tag: 'tongue_out', label: 'Tongue out', words: ['tongue out', 'tongue_out'] },
-  { id: 'ahegao', tag: 'ahegao', label: 'Ahegao', words: ['ahegao'] },
-  { id: 'moaning', tag: 'moaning', label: 'Moaning', words: ['moaning', 'moan'] },
-  { id: 'orgasm', tag: 'orgasm', label: 'Orgasm', words: ['orgasm', 'climax'] },
-  { id: 'pleading', tag: 'pleading', label: 'Pleading', words: ['pleading', 'begging', 'plead'] },
-  { id: 'smirk', tag: 'smirk', label: 'Smirk', words: ['smirking', 'smirk'] },
-  { id: 'panting', tag: 'panting', label: 'Panting', words: ['panting'] },
-  { id: 'overwhelmed', tag: 'overwhelmed', label: 'Overwhelmed', words: ['overwhelmed'] },
-  { id: 'dominant', tag: 'dominant', label: 'Dominant', words: ['dominant', 'commanding'] },
-  { id: 'bliss', tag: 'bliss', label: 'Bliss', words: ['blissed', 'bliss', 'afterglow'] },
-  { id: 'teasing', tag: 'teasing', label: 'Teasing', words: ['teasing', 'playful'] },
-  { id: 'desperate', tag: 'desperate', label: 'Desperate', words: ['desperate'] },
-  { id: 'shy', tag: 'shy', label: 'Shy', words: ['shy', 'embarrassed'] },
-  { id: 'vacant', tag: 'vacant', label: 'Vacant', words: ['vacant', 'blank stare', 'empty stare', 'fucked dumb'] },
-]
-
-// WD14 tags (LoRA training auto-tagger) that mean one of the emotions above.
-// Only specific tags — a generic "smile" or "open mouth" is not an emotion here.
-const WD_TAGS = [
-  ['ahegao', ['ahegao']],
-  ['orgasm', ['orgasm', 'torogao']],
-  ['crying', ['crying', 'streaming_tears', 'tears']],
-  ['tongue_out', ['tongue_out']],
-  ['biting_lip', ['lip_biting']],
-  ['disgust', ['disgust']],
-  ['angry', ['angry', 'anger_vein']],
-  ['shocked', ['surprised']],
-  ['panting', ['panting', 'heavy_breathing']],
-  ['smirk', ['smirk', 'smug']],
-  ['shy', ['embarrassed', 'shy']],
-  ['vacant', ['empty_eyes']],
-  ['lustful', ['naughty_face', 'seductive_smile']],
-  ['moaning', ['moaning']],
-  ['pleading', ['tearing_up']],
-]
+// Expression tags the training tagger is allowed to keep. Everything else
+// (hair, clothes, body, background) is dropped.
+const EXPRESSION = new Set([
+  'smile', 'grin', 'smirk', 'smug', 'laughing', 'giggle', 'happy', 'sad',
+  'crying', 'tears', 'streaming_tears', 'tearing_up', 'sobbing',
+  'angry', 'anger_vein', 'annoyed', 'frown', 'scowl', 'rage',
+  'surprised', 'shocked', 'scared', 'frightened', 'screaming', 'shouting',
+  'disgust', 'disgusted',
+  'blush', 'embarrassed', 'shy', 'nervous',
+  'ahegao', 'orgasm', 'torogao', 'naughty_face', 'seductive_smile', 'lustful',
+  'tongue_out', 'tongue', 'lip_biting', 'biting_lip',
+  'panting', 'heavy_breathing', 'moaning',
+  'expressionless', 'empty_eyes', 'blank_eyes', 'vacant',
+  'pout', 'wince', 'pain', 'pleading', 'desperate', 'overwhelmed',
+  'dominant', 'teasing', 'playful', 'bliss',
+])
 
 function wordAt(text, word) {
   let from = 0
@@ -61,52 +34,67 @@ function wordAt(text, word) {
   return -1
 }
 
-// First emotion mentioned in a prompt or a file name. Returns the emotion or null.
-export function matchEmotion(text) {
-  const t = String(text || '')
-  let best = null
-  for (const e of EMOTIONS) {
-    for (const w of e.words) {
-      const i = wordAt(t, w)
-      if (i < 0) continue
-      if (!best || i < best.i || (i === best.i && w.length > best.len)) best = { e, i, len: w.length }
-    }
-  }
-  return best?.e || null
+function splitTags(caption) {
+  return String(caption || '').toLowerCase().split(/[,]+/).map(t => t.trim().replace(/\s+/g, '_')).filter(Boolean)
 }
 
-// One emotion from a WD14 (or sentence) caption. Null when none of the tags are an emotion.
-export function emotionFromCaption(caption) {
-  const tags = String(caption || '').toLowerCase().split(/[,]+/).map(t => t.trim().replace(/\s+/g, '_')).filter(Boolean)
-  for (const [id, keys] of WD_TAGS) {
-    if (keys.some(k => tags.some(t => t === k || t.endsWith('_' + k) || t.startsWith(k + '_')))) {
-      return EMOTIONS.find(e => e.id === id) || null
-    }
+// Emotion tags only, in the order the tagger returned them. '' when there are none.
+export function emotionOnly(caption) {
+  const kept = []
+  for (const tag of splitTags(caption)) {
+    const hit = EXPRESSION.has(tag) ? tag
+      : [...EXPRESSION].find(e => tag === e || tag.endsWith('_' + e) || tag.startsWith(e + '_'))
+    if (hit && !kept.includes(hit)) kept.push(hit)
   }
-  return matchEmotion(String(caption || '').replace(/_/g, ' '))
+  if (kept.length) return kept.slice(0, 4).join(', ')
+  // Sentence captions (Qwen trainer): keep an expression word if one is written out.
+  const words = []
+  const text = String(caption || '').replace(/_/g, ' ')
+  for (const e of EXPRESSION) {
+    const shown = e.replace(/_/g, ' ')
+    if (wordAt(text, shown) >= 0 && !words.includes(e)) words.push(e)
+  }
+  return words.slice(0, 4).join(', ')
 }
 
-export function emotionMap(character) {
+export function emotionShots(character) {
   const raw = character?.emotions
-  return raw && typeof raw === 'object' ? raw : {}
+  if (Array.isArray(raw)) return raw.filter(s => s && s.image)
+  // Older builds stored { crying: dataURL }.
+  if (raw && typeof raw === 'object') {
+    return Object.entries(raw)
+      .filter(([, image]) => typeof image === 'string' && image.startsWith('data:'))
+      .map(([tag, image]) => ({ id: tag, image, tag }))
+  }
+  return []
 }
 
-export function setCharacterEmotion(name, emotionId, image) {
+export function saveEmotionShots(name, shots) {
   const list = loadCharacters()
   const c = list.find(x => x.name === name)
   if (!c) return 'That character is gone — pick another'
-  const emotions = { ...emotionMap(c) }
-  if (image) emotions[emotionId] = image
-  else delete emotions[emotionId]
-  c.emotions = emotions
+  c.emotions = shots
   return saveCharacters(list) ? '' : 'Browser storage is full — delete a character or some pictures first'
 }
 
-// The emotion shot to use as the face reference for this prompt, or null.
+export function newShotId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+// The shot whose emotion tag shows up in the prompt, or null.
 export function emotionForPrompt(characterName, prompt) {
-  if (!characterName) return null
-  const e = matchEmotion(prompt)
-  if (!e) return null
-  const image = emotionMap(loadCharacters().find(c => c.name === characterName))[e.id]
-  return image ? { ...e, image } : null
+  if (!characterName || !prompt) return null
+  const character = loadCharacters().find(c => c.name === characterName)
+  let best = null
+  for (const shot of emotionShots(character)) {
+    const parts = String(shot.tag || '').split(/[,\s]+/).map(t => t.replace(/_/g, ' ').trim()).filter(Boolean)
+    for (const w of parts) {
+      const i = wordAt(prompt, w)
+      if (i < 0) continue
+      if (!best || i < best.i || (i === best.i && w.length > best.len)) best = { i, len: w.length, shot }
+    }
+  }
+  if (!best) return null
+  const label = String(best.shot.tag || '').replace(/_/g, ' ')
+  return { image: best.shot.image, tag: best.shot.tag, label }
 }

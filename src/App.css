@@ -1004,10 +1004,8 @@ button.danger:hover:not(:disabled) { background: rgba(160,40,40,0.55); border-co
 }
 .emotion-drop:hover { border-color: var(--accent); }
 .emotion-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 16px; }
-.emotion-tag {
-  position: absolute; left: 6px; bottom: 26px; padding: 1px 6px; border-radius: 8px;
-  background: rgba(90, 20, 30, 0.85); color: #fff; font-size: 10px; letter-spacing: 0.2px; pointer-events: none;
-}
+.emotion-card { display: flex; flex-direction: column; gap: 6px; }
+.emotion-tag-input { font-size: 12px; padding: 6px 8px; }
 .emotion-inbox { margin-top: 14px; }
 .emotion-inbox-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
 .emotion-inbox-item { flex: 0 0 120px; }
