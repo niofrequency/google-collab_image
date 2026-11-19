@@ -611,6 +611,14 @@ export default function App({ active = true }) {
     else { setFaceRefCharacter(''); setFaceRefImages([]) }
   }
 
+  const pickCharacterRef = useRef(pickCharacter)
+  pickCharacterRef.current = pickCharacter
+  useEffect(() => {
+    const on = e => { if (e.detail?.name) pickCharacterRef.current(e.detail, e.detail.images?.length ? e.detail.images : []) }
+    window.addEventListener('use-face-character', on)
+    return () => window.removeEventListener('use-face-character', on)
+  }, [])
+
   function setRefImages(list) {
     refImagesRef.current = list
     setRefImagesState(list)

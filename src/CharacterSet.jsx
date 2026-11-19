@@ -3,6 +3,7 @@ import { useCharacters, loadCharacters } from './characters.js'
 import { shrinkImage } from './FaceRef.jsx'
 import Info from './Info.jsx'
 import { emotionShots, emotionOnly, saveEmotionShots, newShotId } from './emotions.js'
+import { ensurePicture } from './pictureCache.js'
 
 const HEADERS = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }
 const TAG_DATASET = 'arx_emotion_tmp'
@@ -63,7 +64,10 @@ async function tagEmotions(images) {
     if (status.status === 'error') throw new Error(status.error || 'Auto-tagging stopped')
     const data = await trainApi(backend, `/training/dataset/${TAG_DATASET}`)
     const byFile = Object.fromEntries((data.images || []).map(img => [img.file, img.caption || '']))
-    return uploaded.map(file => emotionOnly(byFile[file] || ''))
+    return uploaded.map(file => {
+      const raw = byFile[file] || ''
+      return { tag: emotionOnly(raw), raw }
+    })
   } finally {
     for (const file of uploaded) {
       trainApi(backend, `/training/dataset/${TAG_DATASET}/image/${encodeURIComponent(file)}`, { method: 'DELETE' }).catch(() => {})
@@ -117,19 +121,27 @@ export default function CharacterSet({ active = true }) {
     setBusy(true)
     try {
       const current = emotionShots(loadCharacters().find(c => c.name === charName))
-      const targets = current.filter(s => ids.includes(s.id))
-      if (!targets.length) return
-      const tags = await tagEmotions(targets.map(s => s.image))
-      const tagged = emotionShots(loadCharacters().find(c => c.name === charName)).map(s => {
-        const i = ids.indexOf(s.id)
-        return i < 0 ? s : { ...s, tag: tags[i] || s.tag }
-      })
+      const targets = []
+      for (const s of current.filter(s => ids.includes(s.id))) {
+        const image = s.image || await ensurePicture(s.id)
+        if (image) targets.push({ ...s, image })
+      }
+      if (!targets.length) return say('Those pictures are not on this device yet — drop them again', 'error')
+      const taggedShots = await tagEmotions(targets.map(s => s.image))
+      const byId = Object.fromEntries(targets.map((s, i) => [s.id, taggedShots[i] || { tag: '', raw: '' }]))
+      const tagged = emotionShots(loadCharacters().find(c => c.name === charName)).map(s => (
+        byId[s.id] ? { ...s, tag: byId[s.id].tag || s.tag } : s
+      ))
       const err = saveEmotionShots(charName, tagged)
       if (err) return say(err, 'error')
-      const named = tags.filter(Boolean).length
-      say(named
-        ? `Tagged ${named} of ${tags.length}. Captions are the emotion only — fix any that are wrong.`
-        : 'The tagger found no emotion. Type one under the picture.', named ? 'ok' : '')
+      const named = taggedShots.filter(t => t.tag).length
+      if (named) say(`Tagged ${named} of ${taggedShots.length}. The word under each picture is what the prompt has to say.`, 'ok')
+      else {
+        const sample = (taggedShots.find(t => t.raw)?.raw || '').slice(0, 90)
+        say(sample
+          ? `No emotion in the caption (“${sample}”). Type one under the picture, like crying or smirk.`
+          : 'The tagger returned nothing. Run both cells of the Character Set notebook again, then press Tag again.', '')
+      }
     } catch (e) {
       say(e.message.includes('Failed to fetch') ? 'Could not reach the training server — is the notebook still running?' : e.message, 'error')
     } finally {
@@ -141,8 +153,21 @@ export default function CharacterSet({ active = true }) {
     write(shots.map(s => s.id === id ? { ...s, tag } : s))
   }
 
+  function choose(next) {
+    setName(next)
+    const c = loadCharacters().find(x => x.name === next)
+    if (c) window.dispatchEvent(new CustomEvent('use-face-character', { detail: c }))
+  }
+
   function remove(id) {
     write(shots.filter(s => s.id !== id))
+  }
+
+  function retag() {
+    if (!shots.length) return say('Drop pictures first', 'error')
+    say(`Tagging ${shots.length} image${shots.length === 1 ? '' : 's'}…`)
+    const run = chain.current.then(() => tagNew(selectedName, shots.map(s => s.id)))
+    chain.current = run.catch(() => {})
   }
 
   useEffect(() => {
@@ -168,13 +193,14 @@ export default function CharacterSet({ active = true }) {
         <div className="empty-msg">No characters yet. Make one on the Characters tab, then drop emotion shots here.</div>
       ) : (<>
         <div className="inline characters-new">
-          <select value={selectedName} onChange={e => setName(e.target.value)} aria-label="Character">
+          <select value={selectedName} onChange={e => choose(e.target.value)} aria-label="Character">
             {characters.map(c => {
               const n = emotionShots(c).length
               return <option key={c.name} value={c.name}>{c.name}{n ? ` (${n})` : ''}</option>
             })}
           </select>
           <span className="muted">{shots.length} shot{shots.length === 1 ? '' : 's'}{busy ? ' · tagging…' : ''}</span>
+          <button type="button" className="secondary" disabled={busy || !shots.length} onClick={retag}>Tag again</button>
         </div>
         {status.text && <div className={`status ${status.type}`}>{status.text}</div>}
 
@@ -184,8 +210,9 @@ export default function CharacterSet({ active = true }) {
           onClick={() => fileRef.current?.click()}
           onDragOver={e => e.preventDefault()}
           onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer?.files) }}>
-          Drop images here, or hover this box and paste. They are auto-tagged with the emotion only.
+          Drop images here, or hover this box and paste. They are saved on this character and tagged with the emotion only.
         </div>
+        <p className="muted small-note">Picking a character here also selects them on Image Generator. If the prompt contains the word under a picture (crying, smirk, tongue out), that picture is the face reference. The files stay on this character — in this browser, and in Firebase when you are signed in — not in the gallery.</p>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
 
         <div className="emotion-grid"

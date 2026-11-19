@@ -6,18 +6,20 @@ import { cachedPicture, ensurePicture } from './pictureCache.js'
 // Expression tags the training tagger is allowed to keep. Everything else
 // (hair, clothes, body, background) is dropped.
 const EXPRESSION = new Set([
-  'smile', 'grin', 'smirk', 'smug', 'laughing', 'giggle', 'happy', 'sad',
+  'smile', 'grin', 'smirk', 'smug', 'laughing', 'giggle', 'happy', 'sad', 'sad_smile',
   'crying', 'tears', 'streaming_tears', 'tearing_up', 'sobbing',
-  'angry', 'anger_vein', 'annoyed', 'frown', 'scowl', 'rage',
-  'surprised', 'shocked', 'scared', 'frightened', 'screaming', 'shouting',
+  'angry', 'anger_vein', 'annoyed', 'frown', 'scowl', 'rage', 'furrowed_brow', 'clenched_teeth', 'gritted_teeth',
+  'surprised', 'shocked', 'scared', 'frightened', 'screaming', 'shouting', 'wide-eyed',
   'disgust', 'disgusted',
-  'blush', 'embarrassed', 'shy', 'nervous',
-  'ahegao', 'orgasm', 'torogao', 'naughty_face', 'seductive_smile', 'lustful',
-  'tongue_out', 'tongue', 'lip_biting', 'biting_lip',
+  'blush', 'embarrassed', 'shy', 'nervous', 'nose_blush', 'light_blush', 'full-face_blush',
+  'ahegao', 'orgasm', 'torogao', 'naughty_face', 'seductive_smile', 'lustful', 'doyagao',
+  'evil_smile', 'crazy_smile', 'rolling_eyes', 'heart-shaped_pupils',
+  'tongue_out', 'tongue', 'lip_biting', 'biting_lip', 'drooling', 'saliva',
   'panting', 'heavy_breathing', 'moaning',
-  'expressionless', 'empty_eyes', 'blank_eyes', 'vacant',
+  'expressionless', 'empty_eyes', 'blank_eyes', 'vacant', 'half-closed_eyes', 'closed_eyes',
   'pout', 'wince', 'pain', 'pleading', 'desperate', 'overwhelmed',
   'dominant', 'teasing', 'playful', 'bliss',
+  'sleepy', 'yawning', 'bored', 'confused', 'serious', 'depressed', 'gloomy', 'drunk', 'crazy',
 ])
 
 function wordAt(text, word) {
