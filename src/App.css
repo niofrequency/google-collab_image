@@ -1384,3 +1384,28 @@ button.icon-btn.active, button.icon-btn.active:hover:not(:disabled) { background
 .ws-scale { position: absolute; right: 22px; bottom: 3px; font-size: 10px; color: var(--muted); pointer-events: none; }
 
 .mode-icons .icon-btn.tip-below[data-tip]:hover::after, .mode-icons .icon-btn.tip-below[data-tip]:focus-visible::after { left: auto; right: 0; transform: none; }
+
+/* Account: a round user icon in the top-right corner (sign in, sync status, cloud backup panel) */
+.main { position: relative; }
+.cloud-bar { position: absolute; top: 34px; right: 24px; z-index: 60; display: block; max-width: none; margin: 0; padding: 0; }
+button.user-btn { position: relative; width: 40px; height: 40px; padding: 0; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; color: #c9c9c9; }
+button.user-btn:hover:not(:disabled), button.user-btn[aria-expanded="true"] { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.28); color: #fff; box-shadow: none; }
+button.user-btn img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.user-dot { position: absolute; right: 0; bottom: 0; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #0a0a0a; background: #2ecc71; }
+.user-btn.busy .user-dot { background: #f1c40f; }
+.user-btn.err .user-dot { background: #e74c3c; }
+button.user-btn[data-tip]:hover::after { content: attr(data-tip); position: absolute; top: calc(100% + 8px); right: 0; padding: 5px 9px; border-radius: 7px;
+  background: #161616; border: 1px solid #333; color: #eee; font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none; z-index: 70;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+button.user-btn[aria-expanded="true"][data-tip]:hover::after { display: none; }
+.cloud-bar .cloud-panel { top: 50px; right: 0; }
+/* the Image Generator header lines up with it: logo · view icons · user icon on one line */
+.gen-title-row { min-height: 48px; padding-right: 56px; }
+html.hide-images .user-btn img { opacity: 1 !important; }
+@media (max-width: 700px) {
+  .cloud-bar { top: 10px; right: 12px; }
+  button.user-btn { width: 34px; height: 34px; }
+  .main > .container, .container { padding-top: 54px; }
+  .gen-title-row { padding-right: 0; }
+}

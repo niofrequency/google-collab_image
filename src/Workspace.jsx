@@ -121,7 +121,9 @@ export function useWorkspaceState(key, columns, on) {
     if (!Number.isFinite(x0)) return
     const pad = 32
     const z = clampZ(Math.min((vp.clientWidth - pad * 2) / (x1 - x0), (vp.clientHeight - pad * 2) / (y1 - y0), 1))
-    setView({ z, x: pad - x0 * z + Math.max(0, (vp.clientWidth - pad * 2 - (x1 - x0) * z) / 2), y: pad - y0 * z })
+    // centred both ways (the content is smaller than the board after fitting)
+    setView({ z, x: pad - x0 * z + Math.max(0, (vp.clientWidth - pad * 2 - (x1 - x0) * z) / 2),
+      y: pad - y0 * z + Math.max(0, (vp.clientHeight - pad * 2 - (y1 - y0) * z) / 2) })
   }
 
   return {
@@ -170,6 +172,15 @@ export function WorkspaceBoard({ ws, children, onGallery }) {
     vp.addEventListener('wheel', onWheel, { passive: false })
     return () => vp.removeEventListener('wheel', onWheel)
   })
+
+  // opening the workspace (arriving on the site, or switching to it): start centred with every card in view
+  const wsRef = useRef(ws)
+  wsRef.current = ws
+  useEffect(() => {
+    if (!ws.on) return
+    const t = setTimeout(() => wsRef.current.fit(), 350)   // after the cards are measured / tidied
+    return () => clearTimeout(t)
+  }, [ws.on])
 
   if (!ws.on) return children
 

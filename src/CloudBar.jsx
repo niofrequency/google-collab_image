@@ -39,10 +39,13 @@ export default function CloudBar() {
 
   return (
     <div className="cloud-bar">
-      <button className={`cloud-btn ${dot}`} onClick={() => setOpen(o => !o)} title="Cloud backup (Firebase)">
-        ☁ {!configured ? 'Cloud backup: set up' : user ? user.name : 'Sign in to back up'}
+      <button className={`user-btn ${dot}`} onClick={() => setOpen(o => !o)} aria-expanded={open}
+        aria-label={!configured ? 'Cloud backup — set up' : user ? `${user.name}${status.text ? ' · ' + status.text : ''}` : 'Sign in — back up and sync your work'} data-tip={!configured ? 'Cloud backup — set up' : user ? `${user.name}${status.text ? ' · ' + status.text : ''}` : 'Sign in — back up and sync your work'}>
+        {user?.photo
+          ? <img src={user.photo} alt="" referrerPolicy="no-referrer" />
+          : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8.5" r="3.8" /><path d="M4.8 20c1.1-3.6 3.9-5.6 7.2-5.6s6.1 2 7.2 5.6" /></svg>}
+        {dot && <span className="user-dot" aria-hidden="true" />}
       </button>
-      {user && status.text && <span className={`cloud-status ${status.state}`}>{status.text}</span>}
 
       {open && (
         <div className="cloud-panel">
